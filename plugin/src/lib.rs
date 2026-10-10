@@ -8,6 +8,7 @@ use sosatune_dsp::{CorrectionSettings, PitchCorrector, MAX_CHANNELS};
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
+mod denormals;
 mod editor;
 mod gui;
 mod params;
@@ -26,6 +27,8 @@ pub struct SosaTune {
     /// Il tipo di voce attualmente impostato nel motore.
     current_voice: VoiceChoice,
     sample_rate: f32,
+    /// Quanti canali elabora il motore (quelli in ingresso: 1 o 2).
+    input_channels: usize,
 }
 
 impl Default for SosaTune {
@@ -36,6 +39,7 @@ impl Default for SosaTune {
             display: Arc::new(PitchDisplay::default()),
             current_voice: VoiceChoice::AltoTenor,
             sample_rate: 48000.0,
+            input_channels: 2,
         }
     }
 }
@@ -56,7 +60,10 @@ impl Plugin for SosaTune {
     const EMAIL: &'static str = "";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    // Funziona su tracce stereo e mono.
+    // Funziona su tracce stereo e mono, e anche mono -> stereo (la voce mono
+    // corretta viene copiata su entrambi i lati): e' la configurazione che
+    // molti DAW e contenitori di plugin (Pro Tools, Logic, Blue Cat PatchWork)
+    // usano per gli effetti su una traccia vocale mono.
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
         AudioIOLayout {
             main_input_channels: NonZeroU32::new(2),
@@ -66,6 +73,11 @@ impl Plugin for SosaTune {
         AudioIOLayout {
             main_input_channels: NonZeroU32::new(1),
             main_output_channels: NonZeroU32::new(1),
+            ..AudioIOLayout::const_default()
+        },
+        AudioIOLayout {
+            main_input_channels: NonZeroU32::new(1),
+            main_output_channels: NonZeroU32::new(2),
             ..AudioIOLayout::const_default()
         },
     ];
@@ -95,6 +107,7 @@ impl Plugin for SosaTune {
 
         // Qui si puo' allocare memoria: il motore prepara tutti i suoi buffer.
         self.sample_rate = buffer_config.sample_rate;
+        self.input_channels = channels;
         let mut corrector = PitchCorrector::new(self.sample_rate, channels);
         self.current_voice = self.params.voice.value();
         corrector.set_voice(self.current_voice.to_dsp());
@@ -133,6 +146,11 @@ impl Plugin for SosaTune {
             self.display.set_timing(latency_ms, corrector.analysis_interval());
         }
 
+        // Numeri piccolissimi ("denormali") rallentano molto alcune CPU: per
+        // tutta la durata di questo blocco li trattiamo come zero.
+        let _ftz = denormals::FlushToZero::new();
+
+        let bypass = self.params.bypass.value();
         let settings = CorrectionSettings {
             notes: self.params.active_notes(),
             retune_ms: self.params.retune_speed.value(),
@@ -144,23 +162,35 @@ impl Plugin for SosaTune {
             formant: self.params.formant.value(),
             tracking: self.params.tracking.value(),
         };
+        // In bypass: nessuna correzione, nota e timbro invariati (ma stesso ritardo).
+        let settings = if bypass {
+            CorrectionSettings { amount: 0.0, transpose: 0.0, vibrato: 0.0, formant: 0.0, ..settings }
+        } else {
+            settings
+        };
         // Aggiorniamo il grafico solo se la finestra e' aperta.
         let gui_open = self.params.editor_state.is_open();
 
         let channels = buffer.as_slice();
-        let num_channels = channels.len().min(MAX_CHANNELS);
+        let num_outputs = channels.len();
+        // Canali da elaborare: quelli in ingresso (mai piu' di quelli presenti).
+        let num_inputs = self.input_channels.min(num_outputs).min(MAX_CHANNELS);
         let num_samples = channels.first().map_or(0, |c| c.len());
+        if num_inputs == 0 {
+            return ProcessStatus::Normal;
+        }
 
         for i in 0..num_samples {
             let mut frame = [0.0f32; MAX_CHANNELS];
-            for (ch, sample) in frame.iter_mut().enumerate().take(num_channels) {
+            for (ch, sample) in frame.iter_mut().enumerate().take(num_inputs) {
                 *sample = channels[ch][i];
             }
 
-            let report = corrector.process_frame(&mut frame[..num_channels], &settings);
+            let report = corrector.process_frame(&mut frame[..num_inputs], &settings);
 
-            for (ch, sample) in frame.iter().enumerate().take(num_channels) {
-                channels[ch][i] = *sample;
+            for (ch, output) in channels.iter_mut().enumerate() {
+                // Le uscite in piu' (mono -> stereo) ricevono il primo canale.
+                output[i] = if ch < num_inputs { frame[ch] } else { frame[0] };
             }
             if let (Some(report), true) = (report, gui_open) {
                 self.display.push(&report);

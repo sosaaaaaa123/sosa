@@ -42,7 +42,8 @@ jobs:
         run: scripts/macos-bundle.sh 2>&1 | tee bundle-log.txt
 
       # pluginval (Tracktion) carica il plugin come farebbe un DAW e lo mette
-      # alla prova: apertura, parametri, audio, interfaccia grafica.
+      # alla prova al livello piu' severo (10): apertura, parametri, audio,
+      # salvataggio e ripristino, chiamate da piu' thread, interfaccia grafica.
       - name: Prova i plugin con pluginval
         if: always()
         run: |
@@ -51,12 +52,58 @@ jobs:
           PV=pluginval.app/Contents/MacOS/pluginval
           run_pv() {
             echo "===== pluginval: $1 ====="
-            "$PV" --strictness-level 5 --validate-in-process --timeout-ms 120000 "$1" > "pv-$2.txt" 2>&1
+            "$PV" --strictness-level 10 --validate-in-process --timeout-ms 300000 "$1" > "pv-$2.txt" 2>&1
             echo "exit code: $?" >> "pv-$2.txt"
             tail -40 "pv-$2.txt"
           }
-          run_pv target/bundled-mhbundle/SosaTune.vst3 bundle || true
-          run_pv target/bundled/SosaTune.vst3 dylib || true
+          run_pv target/bundled-mhbundle/SosaTune.vst3 vst3 || true
+          run_pv target/bundled-mhbundle/SosaTune.clap clap || true
+
+      # Il validatore ufficiale di Steinberg (gli inventori del VST3): e' lo
+      # stesso controllo che usano Cubase, Pro Tools/PatchWork e gli altri host
+      # per la conformita' (canali mono/stereo, bypass, stato, latenza...).
+      - name: Prova con il validatore ufficiale Steinberg VST3
+        if: always()
+        run: |
+          set +e
+          {
+            git clone -q --depth 1 --recursive --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git
+            cmake -S vst3sdk -B vst3build -DCMAKE_BUILD_TYPE=Release \
+              -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF \
+              -DSMTG_RUN_VST_VALIDATOR=OFF > vst3sdk-cmake.txt 2>&1
+            cmake --build vst3build --target validator --config Release -j 4 > vst3sdk-build.txt 2>&1
+          } || { echo "compilazione del validatore non riuscita"; tail -40 vst3sdk-cmake.txt vst3sdk-build.txt; }
+          VAL=$(find vst3build -type f -name validator -perm -u+x | head -1)
+          echo "validatore: $VAL"
+          if [ -n "$VAL" ]; then
+            "$VAL" -e target/bundled-mhbundle/SosaTune.vst3 > steinberg.txt 2>&1
+            echo "exit code: $?" >> steinberg.txt
+          else
+            { echo "validatore non disponibile"; tail -60 vst3sdk-build.txt; } > steinberg.txt 2>&1
+          fi
+          tail -60 steinberg.txt
+
+      # clap-validator: lo stesso tipo di controllo per il formato CLAP
+      # (Bitwig, Reaper, FL Studio 2024+...).
+      - name: Prova con clap-validator
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          mkdir -p cv && cd cv
+          gh release download --repo free-audio/clap-validator --pattern '*mac*' || true
+          for f in *; do case "$f" in *.tar.gz) tar xzf "$f";; *.zip) unzip -qo "$f";; esac; done
+          CV=$(find . -type f -name clap-validator | head -1)
+          cd ..
+          if [ -n "$CV" ]; then
+            chmod +x "cv/$CV"
+            "cv/$CV" validate --in-process target/bundled-mhbundle/SosaTune.clap > clap-validator.txt 2>&1
+            echo "exit code: $?" >> clap-validator.txt
+          else
+            { echo "clap-validator non scaricato"; ls -la cv; } > clap-validator.txt
+          fi
+          tail -60 clap-validator.txt
 
       - name: Prepara lo zip e il rapporto
         if: always()
@@ -80,11 +127,17 @@ jobs:
             echo "## Creazione dei pacchetti"
             cat bundle-log.txt || true
             echo
-            echo "## pluginval - formato bundle (quello nello zip)"
-            cat pv-bundle.txt || true
+            echo "## pluginval livello 10 - VST3"
+            cat pv-vst3.txt || true
             echo
-            echo "## pluginval - formato dylib (versione precedente)"
-            cat pv-dylib.txt || true
+            echo "## pluginval livello 10 - CLAP"
+            cat pv-clap.txt || true
+            echo
+            echo "## Validatore ufficiale Steinberg VST3"
+            cat steinberg.txt || true
+            echo
+            echo "## clap-validator"
+            cat clap-validator.txt || true
           } > rapporto.txt 2>&1
 
       - uses: actions/upload-artifact@v4

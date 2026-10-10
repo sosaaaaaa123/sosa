@@ -229,6 +229,12 @@ pub struct SosaTuneParams {
     #[id = "transpose"]
     pub transpose: IntParam,
 
+    /// Bypass: il DAW lo usa per il suo pulsante di esclusione dell'effetto.
+    /// La voce passa senza correzione ma con lo stesso ritardo, cosi' resta
+    /// allineata al resto della canzone.
+    #[id = "bypass"]
+    pub bypass: BoolParam,
+
     /// Humanize: note lunghe corrette piu' dolcemente.
     #[id = "humanize"]
     pub humanize: FloatParam,
@@ -279,6 +285,7 @@ impl Default for SosaTuneParams {
                 .with_string_to_value(formatters::s2v_f32_percentage()),
             transpose: IntParam::new("Trasposizione", 0, IntRange::Linear { min: -12, max: 12 })
                 .with_unit(" st"),
+            bypass: BoolParam::new("Bypass", false).make_bypass(),
             humanize: percent_param("Humanize", 0.0, 0.0),
             flex_tune: percent_param("Flex-Tune", 0.0, 0.0),
             vibrato: percent_param("Vibrato", 0.0, -1.0),
