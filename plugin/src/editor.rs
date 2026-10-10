@@ -415,18 +415,16 @@ fn tuning_ring(ui: &Ui, painter: &Painter, display: &PitchDisplay, origin: Pos2)
 /// Una manopola: si trascina in su/giu' (con Maiusc per i ritocchi fini),
 /// doppio clic per tornare al valore iniziale.
 #[allow(clippy::too_many_arguments)]
-fn knob<P: Param>(
+/// Rende `hit` una manopola: trascina in su/giu' (Maiusc = ritocchi fini),
+/// doppio clic = valore iniziale.
+fn drag_param<P: Param>(
     ui: &Ui,
-    painter: &Painter,
     setter: &ParamSetter,
     param: &P,
-    center: Pos2,
-    radius: f32,
+    hit: Rect,
     label: &str,
     help: &str,
-    bipolar: bool,
-) {
-    let hit = Rect::from_center_size(center, Vec2::splat(radius * 2.0 + 20.0));
+) -> egui::Response {
     let response = ui
         .interact(hit, Id::new(("manopola", label)), Sense::click_and_drag())
         .on_hover_cursor(CursorIcon::ResizeVertical)
@@ -459,6 +457,23 @@ fn knob<P: Param>(
         setter.set_parameter_normalized(param, param.default_normalized_value());
         setter.end_set_parameter(param);
     }
+
+    response
+}
+
+fn knob<P: Param>(
+    ui: &Ui,
+    painter: &Painter,
+    setter: &ParamSetter,
+    param: &P,
+    center: Pos2,
+    radius: f32,
+    label: &str,
+    help: &str,
+    bipolar: bool,
+) {
+    let hit = Rect::from_center_size(center, Vec2::splat(radius * 2.0 + 20.0));
+    let response = drag_param(ui, setter, param, hit, label, help);
 
     // Disegno: anello di sfondo, arco del valore, corpo e lancetta.
     let value = param.modulated_normalized_value();
@@ -719,6 +734,178 @@ fn toggle_note(params: &SosaTuneParams, setter: &ParamSetter, pc: usize, notes: 
 // --- Compressore ottico a valvola ----------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
+// --- Compressore: pannello da rack analogico -----------------------------------
+//
+// Un apparecchio da studio immaginario, disegnato per SosaTune: pannello in
+// metallo scuro con le scritte incise, strumento ad ago per la riduzione di
+// guadagno, interruttore a levetta con spia, manopole a gonna con la scala
+// incisa attorno.
+
+const PLATE_TOP: Color32 = Color32::from_rgb(0x34, 0x32, 0x2f);
+const PLATE_BOTTOM: Color32 = Color32::from_rgb(0x22, 0x21, 0x1f);
+const PLATE_EDGE: Color32 = Color32::from_rgb(0x48, 0x45, 0x40);
+const EAR: Color32 = Color32::from_rgb(0x1a, 0x19, 0x18);
+const ENGRAVING: Color32 = Color32::from_rgb(0xd8, 0xd0, 0xbc);
+const ENGRAVING_DIM: Color32 = Color32::from_rgb(0x8f, 0x89, 0x7c);
+const METER_FACE: Color32 = Color32::from_rgb(0xf1, 0xe4, 0xc2);
+const METER_INK: Color32 = Color32::from_rgb(0x2b, 0x24, 0x1a);
+const METER_RED: Color32 = Color32::from_rgb(0xb8, 0x3a, 0x2a);
+const LAMP_ON: Color32 = Color32::from_rgb(0xff, 0xb3, 0x40);
+const LAMP_OFF: Color32 = Color32::from_rgb(0x3a, 0x2c, 0x1e);
+
+/// Testo inciso nel metallo: un'ombra scura sotto e il testo chiaro sopra.
+fn engraved(painter: &Painter, pos: Pos2, align: Align2, text: &str, font: FontId, color: Color32) {
+    painter.text(pos + Vec2::new(0.0, 1.0), align, text, font.clone(), Color32::from_black_alpha(160));
+    painter.text(pos, align, text, font, color);
+}
+
+/// Un rettangolo con sfumatura verticale.
+fn vertical_gradient(painter: &Painter, rect: Rect, top: Color32, bottom: Color32) {
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(rect.left_top(), top);
+    mesh.colored_vertex(rect.right_top(), top);
+    mesh.colored_vertex(rect.right_bottom(), bottom);
+    mesh.colored_vertex(rect.left_bottom(), bottom);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(Shape::mesh(mesh));
+}
+
+/// Vite del pannello, con la fessura inclinata.
+fn screw(painter: &Painter, center: Pos2, slot_angle: f32) {
+    painter.circle_filled(center, 5.0, Color32::from_rgb(0x6d, 0x69, 0x62));
+    painter.circle_stroke(center, 5.0, Stroke::new(1.0_f32, Color32::from_rgb(0x12, 0x11, 0x10)));
+    painter.circle_filled(center - Vec2::new(1.2, 1.2), 2.5, Color32::from_white_alpha(28));
+    painter.line_segment(
+        [polar(center, 3.6, slot_angle), polar(center, 3.6, slot_angle + PI)],
+        Stroke::new(1.4_f32, Color32::from_rgb(0x22, 0x20, 0x1d)),
+    );
+}
+
+/// Manopola a gonna con la scala incisa attorno.
+#[allow(clippy::too_many_arguments)]
+fn hardware_knob<P: Param>(
+    ui: &Ui,
+    painter: &Painter,
+    setter: &ParamSetter,
+    param: &P,
+    center: Pos2,
+    label: &str,
+    ends: (&str, &str),
+    help: &str,
+    readout: Option<String>,
+) {
+    let radius = 21.0;
+    let hit = Rect::from_center_size(center, Vec2::splat(2.0 * radius + 16.0));
+    let response = drag_param(ui, setter, param, hit, label, help);
+    let active = response.hovered() || response.dragged();
+
+    let start = 0.75 * PI;
+    let sweep = 1.5 * PI;
+    // Scala incisa: 11 tacche, piu' lunghe agli estremi e al centro.
+    for i in 0..=10 {
+        let a = start + sweep * i as f32 / 10.0;
+        let long = i == 0 || i == 5 || i == 10;
+        let inner = radius + 4.0;
+        let outer = radius + if long { 9.0 } else { 7.0 };
+        painter.line_segment(
+            [polar(center, inner, a), polar(center, outer, a)],
+            Stroke::new(if long { 1.4_f32 } else { 1.0_f32 }, ENGRAVING_DIM),
+        );
+    }
+    engraved(painter, polar(center, radius + 15.0, start) + Vec2::new(-2.0, 4.0), Align2::RIGHT_CENTER, ends.0, regular(8.0), ENGRAVING_DIM);
+    engraved(painter, polar(center, radius + 15.0, start + sweep) + Vec2::new(2.0, 4.0), Align2::LEFT_CENTER, ends.1, regular(8.0), ENGRAVING_DIM);
+
+    // Ombra, gonna, cappuccio con riflesso, indice.
+    painter.circle_filled(center + Vec2::new(0.0, 2.5), radius + 1.0, Color32::from_black_alpha(110));
+    painter.circle_filled(center, radius, Color32::from_rgb(0x15, 0x14, 0x13));
+    painter.circle_stroke(center, radius, Stroke::new(1.0_f32, Color32::from_rgb(0x4a, 0x47, 0x42)));
+    let cap = radius * 0.66;
+    painter.circle_filled(center, cap, Color32::from_rgb(0x2a, 0x28, 0x26));
+    painter.circle_stroke(center, cap, Stroke::new(1.0_f32, Color32::from_rgb(0x55, 0x52, 0x4c)));
+    arc(painter, center, cap - 2.0, 1.05 * PI, 1.55 * PI, Stroke::new(2.0_f32, Color32::from_white_alpha(30)));
+    let value = param.modulated_normalized_value();
+    let angle = start + value * sweep;
+    painter.line_segment(
+        [polar(center, cap + 1.0, angle), polar(center, radius - 2.0, angle)],
+        Stroke::new(2.6_f32, if active { GOLD } else { ENGRAVING }),
+    );
+    painter.circle_filled(polar(center, cap * 0.55, angle), 1.6, if active { GOLD } else { ENGRAVING_DIM });
+
+    engraved(painter, center - Vec2::new(0.0, radius + 22.0), Align2::CENTER_CENTER, label, bold(9.0), ENGRAVING);
+    let text = readout.unwrap_or_else(|| param.normalized_value_to_string(value, true));
+    engraved(
+        painter,
+        center + Vec2::new(0.0, radius + 24.0),
+        Align2::CENTER_CENTER,
+        &text,
+        regular(if active { 11.0 } else { 10.0 }),
+        if active { GOLD } else { ENGRAVING },
+    );
+}
+
+/// Strumento ad ago della riduzione di guadagno (da 0 a 20 dB).
+fn gain_reduction_meter(painter: &Painter, rect: Rect, db: f32, lit: bool) {
+    // Cornice e vetro.
+    painter.rect_filled(rect.expand(3.0), CornerRadius::same(5), Color32::from_rgb(0x0b, 0x0b, 0x0a));
+    painter.rect_stroke(rect.expand(3.0), CornerRadius::same(5), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Outside);
+    let face = if lit { METER_FACE } else { METER_FACE.gamma_multiply(0.55) };
+    vertical_gradient(painter, rect, face, face.gamma_multiply(0.86));
+
+    // L'ago ruota attorno a un perno sotto il quadrante.
+    let pivot = Pos2::new(rect.center().x, rect.bottom() + 34.0);
+    let scale_radius = rect.height() + 2.0;
+    let left = -0.30 * PI; // 20 dB
+    let right = 0.30 * PI; // 0 dB
+    // Scala compressa verso i valori alti, come sugli strumenti veri.
+    let angle_of = |db: f32| {
+        let p = (db.clamp(0.0, 20.0) / 20.0).powf(0.62);
+        right + (left - right) * p
+    };
+    let dial = |a: f32, r: f32| pivot + Vec2::new(a.sin() * r, -a.cos() * r);
+    let clipped = painter.with_clip_rect(rect);
+    // Arco della scala (rosso oltre 10 dB).
+    let steps = 40;
+    for i in 0..steps {
+        let d0 = 20.0 * i as f32 / steps as f32;
+        let d1 = 20.0 * (i + 1) as f32 / steps as f32;
+        let color = if d0 >= 10.0 { METER_RED } else { METER_INK };
+        clipped.line_segment(
+            [dial(angle_of(d0), scale_radius - 30.0), dial(angle_of(d1), scale_radius - 30.0)],
+            Stroke::new(if d0 >= 10.0 { 2.2_f32 } else { 1.2_f32 }, color),
+        );
+    }
+    for (value, label) in [(0.0, "0"), (1.0, "1"), (2.0, "2"), (3.0, "3"), (5.0, "5"), (7.0, "7"), (10.0, "10"), (15.0, "15"), (20.0, "20")] {
+        let a = angle_of(value);
+        let color = if value >= 10.0 { METER_RED } else { METER_INK };
+        clipped.line_segment([dial(a, scale_radius - 30.0), dial(a, scale_radius - 23.0)], Stroke::new(1.3_f32, color));
+        clipped.text(dial(a, scale_radius - 16.0), Align2::CENTER_CENTER, label, regular(8.5), color);
+    }
+    clipped.text(
+        Pos2::new(rect.center().x, rect.bottom() - 26.0),
+        Align2::CENTER_CENTER,
+        "RIDUZIONE dB",
+        bold(8.0),
+        METER_INK.gamma_multiply(0.85),
+    );
+    // Ago e perno.
+    let a = angle_of(db);
+    clipped.line_segment(
+        [dial(a, 26.0) + Vec2::new(1.5, 1.5), dial(a, scale_radius - 8.0) + Vec2::new(1.5, 1.5)],
+        Stroke::new(1.6_f32, Color32::from_black_alpha(45)),
+    );
+    clipped.line_segment([dial(a, 26.0), dial(a, scale_radius - 8.0)], Stroke::new(1.4_f32, Color32::from_rgb(0x1a, 0x16, 0x12)));
+    let hub = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - 12.0), rect.right_bottom());
+    clipped.rect_filled(hub, CornerRadius::ZERO, Color32::from_rgb(0x1c, 0x1a, 0x17));
+    // Riflesso del vetro.
+    let glare = Rect::from_min_max(rect.left_top(), Pos2::new(rect.right(), rect.top() + rect.height() * 0.35));
+    vertical_gradient(&clipped, glare, Color32::from_white_alpha(26), Color32::from_white_alpha(0));
+    if lit {
+        // Retroilluminazione calda.
+        painter.rect_stroke(rect, CornerRadius::same(2), Stroke::new(2.0_f32, Color32::from_rgba_unmultiplied(255, 170, 60, 30)), StrokeKind::Inside);
+    }
+}
+
 fn compressor(
     ui: &Ui,
     painter: &Painter,
@@ -729,116 +916,149 @@ fn compressor(
     origin: Pos2,
 ) {
     let comp = &params.comp;
-    let rect = Rect::from_min_size(origin, Vec2::new(EDITOR_WIDTH as f32 - 2.0 * layout::MARGIN, layout::COMP_H));
-    panel(painter, rect, "COMPRESSORE A VALVOLA");
     let on = comp.enabled.value();
+    let rect = Rect::from_min_size(origin, Vec2::new(EDITOR_WIDTH as f32 - 2.0 * layout::MARGIN, layout::COMP_H));
+    let x = |dx: f32| rect.left() + dx;
+    let y = |dy: f32| rect.top() + dy;
 
-    // Interruttore acceso/spento.
-    let switch = Rect::from_min_size(origin + Vec2::new(16.0, 38.0), Vec2::new(180.0, 30.0));
+    // Pannello: ombra, metallo sfumato, spazzolatura, bordo, "orecchie" del rack.
+    painter.rect_filled(rect.translate(Vec2::new(0.0, 3.0)), CornerRadius::same(6), Color32::from_black_alpha(120));
+    painter.rect_filled(rect, CornerRadius::same(6), PLATE_BOTTOM);
+    vertical_gradient(painter, rect.shrink(2.0), PLATE_TOP, PLATE_BOTTOM);
+    let mut line_y = rect.top() + 4.0;
+    let mut i = 0;
+    while line_y < rect.bottom() - 3.0 {
+        let alpha = if i % 3 == 0 { 9 } else { 5 };
+        painter.line_segment(
+            [Pos2::new(rect.left() + 20.0, line_y), Pos2::new(rect.right() - 20.0, line_y)],
+            Stroke::new(1.0_f32, Color32::from_white_alpha(alpha)),
+        );
+        line_y += 2.0;
+        i += 1;
+    }
+    painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Inside);
+    for ear in [
+        Rect::from_min_max(rect.min, Pos2::new(x(18.0), rect.bottom())),
+        Rect::from_min_max(Pos2::new(rect.right() - 18.0, rect.top()), rect.max),
+    ] {
+        painter.rect_filled(ear.shrink(1.0), CornerRadius::same(5), EAR);
+        screw(painter, Pos2::new(ear.center().x, rect.top() + 18.0), 0.6);
+        screw(painter, Pos2::new(ear.center().x, rect.bottom() - 18.0), 2.1);
+    }
+
+    // Strumento ad ago. Si muove con calma, come quelli veri (~300 ms).
+    let reading = if on { display.gain_reduction() } else { 0.0 };
+    state.meter_db += (reading - state.meter_db) * 0.3;
+    let meter = Rect::from_min_max(Pos2::new(x(34.0), y(14.0)), Pos2::new(x(190.0), y(118.0)));
+    ui.interact(meter, Id::new("compressore-indicatore"), Sense::hover())
+        .on_hover_text(format!(
+            "Di quanti dB il compressore sta abbassando la voce in questo momento: {:.1} dB.",
+            state.meter_db
+        ));
+    gain_reduction_meter(painter, meter, state.meter_db, on);
+    engraved(painter, Pos2::new(meter.center().x, y(136.0)), Align2::CENTER_CENTER, "COMPRESSORE A VALVOLA", bold(9.0), ENGRAVING);
+
+    // Separatori incisi.
+    for sx in [204.0, 314.0] {
+        painter.line_segment([Pos2::new(x(sx), y(14.0)), Pos2::new(x(sx), y(136.0))], Stroke::new(1.0_f32, Color32::from_black_alpha(140)));
+        painter.line_segment([Pos2::new(x(sx + 1.0), y(14.0)), Pos2::new(x(sx + 1.0), y(136.0))], Stroke::new(1.0_f32, Color32::from_white_alpha(14)));
+    }
+
+    // Interruttore a levetta con spia.
+    let toggle = Pos2::new(x(236.0), y(48.0));
+    let lamp = Pos2::new(x(282.0), y(48.0));
+    let switch_hit = Rect::from_center_size(Pos2::new(x(258.0), y(48.0)), Vec2::new(84.0, 64.0));
     let response = ui
-        .interact(switch, Id::new("compressore-acceso"), Sense::click())
+        .interact(switch_hit, Id::new("compressore-acceso"), Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(
             "Accende il compressore ottico a valvola, dopo la correzione: \
              tiene la voce a un volume costante e le dà calore e presenza.",
         );
-    let (fill, text, border) = if on {
-        (GOLD, BACKGROUND, GOLD)
-    } else if response.hovered() {
-        (PANEL_HI, TEXT, GOLD)
-    } else {
-        (PANEL_HI, TEXT_DIM, BORDER)
-    };
-    painter.rect(switch, CornerRadius::same(15), fill, Stroke::new(1.0_f32, border), StrokeKind::Inside);
-    painter.circle_filled(switch.left_center() + Vec2::new(18.0, 0.0), 5.0, if on { BACKGROUND } else { TEXT_FAINT });
-    painter.text(
-        switch.center() + Vec2::new(8.0, 0.0),
-        Align2::CENTER_CENTER,
-        if on { "ACCESO" } else { "SPENTO" },
-        bold(12.0),
-        text,
-    );
     if response.clicked() {
         set_param(setter, &comp.enabled, !on);
     }
+    engraved(painter, toggle - Vec2::new(0.0, 30.0), Align2::CENTER_CENTER, "ACCESO", bold(8.0), if on { ENGRAVING } else { ENGRAVING_DIM });
+    engraved(painter, toggle + Vec2::new(0.0, 30.0), Align2::CENTER_CENTER, "SPENTO", bold(8.0), if on { ENGRAVING_DIM } else { ENGRAVING });
+    painter.circle_filled(toggle, 10.0, Color32::from_rgb(0x8a, 0x86, 0x7e));
+    painter.circle_stroke(toggle, 10.0, Stroke::new(1.0_f32, Color32::from_rgb(0x2a, 0x28, 0x25)));
+    painter.circle_filled(toggle, 6.0, Color32::from_rgb(0x3a, 0x38, 0x34));
+    let tip = toggle + Vec2::new(0.0, if on { -18.0 } else { 18.0 });
+    painter.line_segment([toggle + Vec2::new(1.5, 2.0), tip + Vec2::new(1.5, 2.0)], Stroke::new(6.0_f32, Color32::from_black_alpha(90)));
+    painter.line_segment([toggle, tip], Stroke::new(5.0_f32, Color32::from_rgb(0xc9, 0xc4, 0xb8)));
+    painter.circle_filled(tip, 4.0, if response.hovered() { GOLD } else { Color32::from_rgb(0xe4, 0xdf, 0xd3) });
+    // Spia: con un alone quando e' accesa.
+    if on {
+        for (r, a) in [(16.0, 18u8), (12.0, 35), (9.0, 60)] {
+            painter.circle_filled(lamp, r, Color32::from_rgba_unmultiplied(255, 170, 60, a));
+        }
+    }
+    painter.circle_filled(lamp, 7.0, if on { LAMP_ON } else { LAMP_OFF });
+    painter.circle_stroke(lamp, 7.5, Stroke::new(1.5_f32, Color32::from_rgb(0x6d, 0x69, 0x62)));
+    painter.circle_filled(lamp - Vec2::new(2.0, 2.0), 2.2, Color32::from_white_alpha(if on { 160 } else { 40 }));
 
-    // Modalita' della cella ottica.
-    let mode_rect = Rect::from_min_size(origin + Vec2::new(16.0, 100.0), Vec2::new(180.0, 32.0));
-    selector(ui, painter, setter, &comp.mode, mode_rect, "MODALITÀ",
-        "Ottica: attacco e rilascio automatici, che seguono la voce come una vera \
-         cella ottica (rilascio più lento dopo le frasi lunghe).\n\
-         Manuale: attacco e rilascio esattamente come le manopole.\n\
-         Ottica + manuale: entrambi insieme.");
+    // Modalita': tre posizioni con il loro led.
+    engraved(painter, Pos2::new(x(258.0), y(92.0)), Align2::CENTER_CENTER, "MODALITÀ", bold(8.0), ENGRAVING);
+    let current = comp.mode.value();
+    for (row, (choice, name)) in [
+        (CompModeChoice::Fixed, "OTTICA"),
+        (CompModeChoice::Manual, "MANUALE"),
+        (CompModeChoice::FixedManual, "OTT.+MAN."),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let row_y = y(108.0 + 14.0 * row as f32);
+        let hit = Rect::from_min_max(Pos2::new(x(216.0), row_y - 7.0), Pos2::new(x(304.0), row_y + 7.0));
+        let r = ui
+            .interact(hit, Id::new(("compressore-modalita", row)), Sense::click())
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(
+                "Ottica: attacco e rilascio automatici, che seguono la voce come una vera \
+                 cella ottica (rilascio più lento dopo le frasi lunghe).\n\
+                 Manuale: attacco e rilascio esattamente come le manopole.\n\
+                 Ottica + manuale: entrambi insieme.",
+            );
+        if r.clicked() && choice != current {
+            set_param(setter, &comp.mode, choice);
+        }
+        let selected = choice == current;
+        let led = Pos2::new(x(224.0), row_y);
+        if selected {
+            painter.circle_filled(led, 6.0, Color32::from_rgba_unmultiplied(255, 170, 60, 40));
+        }
+        painter.circle_filled(led, 3.5, if selected { LAMP_ON } else { LAMP_OFF });
+        engraved(
+            painter,
+            Pos2::new(x(234.0), row_y),
+            Align2::LEFT_CENTER,
+            name,
+            regular(8.5),
+            if selected || r.hovered() { ENGRAVING } else { ENGRAVING_DIM },
+        );
+    }
 
     // Manopole.
-    let knobs_left = origin.x + 262.0;
-    let column = |i: usize| knobs_left + i as f32 * 82.0;
-    let y = origin.y + 82.0;
-    let r = layout::SMALL_KNOB;
-    knob(ui, painter, setter, &comp.threshold, Pos2::new(column(0), y), r, "SOGLIA",
-        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", false);
-    knob(ui, painter, setter, &comp.ratio, Pos2::new(column(1), y), r, "RAPPORTO",
-        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", false);
-    knob(ui, painter, setter, &comp.attack, Pos2::new(column(2), y), r, "ATTACCO",
-        "Quanto in fretta reagisce (modalità manuali). Valori bassi domano i picchi, \
-         valori alti lasciano passare l'attacco delle consonanti.", false);
-    knob(ui, painter, setter, &comp.release, Pos2::new(column(3), y), r, "RILASCIO",
-        "Quanto in fretta torna a riposo (modalità manuali).", false);
-    knob(ui, painter, setter, &comp.tube, Pos2::new(column(4), y), r, "VALVOLA",
+    let column = |i: usize| x(362.0 + 80.0 * i as f32);
+    let knob_y = y(72.0);
+    let auto = current == CompModeChoice::Fixed;
+    let auto_text = || if auto { Some("AUTO".to_owned()) } else { None };
+    hardware_knob(ui, painter, setter, &comp.threshold, Pos2::new(column(0), knob_y), "SOGLIA", ("-50", "0"),
+        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", None);
+    hardware_knob(ui, painter, setter, &comp.ratio, Pos2::new(column(1), knob_y), "RAPPORTO", ("2", "10"),
+        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", None);
+    hardware_knob(ui, painter, setter, &comp.attack, Pos2::new(column(2), knob_y), "ATTACCO", ("0.5", "300"),
+        "Quanto in fretta reagisce (modalità Manuale e Ott.+Man.). Valori bassi domano i picchi, \
+         valori alti lasciano passare l'attacco delle consonanti. In modalità Ottica è automatico.", auto_text());
+    hardware_knob(ui, painter, setter, &comp.release, Pos2::new(column(3), knob_y), "RILASCIO", (".05", "10s"),
+        "Quanto in fretta torna a riposo (modalità Manuale e Ott.+Man.). In modalità Ottica è automatico.", auto_text());
+    hardware_knob(ui, painter, setter, &comp.tube, Pos2::new(column(4), knob_y), "VALVOLA", ("0", "100"),
         "Il calore della valvola e dei trasformatori: fino a ~30% è un colore discreto, \
-         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", false);
-    knob(ui, painter, setter, &comp.mix, Pos2::new(column(5), y), r, "MIX",
-        "Compressione parallela: miscela tra la voce originale e quella compressa.", false);
-    knob(ui, painter, setter, &comp.output, Pos2::new(column(6), y), r, "USCITA",
-        "Volume in uscita, per recuperare quello tolto dalla compressione.", true);
-
-    // Nella modalita' ottica attacco e rilascio sono automatici: le manopole
-    // restano visibili ma piu' spente.
-    let manual_times = comp.mode.value() != CompModeChoice::Fixed;
-    if !manual_times {
-        let dim = Rect::from_min_max(
-            Pos2::new(column(2) - 40.0, origin.y + 46.0),
-            Pos2::new(column(3) + 40.0, origin.y + 132.0),
-        );
-        painter.rect_filled(dim, CornerRadius::same(8), PANEL.gamma_multiply(0.7));
-        painter.text(
-            Pos2::new((column(2) + column(3)) / 2.0, origin.y + 140.0),
-            Align2::CENTER_CENTER,
-            "automatici (ottica)",
-            regular(9.0),
-            TEXT_FAINT,
-        );
-    }
-    if !on {
-        let dim = Rect::from_min_max(Pos2::new(knobs_left - 46.0, origin.y + 30.0), rect.max - Vec2::new(6.0, 6.0));
-        painter.rect_filled(dim, CornerRadius::same(10), PANEL.gamma_multiply(0.6));
-    }
-
-    // Indicatore della riduzione di guadagno (0 .. -20 dB).
-    let reading = if on { display.gain_reduction() } else { 0.0 };
-    state.meter_db = if reading > state.meter_db { reading } else { state.meter_db + (reading - state.meter_db) * 0.15 };
-    let meter = Rect::from_min_max(
-        Pos2::new(rect.right() - 74.0, origin.y + 34.0),
-        Pos2::new(rect.right() - 52.0, rect.bottom() - 30.0),
-    );
-    ui.interact(meter.expand(10.0), Id::new("compressore-indicatore"), Sense::hover())
-        .on_hover_text("Di quanti dB il compressore sta abbassando la voce in questo momento.");
-    painter.rect_filled(meter, CornerRadius::same(4), TRACK);
-    let fraction = (state.meter_db / 20.0).clamp(0.0, 1.0);
-    if fraction > 0.002 {
-        let filled = Rect::from_min_max(meter.min, Pos2::new(meter.right(), meter.top() + fraction * meter.height()));
-        painter.rect_filled(filled, CornerRadius::same(4), GOLD);
-    }
-    for (db, label) in [(0.0f32, "0"), (5.0, "5"), (10.0, "10"), (20.0, "20")] {
-        let ty = meter.top() + db / 20.0 * meter.height();
-        painter.text(Pos2::new(meter.right() + 8.0, ty), Align2::LEFT_CENTER, label, regular(9.0), TEXT_FAINT);
-    }
-    painter.text(
-        Pos2::new(meter.center().x + 6.0, rect.bottom() - 16.0),
-        Align2::CENTER_CENTER,
-        if state.meter_db >= 0.05 { format!("−{:.1} dB", state.meter_db) } else { "0.0 dB".to_owned() },
-        regular(11.0),
-        if state.meter_db > 0.05 { TEXT } else { TEXT_FAINT },
-    );
+         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", None);
+    hardware_knob(ui, painter, setter, &comp.mix, Pos2::new(column(5), knob_y), "MIX", ("0", "100"),
+        "Compressione parallela: miscela tra la voce originale e quella compressa.", None);
+    hardware_knob(ui, painter, setter, &comp.output, Pos2::new(column(6), knob_y), "USCITA", ("-20", "+20"),
+        "Volume in uscita, per recuperare quello tolto dalla compressione.", None);
 }
 
 // --- Grafico dell'intonazione --------------------------------------------------
