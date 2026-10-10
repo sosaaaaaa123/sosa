@@ -200,6 +200,7 @@ sosatune/
 - **Errore durante la compilazione**: copia tutto il testo dell'errore e mandamelo, lo sistemiamo.
 - **`cargo: command not found`**: chiudi e riapri il Terminale dopo aver installato Rust.
 - **Il DAW non vede il plugin**: controlla che i file siano nelle cartelle `~/Library/Audio/Plug-Ins/VST3` e `CLAP` e fai ripetere la scansione dei plugin.
+- **FL Studio lo segna come "error" nel Plugin Manager**: se succede anche ad altri plugin (FabFilter, Soundtoys...), è la verifica di FL che non funziona su quel Mac. In *Options → Manage plugins* togli la spunta a **Verify plugins**, attiva **Rescan plugins with errors** e premi **Find installed plugins**: SosaTune comparirà nell'elenco degli effetti del Mixer.
 - **macOS blocca il plugin** (succede solo se lo copi da un altro computer): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SosaTune.vst3`
 - **Compilarlo senza installare nulla**: se carichi il progetto su GitHub, il file `.github/workflows/build-macos.yml` lo compila da solo; lo zip pronto lo trovi nella scheda *Actions*.
 
