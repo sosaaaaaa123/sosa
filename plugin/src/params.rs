@@ -179,6 +179,13 @@ pub struct CompressorParams {
 
 impl Default for CompressorParams {
     fn default() -> Self {
+        // Parte spento: i progetti esistenti non cambiano suono.
+        Self::new(false)
+    }
+}
+
+impl CompressorParams {
+    fn new(enabled: bool) -> Self {
         let db = |name: &str, default: f32, min: f32, max: f32| {
             FloatParam::new(name, default, FloatRange::Linear { min, max })
                 .with_unit(" dB")
@@ -191,7 +198,7 @@ impl Default for CompressorParams {
                 .with_value_to_string(formatters::v2s_f32_rounded(1))
         };
         Self {
-            enabled: BoolParam::new("Compressore", false),
+            enabled: BoolParam::new("Compressore", enabled),
             threshold: db("Soglia", -18.0, -50.0, 0.0),
             ratio: FloatParam::new(
                 "Rapporto",
@@ -412,6 +419,12 @@ fn percent_param(name: &str, default: f32, min: f32) -> FloatParam {
 }
 
 impl SosaTuneParams {
+    /// Valori per l'anteprima (vedi `preview.rs`): come quelli iniziali, ma
+    /// con il compressore acceso per mostrarlo al lavoro.
+    pub(crate) fn preview() -> Self {
+        Self { comp: CompressorParams::new(true), ..Self::default() }
+    }
+
     /// Le note ammesse in questo momento (dipendono da tonalita' e scala).
     pub fn active_notes(&self) -> [bool; 12] {
         match self.scale.value().kind() {

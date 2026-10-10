@@ -16,7 +16,7 @@ use crate::params::{SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
 use crate::shared::PitchDisplay;
 use nih_plug::prelude::*;
 use sosatune_dsp::synth::{sing_melody, SungNote};
-use sosatune_dsp::{CorrectionSettings, PitchCorrector};
+use sosatune_dsp::{CorrectionSettings, PitchCorrector, TubeCompressor};
 use std::collections::HashMap;
 
 /// Un'immagine RGBA (8 bit per canale, alfa sempre 255).
@@ -29,7 +29,7 @@ pub struct PreviewImage {
 /// Disegna l'interfaccia. `scale` = 2 per un'immagine nitida come sugli
 /// schermi Retina.
 pub fn render(scale: f32) -> PreviewImage {
-    let params = SosaTuneParams::default();
+    let params = SosaTuneParams::preview();
     let display = PitchDisplay::default();
     sing_into(&params, &display);
 
@@ -86,8 +86,8 @@ pub fn render(scale: f32) -> PreviewImage {
     PreviewImage { width, height, rgba }
 }
 
-/// Fa cantare al correttore la melodia di prova, con le impostazioni
-/// predefinite del plugin, e mette il risultato nel grafico.
+/// Fa cantare al correttore (e al compressore) la melodia di prova, con le
+/// impostazioni del plugin, e mette il risultato nel grafico e nell'indicatore.
 fn sing_into(params: &SosaTuneParams, display: &PitchDisplay) {
     let sr = 44100.0;
     let n = |note: f32, cents: f32, seconds: f32| SungNote { note, detune_cents: cents, seconds };
@@ -96,7 +96,7 @@ fn sing_into(params: &SosaTuneParams, display: &PitchDisplay) {
         n(60.0, 30.0, 0.45), n(62.0, -40.0, 0.45), n(64.0, 35.0, 0.45), n(60.0, -25.0, 0.45),
         n(60.0, 40.0, 0.45), n(62.0, -35.0, 0.45), n(64.0, 30.0, 0.45), n(60.0, -30.0, 0.45),
         rest(0.25),
-        n(64.0, -30.0, 0.45), n(65.0, 40.0, 0.45), n(67.0, -38.0, 0.9),
+        n(64.0, -30.0, 0.45), n(65.0, 40.0, 0.45), n(67.0, -22.0, 0.9),
     ];
     let (audio, _) = sing_melody(&melody, sr, 25.0);
 
@@ -111,17 +111,22 @@ fn sing_into(params: &SosaTuneParams, display: &PitchDisplay) {
         tracking: params.tracking.value(),
         ..Default::default()
     };
-    let latency_ms = corrector.latency() as f32 / sr * 1000.0;
+    let comp_settings = params.comp.settings(false);
+    let mut compressor = TubeCompressor::new(sr, 1);
+    compressor.snap_to(&comp_settings);
+    let latency_ms = (corrector.latency() + TubeCompressor::fixed_latency()) as f32 / sr * 1000.0;
     display.set_timing(latency_ms, corrector.analysis_interval());
 
     // Ci fermiamo a meta' dell'ultima nota, cosi' l'indicatore mostra una nota.
-    let stop = (5.25 * sr) as usize;
+    let stop = (5.3 * sr) as usize;
     for &sample in audio.iter().take(stop) {
         let mut frame = [sample];
         if let Some(report) = corrector.process_frame(&mut frame, &settings) {
             display.push(&report);
         }
+        compressor.process_frame(&mut frame, &comp_settings);
     }
+    display.set_gain_reduction(compressor.gain_reduction_db());
 }
 
 /// Un "host" finto: l'anteprima non cambia nessun parametro.

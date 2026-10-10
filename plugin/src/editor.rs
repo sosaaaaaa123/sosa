@@ -397,7 +397,7 @@ fn tuning_ring(ui: &Ui, painter: &Painter, display: &PitchDisplay, origin: Pos2)
                 painter.text(
                     center + Vec2::new(0.0, 48.0),
                     Align2::CENTER_CENTER,
-                    format!("→ {}", note_label(p.target.round() as i32)),
+                    format!("verso {}", note_label(p.target.round() as i32)),
                     regular(12.0),
                     TEXT_DIM,
                 );
@@ -565,7 +565,11 @@ fn selector<T: Enum + PartialEq + 'static>(
         Stroke::new(1.0_f32, if hovered { GOLD } else { BORDER }),
         StrokeKind::Inside,
     );
-    painter.text(rect.center(), Align2::CENTER_CENTER, names[current], regular(14.0), TEXT);
+    // Se il nome e' lungo, il carattere si rimpicciolisce per stare tra le frecce.
+    let available = (middle.width() - 8.0).max(10.0);
+    let wide = painter.layout_no_wrap(names[current].to_owned(), regular(14.0), TEXT).size().x;
+    let size = if wide > available { (14.0 * available / wide).max(10.0) } else { 14.0 };
+    painter.text(middle.center(), Align2::CENTER_CENTER, names[current], regular(size), TEXT);
 
     let triangle = |center: Pos2, pointing_right: bool, active: bool| {
         let d = if pointing_right { 1.0 } else { -1.0 };
@@ -831,7 +835,7 @@ fn compressor(
     painter.text(
         Pos2::new(meter.center().x + 6.0, rect.bottom() - 16.0),
         Align2::CENTER_CENTER,
-        format!("−{:.1} dB", state.meter_db),
+        if state.meter_db >= 0.05 { format!("−{:.1} dB", state.meter_db) } else { "0.0 dB".to_owned() },
         regular(11.0),
         if state.meter_db > 0.05 { TEXT } else { TEXT_FAINT },
     );
@@ -882,14 +886,21 @@ fn pitch_graph(painter: &Painter, params: &SosaTuneParams, display: &PitchDispla
     };
 
     // Righe orizzontali: una per semitono, piu' evidenti per le note della scala.
+    // Le etichette non devono sovrapporsi: se le righe sono fitte (scala
+    // cromatica) scriviamo solo le note naturali, distanziate di almeno 13 px.
     let notes = params.active_notes();
+    let row_spacing = plot.height() / (high - low);
+    let mut last_label_y = f32::INFINITY;
     for note in low.ceil() as i32..=high.floor() as i32 {
         let y = y_of(note as f32);
         let in_scale = notes[pitch_class(note)];
         let color = if in_scale { Color32::from_rgb(0x30, 0x34, 0x3f) } else { Color32::from_rgb(0x1f, 0x22, 0x29) };
         painter.line_segment([Pos2::new(plot.left(), y), Pos2::new(plot.right(), y)], Stroke::new(1.0_f32, color));
-        if in_scale {
+        let natural = matches!(pitch_class(note), 0 | 2 | 4 | 5 | 7 | 9 | 11);
+        let readable = row_spacing >= 13.0 || natural;
+        if in_scale && readable && last_label_y - y >= 13.0 {
             painter.text(Pos2::new(rect.left() + 14.0, y), Align2::LEFT_CENTER, note_label(note), regular(10.0), TEXT_FAINT);
+            last_label_y = y;
         }
     }
 
