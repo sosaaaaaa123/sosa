@@ -41,6 +41,15 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: scripts/macos-bundle.sh 2>&1 | tee bundle-log.txt
 
+      # Un'immagine dell'interfaccia vera, disegnata senza DAW (anteprima.png).
+      - name: Anteprima dell'interfaccia
+        if: always()
+        run: |
+          set +e
+          cargo run --release -p sosatune --example anteprima -- anteprima.png > anteprima-log.txt 2>&1
+          echo "exit code: $?" >> anteprima-log.txt
+          tail -40 anteprima-log.txt
+
       # Il validatore ufficiale di Steinberg (gli inventori del VST3): e' lo
       # stesso controllo che usano Cubase, Pro Tools/PatchWork e gli altri host
       # per la conformita' (canali mono/stereo, bypass, stato, latenza...).
@@ -131,6 +140,9 @@ jobs:
             echo "## Compilazione (ultime righe)"
             tail -60 build-log.txt || true
             echo
+            echo "## Anteprima dell'interfaccia"
+            tail -40 anteprima-log.txt || true
+            echo
             echo "## Creazione dei pacchetti"
             cat bundle-log.txt || true
             echo
@@ -163,6 +175,7 @@ jobs:
           mkdir -p "$OUT"
           cp rapporto.txt "$OUT/"
           if [ -f SosaTune-macOS.zip ]; then cp SosaTune-macOS.zip "$OUT/"; fi
+          if [ -f anteprima.png ]; then cp anteprima.png "$OUT/"; fi
           cd "$OUT"
           git init -q -b build
           git add .

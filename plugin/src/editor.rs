@@ -133,43 +133,80 @@ pub fn create(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Option
 }
 
 fn create_inner(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Option<Box<dyn Editor>> {
-    let state = GuiState {
+    create_egui_editor(
+        params.editor_state.clone(),
+        new_state(),
+        |ctx, _state| setup(ctx),
+        move |ctx, setter, state| draw(ctx, &params, &display, setter, state),
+    )
+}
+
+fn new_state() -> GuiState {
+    GuiState {
         points: Vec::with_capacity(crate::shared::HISTORY_LEN),
         graph_center: 60.0,
         meter_db: 0.0,
-    };
-    create_egui_editor(
-        params.editor_state.clone(),
-        state,
-        |ctx, _state| {
-            // Sempre tema scuro, anche se il Mac e' in modalita' chiara.
-            ctx.set_theme(egui::ThemePreference::Dark);
-            ctx.set_visuals(egui::Visuals::dark());
-            load_fonts(ctx);
-        },
-        move |ctx, setter, state| {
-            egui::CentralPanel::default()
-                .frame(egui::Frame::new().fill(BACKGROUND))
-                .show(ctx, |ui| {
-                    let origin = ui.max_rect().min;
-                    // Riserviamo tutta la finestra: dentro disegniamo a mano.
-                    ui.allocate_exact_size(
-                        Vec2::new(EDITOR_WIDTH as f32, EDITOR_HEIGHT as f32),
-                        Sense::hover(),
-                    );
-                    let at = |x: f32, y: f32| origin + Vec2::new(x, y);
-                    let painter = ui.painter().clone();
+    }
+}
 
-                    header(ui, &painter, &params, setter, at(0.0, 0.0));
-                    tuning_ring(ui, &painter, &display, at(layout::RING_X, layout::ROW_TOP));
-                    knobs(ui, &painter, &params, setter, at(layout::KNOBS_X, layout::ROW_TOP));
-                    selectors(ui, &painter, &params, setter, &display, at(layout::SELECT_X, layout::ROW_TOP));
-                    keyboard(ui, &painter, &params, setter, &display, at(layout::MARGIN, layout::KEYS_TOP));
-                    compressor(ui, &painter, &params, setter, &display, state, at(layout::MARGIN, layout::COMP_TOP));
-                    pitch_graph(&painter, &params, &display, state, at(layout::MARGIN, layout::GRAPH_TOP));
-                });
-        },
-    )
+/// Impostazioni fatte una volta sola, all'apertura della finestra.
+fn setup(ctx: &egui::Context) {
+    // Sempre tema scuro, anche se il Mac e' in modalita' chiara.
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_visuals(egui::Visuals::dark());
+    load_fonts(ctx);
+}
+
+/// Disegna un fotogramma dell'interfaccia.
+fn draw(
+    ctx: &egui::Context,
+    params: &SosaTuneParams,
+    display: &PitchDisplay,
+    setter: &ParamSetter,
+    state: &mut GuiState,
+) {
+    egui::CentralPanel::default()
+        .frame(egui::Frame::new().fill(BACKGROUND))
+        .show(ctx, |ui| {
+            let origin = ui.max_rect().min;
+            // Riserviamo tutta la finestra: dentro disegniamo a mano.
+            ui.allocate_exact_size(
+                Vec2::new(EDITOR_WIDTH as f32, EDITOR_HEIGHT as f32),
+                Sense::hover(),
+            );
+            let at = |x: f32, y: f32| origin + Vec2::new(x, y);
+            let painter = ui.painter().clone();
+
+            header(ui, &painter, params, setter, at(0.0, 0.0));
+            tuning_ring(ui, &painter, display, at(layout::RING_X, layout::ROW_TOP));
+            knobs(ui, &painter, params, setter, at(layout::KNOBS_X, layout::ROW_TOP));
+            selectors(ui, &painter, params, setter, display, at(layout::SELECT_X, layout::ROW_TOP));
+            keyboard(ui, &painter, params, setter, display, at(layout::MARGIN, layout::KEYS_TOP));
+            compressor(ui, &painter, params, setter, display, state, at(layout::MARGIN, layout::COMP_TOP));
+            pitch_graph(&painter, params, display, state, at(layout::MARGIN, layout::GRAPH_TOP));
+        });
+}
+
+/// Per l'anteprima (vedi `preview.rs`): la stessa interfaccia, senza finestra.
+pub(crate) struct Headless {
+    state: GuiState,
+}
+
+impl Headless {
+    pub(crate) fn new(ctx: &egui::Context) -> Self {
+        setup(ctx);
+        Self { state: new_state() }
+    }
+
+    pub(crate) fn draw(
+        &mut self,
+        ctx: &egui::Context,
+        params: &SosaTuneParams,
+        display: &PitchDisplay,
+        setter: &ParamSetter,
+    ) {
+        draw(ctx, params, display, setter, &mut self.state);
+    }
 }
 
 // --- Caratteri ------------------------------------------------------------------

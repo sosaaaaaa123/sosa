@@ -12,6 +12,8 @@ mod denormals;
 mod editor;
 mod gui;
 mod params;
+#[doc(hidden)]
+pub mod preview;
 mod shared;
 
 use params::{SosaTuneParams, VoiceChoice};
