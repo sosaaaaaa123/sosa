@@ -1,7 +1,8 @@
 # Compila automaticamente il plugin per Mac su GitHub (gratis per i progetti
 # pubblici e, entro certi limiti, anche per quelli privati).
-# Ogni volta che carichi delle modifiche, nella scheda "Actions" del progetto
-# trovi lo zip "SosaTune-macOS" con i file .vst3 e .clap pronti da installare.
+# Ogni volta che carichi delle modifiche, lo zip "SosaTune-macOS.zip" con i file
+# .vst3 e .clap pronti da installare finisce nel ramo "build" del repository,
+# insieme a "rapporto.txt" con il risultato dei controlli.
 
 name: Compila per Mac
 
@@ -33,29 +34,77 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: cargo xtask bundle-universal sosatune --release
 
-      - name: Prepara lo zip
+      # Eseguibile in formato "bundle" (come i plugin JUCE): serve a FL Studio.
+      - name: Crea i pacchetti in formato bundle
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: scripts/macos-bundle.sh 2>&1 | tee bundle-log.txt
+
+      # pluginval (Tracktion) carica il plugin come farebbe un DAW e lo mette
+      # alla prova: apertura, parametri, audio, interfaccia grafica.
+      - name: Prova i plugin con pluginval
+        if: always()
         run: |
-          cd target/bundled
-          zip -r ../../SosaTune-macOS.zip SosaTune.vst3 SosaTune.clap
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          PV=pluginval.app/Contents/MacOS/pluginval
+          run_pv() {
+            echo "===== pluginval: $1 ====="
+            timeout 600 "$PV" --strictness-level 5 --validate-in-process --timeout-ms 120000 "$1" > "pv-$2.txt" 2>&1
+            echo "exit code: $?" >> "pv-$2.txt"
+            tail -40 "pv-$2.txt"
+          }
+          run_pv target/bundled-mhbundle/SosaTune.vst3 bundle || true
+          run_pv target/bundled/SosaTune.vst3 dylib || true
+
+      - name: Prepara lo zip e il rapporto
+        if: always()
+        run: |
+          (cd target/bundled-mhbundle && zip -qry ../../SosaTune-macOS.zip SosaTune.vst3 SosaTune.clap) || true
+          {
+            echo "SosaTune ${GITHUB_SHA::7} - $(date -u)"
+            echo
+            echo "## Formato degli eseguibili"
+            file target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune target/bundled/SosaTune.vst3/Contents/MacOS/SosaTune || true
+            echo
+            echo "## Simboli esportati (bundle)"
+            nm -gU target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune || true
+            echo
+            echo "## Firma"
+            codesign -dv --verbose=2 target/bundled-mhbundle/SosaTune.vst3 2>&1 || true
+            echo
+            echo "## Creazione dei pacchetti"
+            cat bundle-log.txt || true
+            echo
+            echo "## pluginval - formato bundle (quello nello zip)"
+            cat pv-bundle.txt || true
+            echo
+            echo "## pluginval - formato dylib (versione precedente)"
+            cat pv-dylib.txt || true
+          } > rapporto.txt 2>&1
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: SosaTune-macOS
-          path: SosaTune-macOS.zip
+          path: |
+            SosaTune-macOS.zip
+            rapporto.txt
 
-      # Lo zip finisce anche nel ramo "build" del repository: si scarica da
-      # GitHub con un clic, senza dover aprire la scheda Actions.
-      - name: Pubblica lo zip nel ramo build
+      # Lo zip e il rapporto finiscono anche nel ramo "build" del repository:
+      # si scaricano da GitHub con un clic, senza dover aprire la scheda Actions.
+      - name: Pubblica nel ramo build
+        if: always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -x
           OUT="$RUNNER_TEMP/build-branch"
           mkdir -p "$OUT"
-          cp SosaTune-macOS.zip "$OUT/"
+          cp rapporto.txt "$OUT/"
+          if [ -f SosaTune-macOS.zip ]; then cp SosaTune-macOS.zip "$OUT/"; fi
           cd "$OUT"
           git init -q -b build
-          git add SosaTune-macOS.zip
+          git add .
           git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
             commit -q -m "SosaTune per Mac (${GITHUB_SHA::7})"
           git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" build:build
