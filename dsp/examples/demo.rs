@@ -1,6 +1,6 @@
-//! Demo: un cantante sintetico canta una melodia stonata, e Intona la corregge.
+//! Demo: un cantante sintetico canta una melodia stonata, e SosaTune la corregge.
 //!
-//!   cargo run --release -p intona_dsp --example demo
+//!   cargo run --release -p sosatune_dsp --example demo
 //!
 //! Crea questi file nella cartella corrente:
 //!   demo_1_originale.wav          la melodia stonata
@@ -10,9 +10,9 @@
 //!   demo_5_formanti.wav           naturale con le formanti alzate di 4 semitoni
 //! e demo_intonazione.csv con l'andamento delle note (per farne un grafico).
 
-use intona_dsp::scale::{scale_notes, ScaleKind};
-use intona_dsp::synth::{sing_melody, SungNote};
-use intona_dsp::{wav, CorrectionSettings, PitchCorrector};
+use sosatune_dsp::scale::{scale_notes, ScaleKind};
+use sosatune_dsp::synth::{sing_melody, SungNote};
+use sosatune_dsp::{wav, CorrectionSettings, PitchCorrector};
 use std::io::Write;
 
 fn correct(input: &[f32], sr: f32, settings: CorrectionSettings) -> (Vec<f32>, Vec<f32>) {

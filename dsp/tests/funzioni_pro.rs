@@ -1,11 +1,11 @@
 //! Test delle funzioni "professionali": Humanize, Flex-Tune, vibrato
 //! naturale, formanti e sensibilita' del rilevamento.
 
-use intona_dsp::fft::{Complex, Fft};
-use intona_dsp::scale::{hz_to_note, note_to_hz};
-use intona_dsp::synth::{sing_curve, sing_curve_detailed};
-use intona_dsp::yin::YinDetector;
-use intona_dsp::{CorrectionSettings, PitchCorrector, PitchReport};
+use sosatune_dsp::fft::{Complex, Fft};
+use sosatune_dsp::scale::{hz_to_note, note_to_hz};
+use sosatune_dsp::synth::{sing_curve, sing_curve_detailed};
+use sosatune_dsp::yin::YinDetector;
+use sosatune_dsp::{CorrectionSettings, PitchCorrector, PitchReport};
 use std::f32::consts::PI;
 
 const SR: f32 = 48000.0;

@@ -6,7 +6,7 @@
 //! innocua: al massimo un punto del grafico e' leggermente sbagliato per un
 //! fotogramma.
 
-use intona_dsp::PitchReport;
+use sosatune_dsp::PitchReport;
 use nih_plug::prelude::AtomicF32;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

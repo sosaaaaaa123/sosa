@@ -1,10 +1,10 @@
-//! # Intona — il plugin
+//! # SosaTune — il plugin
 //!
-//! Questo file collega il motore audio (`intona_dsp`) al DAW tramite nih-plug:
+//! Questo file collega il motore audio (`sosatune_dsp`) al DAW tramite nih-plug:
 //! dichiara nome, formati (VST3 e CLAP), canali, parametri e interfaccia, e
 //! nella funzione `process` passa l'audio al correttore campione per campione.
 
-use intona_dsp::{CorrectionSettings, PitchCorrector, MAX_CHANNELS};
+use sosatune_dsp::{CorrectionSettings, PitchCorrector, MAX_CHANNELS};
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
@@ -12,11 +12,11 @@ mod editor;
 mod params;
 mod shared;
 
-use params::{IntonaParams, VoiceChoice};
+use params::{SosaTuneParams, VoiceChoice};
 use shared::PitchDisplay;
 
-pub struct Intona {
-    params: Arc<IntonaParams>,
+pub struct SosaTune {
+    params: Arc<SosaTuneParams>,
     /// Il motore audio. Viene creato in `initialize`, quando conosciamo la
     /// frequenza di campionamento e il numero di canali.
     corrector: Option<PitchCorrector>,
@@ -27,10 +27,10 @@ pub struct Intona {
     sample_rate: f32,
 }
 
-impl Default for Intona {
+impl Default for SosaTune {
     fn default() -> Self {
         Self {
-            params: Arc::new(IntonaParams::default()),
+            params: Arc::new(SosaTuneParams::default()),
             corrector: None,
             display: Arc::new(PitchDisplay::default()),
             current_voice: VoiceChoice::AltoTenor,
@@ -39,7 +39,7 @@ impl Default for Intona {
     }
 }
 
-impl Intona {
+impl SosaTune {
     fn publish_timing(&self) {
         if let Some(corrector) = &self.corrector {
             let latency_ms = corrector.latency() as f32 / self.sample_rate * 1000.0;
@@ -48,8 +48,8 @@ impl Intona {
     }
 }
 
-impl Plugin for Intona {
-    const NAME: &'static str = "Intona";
+impl Plugin for SosaTune {
+    const NAME: &'static str = "SosaTune";
     const VENDOR: &'static str = "Vladislav";
     const URL: &'static str = "";
     const EMAIL: &'static str = "";
@@ -170,8 +170,8 @@ impl Plugin for Intona {
     }
 }
 
-impl ClapPlugin for Intona {
-    const CLAP_ID: &'static str = "com.vladislav.intona";
+impl ClapPlugin for SosaTune {
+    const CLAP_ID: &'static str = "com.vladislav.sosatune";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("Correzione dell'intonazione in tempo reale per la voce");
     const CLAP_MANUAL_URL: Option<&'static str> = None;
@@ -184,13 +184,13 @@ impl ClapPlugin for Intona {
     ];
 }
 
-impl Vst3Plugin for Intona {
+impl Vst3Plugin for SosaTune {
     // Identificativo unico di 16 byte: non cambiarlo, o i DAW non riconosceranno
     // piu' i progetti salvati con questo plugin.
-    const VST3_CLASS_ID: [u8; 16] = *b"IntonaVladPitchC";
+    const VST3_CLASS_ID: [u8; 16] = *b"SosaTuneVladPtch";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::PitchShift];
 }
 
-nih_export_clap!(Intona);
-nih_export_vst3!(Intona);
+nih_export_clap!(SosaTune);
+nih_export_vst3!(SosaTune);

@@ -1,4 +1,4 @@
-//! # Il motore audio di Intona
+//! # Il motore audio di SosaTune
 //!
 //! Questa libreria contiene tutta l'elaborazione del suono, separata dal plugin.
 //! Il percorso del segnale, campione per campione, e' questo:

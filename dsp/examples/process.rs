@@ -2,7 +2,7 @@
 //! Utile per provare il motore sulle tue registrazioni.
 //!
 //! Uso:
-//!   cargo run --release -p intona_dsp --example process -- voce.wav voce_corretta.wav
+//!   cargo run --release -p sosatune_dsp --example process -- voce.wav voce_corretta.wav
 //!
 //! Opzioni (tutte facoltative):
 //!   --tonalita C        tonica: C, C#, Db, D, ... oppure Do, Do#, Reb, Re, ...
@@ -19,8 +19,8 @@
 //!   --sensibilita 30    0-100: piu' alta = riconosce anche voci con molta aria
 //!   --pitch file.csv    salva anche l'andamento dell'intonazione (per grafici)
 
-use intona_dsp::scale::{scale_notes, ScaleKind, VoiceType, NOTE_NAMES};
-use intona_dsp::{wav, CorrectionSettings, PitchCorrector, MAX_CHANNELS};
+use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType, NOTE_NAMES};
+use sosatune_dsp::{wav, CorrectionSettings, PitchCorrector, MAX_CHANNELS};
 use std::io::Write;
 use std::process::exit;
 use std::time::Instant;

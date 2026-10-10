@@ -1,11 +1,11 @@
-# Intona — correzione dell'intonazione in tempo reale (stile Auto-Tune).
+# SosaTune — correzione dell'intonazione in tempo reale (stile Auto-Tune).
 #
 # Il progetto e' diviso in tre parti ("crate"):
 #   dsp/     il motore audio: rilevamento dell'intonazione, scale, correzione,
 #            pitch shifting. Non dipende da nessuna libreria esterna, quindi si
 #            puo' testare da solo anche senza un DAW.
 #   plugin/  il plugin vero e proprio (VST3 + CLAP) con l'interfaccia grafica.
-#   xtask/   un aiutante che impacchetta il plugin: `cargo xtask bundle intona --release`
+#   xtask/   un aiutante che impacchetta il plugin: `cargo xtask bundle sosatune --release`
 
 [workspace]
 members = ["dsp", "plugin", "xtask"]

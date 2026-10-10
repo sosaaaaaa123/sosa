@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let dir = std::env::temp_dir().join("intona_wav_test.wav");
+        let dir = std::env::temp_dir().join("sosatune_wav_test.wav");
         let left: Vec<f32> = (0..100).map(|i| (i as f32 / 100.0) - 0.5).collect();
         let right: Vec<f32> = left.iter().map(|x| -x).collect();
         write(&dir, 44100, &[left.clone(), right]).unwrap();

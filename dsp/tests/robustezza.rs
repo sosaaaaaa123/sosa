@@ -1,9 +1,9 @@
 //! Test di robustezza: il motore non deve mai bloccarsi, produrre valori
 //! non validi (NaN/infinito) o picchi di volume, qualunque cosa riceva.
 
-use intona_dsp::scale::{note_to_hz, scale_notes, ScaleKind, VoiceType};
-use intona_dsp::synth::{noise, sing_melody, SungNote};
-use intona_dsp::{CorrectionSettings, PitchCorrector};
+use sosatune_dsp::scale::{note_to_hz, scale_notes, ScaleKind, VoiceType};
+use sosatune_dsp::synth::{noise, sing_melody, SungNote};
+use sosatune_dsp::{CorrectionSettings, PitchCorrector};
 
 fn mixed_signal(sr: f32) -> Vec<f32> {
     let melody = [
@@ -95,7 +95,7 @@ fn changing_settings_while_running_is_safe() {
 #[test]
 fn no_scale_notes_means_no_correction() {
     let sr = 44100.0;
-    let input = intona_dsp::synth::steady_vowel(note_to_hz(61.4), sr, 22050);
+    let input = sosatune_dsp::synth::steady_vowel(note_to_hz(61.4), sr, 22050);
     let settings = CorrectionSettings { notes: [false; 12], retune_ms: 0.0, ..Default::default() };
     let mut corrector = PitchCorrector::new(sr, 1);
     let mut last = None;

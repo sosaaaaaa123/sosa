@@ -1,10 +1,12 @@
-# Intona
+# SosaTune
 
 **Correzione dell'intonazione in tempo reale per la voce**, stile Auto-Tune, scritta in Rust con [nih-plug](https://github.com/robbert-vdh/nih-plug). Funziona come plugin **VST3** e **CLAP** su macOS (e, con gli stessi passaggi, su Windows e Linux).
 
+![L'interfaccia di SosaTune](docs/interfaccia.png)
+
 ![Esempio: melodia stonata e corretta](docs/grafico_demo.png)
 
-*Una melodia cantata stonata (grigio) corretta in Do maggiore: in arancione lo stile Robotico (velocità 0 ms, l'effetto "alla T-Pain"), in azzurro lo stile Naturale (velocità 80 ms con Humanize), che porta la voce sulla nota ma conserva il vibrato.*
+*Una melodia cantata stonata (grigio) corretta in Do maggiore: in oro lo stile Robotico (velocità 0 ms, l'effetto "alla T-Pain"), in verde acqua lo stile Naturale (velocità 80 ms con Humanize), che porta la voce sulla nota ma conserva il vibrato.*
 
 ## Cosa fa
 
@@ -20,7 +22,7 @@
 - **Quantità** di correzione e **trasposizione** fino a ±12 semitoni.
 - Cambia la nota **senza cambiare il timbro** della voce (pitch shifting **PSOLA**, che conserva le formanti: niente "effetto scoiattolo").
 - Tre impostazioni di **voce** (soprano, alto/tenore, voce bassa): le voci acute hanno una latenza più bassa.
-- Interfaccia con nota cantata e scarto in centesimi, tastiera della scala e **grafico dell'intonazione** in tempo reale.
+- Interfaccia con **indicatore circolare** della nota cantata (scarto in centesimi), manopole, tastiera della scala e **grafico dell'intonazione** in tempo reale.
 - Mono e stereo, qualsiasi frequenza di campionamento, latenza comunicata al DAW (che la compensa da solo).
 
 | Voce | Nota più grave | Latenza |
@@ -62,13 +64,13 @@ Deve rispondere con un numero di versione (per esempio `cargo 1.9x.0`).
 Estrai lo zip del progetto, per esempio nella cartella **Documenti**, poi entra nella cartella:
 
 ```bash
-cd ~/Documents/intona
+cd ~/Documents/sosatune
 ```
 
 ### 4. Compila il plugin
 
 ```bash
-cargo xtask bundle intona --release
+cargo xtask bundle sosatune --release
 ```
 
 La prima volta ci mette **5-10 minuti**, perché scarica e compila tutte le librerie. Le volte successive basta meno di un minuto. Alla fine trovi i plugin nella cartella `target/bundled/`.
@@ -77,13 +79,13 @@ La prima volta ci mette **5-10 minuti**, perché scarica e compila tutte le libr
 
 ```bash
 mkdir -p ~/Library/Audio/Plug-Ins/VST3 ~/Library/Audio/Plug-Ins/CLAP
-cp -R target/bundled/Intona.vst3 ~/Library/Audio/Plug-Ins/VST3/
-cp -R target/bundled/Intona.clap ~/Library/Audio/Plug-Ins/CLAP/
+cp -R target/bundled/SosaTune.vst3 ~/Library/Audio/Plug-Ins/VST3/
+cp -R target/bundled/SosaTune.clap ~/Library/Audio/Plug-Ins/CLAP/
 ```
 
 ### 6. Aprilo nel DAW
 
-Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e inserisci **Intona** come effetto sulla traccia della voce. Lo trovi tra gli effetti di "Vladislav".
+Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e inserisci **SosaTune** come effetto sulla traccia della voce. Lo trovi tra gli effetti di "Vladislav".
 
 - **Ableton Live, FL Studio, Cubase, Studio One, Reaper**: usa il VST3.
 - **Bitwig, Reaper**: puoi usare anche il CLAP.
@@ -115,7 +117,13 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 
 5. Sulla **tastiera** clicca un tasto per escludere o includere una nota (la scala diventa "Personalizzata").
 
-Il riquadro a sinistra mostra la nota cantata e di quanti **centesimi** è calante (−) o crescente (+): verde entro ±10 centesimi. Il grafico mostra la voce originale (grigio) e quella corretta (arancione).
+### L'interfaccia
+
+- **Indicatore circolare** (a sinistra): la nota che stai cantando e di quanti **centesimi** sei calante (−) o crescente (+); diventa verde entro ±10 centesimi. Sotto, la nota verso cui viene corretta.
+- **Manopole**: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. Passandoci sopra col mouse compare la spiegazione.
+- **Selettori** di tonalità, scala e voce: clicca le frecce (o il centro per passare alla scelta successiva).
+- **Stili** in alto a destra: si illuminano quando le manopole corrispondono a quello stile.
+- **Grafico** in basso: la voce originale in grigio, quella di SosaTune in oro.
 
 ---
 
@@ -126,13 +134,13 @@ Il motore audio (cartella `dsp/`) si può usare anche da solo, su file WAV.
 **Demo** con un cantante sintetico stonato (crea `demo_1_originale.wav`, `demo_2_naturale.wav`, `demo_3_robotico.wav`, `demo_4_robotico_vibrato.wav`, `demo_5_formanti.wav`):
 
 ```bash
-cargo run --release -p intona_dsp --example demo
+cargo run --release -p sosatune_dsp --example demo
 ```
 
 **Correggere una tua registrazione** (WAV mono o stereo):
 
 ```bash
-cargo run --release -p intona_dsp --example process -- voce.wav voce_corretta.wav --tonalita La --scala minore --velocita 0
+cargo run --release -p sosatune_dsp --example process -- voce.wav voce_corretta.wav --tonalita La --scala minore --velocita 0
 ```
 
 Opzioni: `--tonalita` (C, C#, Db... oppure Do, Do#, Reb...), `--scala` (cromatica, maggiore, minore, minore-armonica, pentatonica-maggiore, pentatonica-minore, blues), `--velocita` in ms, `--quantita` in %, `--trasponi` in semitoni, `--voce` (soprano, alto, bassa), `--humanize` e `--flex` in %, `--vibrato` da -100 a 100, `--formanti` in semitoni, `--sensibilita` in %.
@@ -140,7 +148,7 @@ Opzioni: `--tonalita` (C, C#, Db... oppure Do, Do#, Reb...), `--scala` (cromatic
 **Test automatici** (controllano rilevamento, correzione, qualità e stabilità):
 
 ```bash
-cargo test -p intona_dsp --release
+cargo test -p sosatune_dsp --release
 ```
 
 ---
@@ -161,7 +169,7 @@ voce ──► YIN ──────────► scala ───────
 
 ### Qualità misurata
 
-I test (`cargo test -p intona_dsp --release`, 29 in tutto) controllano anche la qualità del suono:
+I test (`cargo test -p sosatune_dsp --release`, 29 in tutto) controllano anche la qualità del suono:
 
 - correzione robotica di una melodia: in media **0,3 centesimi** dalla nota giusta; su voci reali circa **2 centesimi**;
 - le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni);
@@ -175,7 +183,7 @@ Il motore non alloca memoria e non usa lock durante l'elaborazione: è sicuro pe
 ## Struttura del progetto
 
 ```text
-intona/
+sosatune/
 ├── dsp/                 il motore audio (nessuna libreria esterna)
 │   ├── src/             yin, fft, scale, corrector, psola, synth, wav
 │   ├── examples/        demo.rs e process.rs (provare su file WAV)
@@ -192,7 +200,7 @@ intona/
 - **Errore durante la compilazione**: copia tutto il testo dell'errore e mandamelo, lo sistemiamo.
 - **`cargo: command not found`**: chiudi e riapri il Terminale dopo aver installato Rust.
 - **Il DAW non vede il plugin**: controlla che i file siano nelle cartelle `~/Library/Audio/Plug-Ins/VST3` e `CLAP` e fai ripetere la scansione dei plugin.
-- **macOS blocca il plugin** (succede solo se lo copi da un altro computer): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Intona.vst3`
+- **macOS blocca il plugin** (succede solo se lo copi da un altro computer): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SosaTune.vst3`
 - **Compilarlo senza installare nulla**: se carichi il progetto su GitHub, il file `.github/workflows/build-macos.yml` lo compila da solo; lo zip pronto lo trovi nella scheda *Actions*.
 
 ## Prossimi passi
@@ -204,3 +212,5 @@ intona/
 ## Licenza
 
 GPL-3.0-or-later (richiesta dal formato VST3 di nih-plug).
+
+Il carattere dell'interfaccia è **Sora** (© The Sora Project Authors), con licenza SIL Open Font License 1.1: il testo completo è in `plugin/assets/Sora-OFL.txt`.

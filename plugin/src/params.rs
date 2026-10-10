@@ -1,7 +1,7 @@
 //! I parametri del plugin: tutto cio' che l'utente puo' regolare e che il
 //! DAW salva nel progetto e puo' automatizzare.
 
-use intona_dsp::scale::{scale_notes, ScaleKind, VoiceType};
+use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType};
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
 use std::sync::Arc;
@@ -203,7 +203,7 @@ impl CustomNotes {
 }
 
 #[derive(Params)]
-pub struct IntonaParams {
+pub struct SosaTuneParams {
     /// Dimensione della finestra, salvata insieme al progetto.
     #[persist = "editor-state"]
     pub editor_state: Arc<EguiState>,
@@ -253,7 +253,7 @@ pub struct IntonaParams {
     pub custom: CustomNotes,
 }
 
-impl Default for IntonaParams {
+impl Default for SosaTuneParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(EDITOR_WIDTH, EDITOR_HEIGHT),
@@ -300,7 +300,7 @@ fn percent_param(name: &str, default: f32, min: f32) -> FloatParam {
         .with_string_to_value(formatters::s2v_f32_percentage())
 }
 
-impl IntonaParams {
+impl SosaTuneParams {
     /// Le note ammesse in questo momento (dipendono da tonalita' e scala).
     pub fn active_notes(&self) -> [bool; 12] {
         match self.scale.value().kind() {

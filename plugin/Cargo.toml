@@ -1,5 +1,5 @@
 [package]
-name = "intona"
+name = "sosatune"
 version = "0.1.0"
 edition = "2021"
 authors = ["Vladislav"]
@@ -12,7 +12,7 @@ description = "Correzione dell'intonazione in tempo reale per la voce (VST3 / CL
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-intona_dsp = { path = "../dsp" }
+sosatune_dsp = { path = "../dsp" }
 
 # Il framework per i plugin audio, fissato a una revisione precisa cosi' il
 # progetto si compila sempre allo stesso modo.
