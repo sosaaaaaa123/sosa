@@ -17,11 +17,13 @@
 //! ├────────────────┴─────────────────────────────────┴───────────────────────┤
 //! │  tastiera: note della scala (clic per includere/escludere)               │
 //! ├──────────────────────────────────────────────────────────────────────────┤
+//! │  COMPRESSORE A VALVOLA [ON] soglia rapporto attacco rilascio valvola ... ▮│
+//! ├──────────────────────────────────────────────────────────────────────────┤
 //! │  grafico: voce originale (grigio) e corretta (oro)                       │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
 
-use crate::params::{ScaleChoice, SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
+use crate::params::{CompModeChoice, ScaleChoice, SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
 use crate::shared::{PitchDisplay, PitchPoint};
 use nih_plug::prelude::*;
 use crate::gui::create_egui_editor;
@@ -65,7 +67,9 @@ mod layout {
     pub const SELECT_W: f32 = 260.0;
     pub const KEYS_TOP: f32 = 344.0;
     pub const KEYS_H: f32 = 70.0;
-    pub const GRAPH_TOP: f32 = 426.0;
+    pub const COMP_TOP: f32 = 426.0;
+    pub const COMP_H: f32 = 150.0;
+    pub const GRAPH_TOP: f32 = 588.0;
     pub const MARGIN: f32 = 16.0;
     pub const BIG_KNOB: f32 = 30.0;
     pub const SMALL_KNOB: f32 = 20.0;
@@ -77,6 +81,8 @@ struct GuiState {
     points: Vec<PitchPoint>,
     /// Nota al centro del grafico (segue la voce con dolcezza).
     graph_center: f32,
+    /// Indicatore della compressione: sale subito, scende con calma.
+    meter_db: f32,
 }
 
 /// Avvolge l'interfaccia in una "rete di sicurezza": se la finestra non si
@@ -130,6 +136,7 @@ fn create_inner(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Opti
     let state = GuiState {
         points: Vec::with_capacity(crate::shared::HISTORY_LEN),
         graph_center: 60.0,
+        meter_db: 0.0,
     };
     create_egui_editor(
         params.editor_state.clone(),
@@ -158,6 +165,7 @@ fn create_inner(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Opti
                     knobs(ui, &painter, &params, setter, at(layout::KNOBS_X, layout::ROW_TOP));
                     selectors(ui, &painter, &params, setter, &display, at(layout::SELECT_X, layout::ROW_TOP));
                     keyboard(ui, &painter, &params, setter, &display, at(layout::MARGIN, layout::KEYS_TOP));
+                    compressor(ui, &painter, &params, setter, &display, state, at(layout::MARGIN, layout::COMP_TOP));
                     pitch_graph(&painter, &params, &display, state, at(layout::MARGIN, layout::GRAPH_TOP));
                 });
         },
@@ -665,6 +673,131 @@ fn toggle_note(params: &SosaTuneParams, setter: &ParamSetter, pc: usize, notes: 
         set_param(setter, &params.scale, ScaleChoice::Custom);
     }
     set_param(setter, params.custom.note(pc), !notes[pc]);
+}
+
+// --- Compressore ottico a valvola ----------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+fn compressor(
+    ui: &Ui,
+    painter: &Painter,
+    params: &SosaTuneParams,
+    setter: &ParamSetter,
+    display: &PitchDisplay,
+    state: &mut GuiState,
+    origin: Pos2,
+) {
+    let comp = &params.comp;
+    let rect = Rect::from_min_size(origin, Vec2::new(EDITOR_WIDTH as f32 - 2.0 * layout::MARGIN, layout::COMP_H));
+    panel(painter, rect, "COMPRESSORE A VALVOLA");
+    let on = comp.enabled.value();
+
+    // Interruttore acceso/spento.
+    let switch = Rect::from_min_size(origin + Vec2::new(16.0, 38.0), Vec2::new(180.0, 30.0));
+    let response = ui
+        .interact(switch, Id::new("compressore-acceso"), Sense::click())
+        .on_hover_text(
+            "Accende il compressore ottico a valvola, dopo la correzione: \
+             tiene la voce a un volume costante e le dà calore e presenza.",
+        );
+    let (fill, text, border) = if on {
+        (GOLD, BACKGROUND, GOLD)
+    } else if response.hovered() {
+        (PANEL_HI, TEXT, GOLD)
+    } else {
+        (PANEL_HI, TEXT_DIM, BORDER)
+    };
+    painter.rect(switch, CornerRadius::same(15), fill, Stroke::new(1.0_f32, border), StrokeKind::Inside);
+    painter.circle_filled(switch.left_center() + Vec2::new(18.0, 0.0), 5.0, if on { BACKGROUND } else { TEXT_FAINT });
+    painter.text(
+        switch.center() + Vec2::new(8.0, 0.0),
+        Align2::CENTER_CENTER,
+        if on { "ACCESO" } else { "SPENTO" },
+        bold(12.0),
+        text,
+    );
+    if response.clicked() {
+        set_param(setter, &comp.enabled, !on);
+    }
+
+    // Modalita' della cella ottica.
+    let mode_rect = Rect::from_min_size(origin + Vec2::new(16.0, 100.0), Vec2::new(180.0, 32.0));
+    selector(ui, painter, setter, &comp.mode, mode_rect, "MODALITÀ",
+        "Ottica: attacco e rilascio automatici, che seguono la voce come una vera \
+         cella ottica (rilascio più lento dopo le frasi lunghe).\n\
+         Manuale: attacco e rilascio esattamente come le manopole.\n\
+         Ottica + manuale: entrambi insieme.");
+
+    // Manopole.
+    let knobs_left = origin.x + 262.0;
+    let column = |i: usize| knobs_left + i as f32 * 82.0;
+    let y = origin.y + 82.0;
+    let r = layout::SMALL_KNOB;
+    knob(ui, painter, setter, &comp.threshold, Pos2::new(column(0), y), r, "SOGLIA",
+        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", false);
+    knob(ui, painter, setter, &comp.ratio, Pos2::new(column(1), y), r, "RAPPORTO",
+        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", false);
+    knob(ui, painter, setter, &comp.attack, Pos2::new(column(2), y), r, "ATTACCO",
+        "Quanto in fretta reagisce (modalità manuali). Valori bassi domano i picchi, \
+         valori alti lasciano passare l'attacco delle consonanti.", false);
+    knob(ui, painter, setter, &comp.release, Pos2::new(column(3), y), r, "RILASCIO",
+        "Quanto in fretta torna a riposo (modalità manuali).", false);
+    knob(ui, painter, setter, &comp.tube, Pos2::new(column(4), y), r, "VALVOLA",
+        "Il calore della valvola e dei trasformatori: fino a ~30% è un colore discreto, \
+         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", false);
+    knob(ui, painter, setter, &comp.mix, Pos2::new(column(5), y), r, "MIX",
+        "Compressione parallela: miscela tra la voce originale e quella compressa.", false);
+    knob(ui, painter, setter, &comp.output, Pos2::new(column(6), y), r, "USCITA",
+        "Volume in uscita, per recuperare quello tolto dalla compressione.", true);
+
+    // Nella modalita' ottica attacco e rilascio sono automatici: le manopole
+    // restano visibili ma piu' spente.
+    let manual_times = comp.mode.value() != CompModeChoice::Fixed;
+    if !manual_times {
+        let dim = Rect::from_min_max(
+            Pos2::new(column(2) - 40.0, origin.y + 46.0),
+            Pos2::new(column(3) + 40.0, origin.y + 132.0),
+        );
+        painter.rect_filled(dim, CornerRadius::same(8), PANEL.gamma_multiply(0.7));
+        painter.text(
+            Pos2::new((column(2) + column(3)) / 2.0, origin.y + 140.0),
+            Align2::CENTER_CENTER,
+            "automatici (ottica)",
+            regular(9.0),
+            TEXT_FAINT,
+        );
+    }
+    if !on {
+        let dim = Rect::from_min_max(Pos2::new(knobs_left - 46.0, origin.y + 30.0), rect.max - Vec2::new(6.0, 6.0));
+        painter.rect_filled(dim, CornerRadius::same(10), PANEL.gamma_multiply(0.6));
+    }
+
+    // Indicatore della riduzione di guadagno (0 .. -20 dB).
+    let reading = if on { display.gain_reduction() } else { 0.0 };
+    state.meter_db = if reading > state.meter_db { reading } else { state.meter_db + (reading - state.meter_db) * 0.15 };
+    let meter = Rect::from_min_max(
+        Pos2::new(rect.right() - 74.0, origin.y + 34.0),
+        Pos2::new(rect.right() - 52.0, rect.bottom() - 30.0),
+    );
+    ui.interact(meter.expand(10.0), Id::new("compressore-indicatore"), Sense::hover())
+        .on_hover_text("Di quanti dB il compressore sta abbassando la voce in questo momento.");
+    painter.rect_filled(meter, CornerRadius::same(4), TRACK);
+    let fraction = (state.meter_db / 20.0).clamp(0.0, 1.0);
+    if fraction > 0.002 {
+        let filled = Rect::from_min_max(meter.min, Pos2::new(meter.right(), meter.top() + fraction * meter.height()));
+        painter.rect_filled(filled, CornerRadius::same(4), GOLD);
+    }
+    for (db, label) in [(0.0f32, "0"), (5.0, "5"), (10.0, "10"), (20.0, "20")] {
+        let ty = meter.top() + db / 20.0 * meter.height();
+        painter.text(Pos2::new(meter.right() + 8.0, ty), Align2::LEFT_CENTER, label, regular(9.0), TEXT_FAINT);
+    }
+    painter.text(
+        Pos2::new(meter.center().x + 6.0, rect.bottom() - 16.0),
+        Align2::CENTER_CENTER,
+        format!("−{:.1} dB", state.meter_db),
+        regular(11.0),
+        if state.meter_db > 0.05 { TEXT } else { TEXT_FAINT },
+    );
 }
 
 // --- Grafico dell'intonazione --------------------------------------------------

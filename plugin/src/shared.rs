@@ -29,6 +29,8 @@ pub struct PitchDisplay {
     written: AtomicUsize,
     latency_ms: AtomicF32,
     interval_s: AtomicF32,
+    /// Riduzione di guadagno del compressore (dB, la piu' alta dell'ultimo blocco).
+    gain_reduction_db: AtomicF32,
 }
 
 impl Default for PitchDisplay {
@@ -41,6 +43,7 @@ impl Default for PitchDisplay {
             written: AtomicUsize::new(0),
             latency_ms: AtomicF32::new(0.0),
             interval_s: AtomicF32::new(0.005),
+            gain_reduction_db: AtomicF32::new(0.0),
         }
     }
 }
@@ -58,6 +61,14 @@ impl PitchDisplay {
     pub fn set_timing(&self, latency_ms: f32, interval_s: f32) {
         self.latency_ms.store(latency_ms, Ordering::Relaxed);
         self.interval_s.store(interval_s, Ordering::Relaxed);
+    }
+
+    pub fn set_gain_reduction(&self, db: f32) {
+        self.gain_reduction_db.store(db, Ordering::Relaxed);
+    }
+
+    pub fn gain_reduction(&self) -> f32 {
+        self.gain_reduction_db.load(Ordering::Relaxed)
     }
 
     pub fn latency_ms(&self) -> f32 {

@@ -4,7 +4,7 @@
 //! dichiara nome, formati (VST3 e CLAP), canali, parametri e interfaccia, e
 //! nella funzione `process` passa l'audio al correttore campione per campione.
 
-use sosatune_dsp::{CorrectionSettings, PitchCorrector, MAX_CHANNELS};
+use sosatune_dsp::{CorrectionSettings, PitchCorrector, TubeCompressor, MAX_CHANNELS};
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
@@ -22,6 +22,8 @@ pub struct SosaTune {
     /// Il motore audio. Viene creato in `initialize`, quando conosciamo la
     /// frequenza di campionamento e il numero di canali.
     corrector: Option<PitchCorrector>,
+    /// Il compressore ottico a valvola, dopo la correzione.
+    compressor: Option<TubeCompressor>,
     /// Dati per il grafico dell'interfaccia.
     display: Arc<PitchDisplay>,
     /// Il tipo di voce attualmente impostato nel motore.
@@ -36,6 +38,7 @@ impl Default for SosaTune {
         Self {
             params: Arc::new(SosaTuneParams::default()),
             corrector: None,
+            compressor: None,
             display: Arc::new(PitchDisplay::default()),
             current_voice: VoiceChoice::AltoTenor,
             sample_rate: 48000.0,
@@ -45,9 +48,16 @@ impl Default for SosaTune {
 }
 
 impl SosaTune {
+    /// Ritardo totale (correzione + compressore) in campioni. Quello del
+    /// compressore e' fisso, anche quando e' spento: il DAW non deve
+    /// ricalcolare la compensazione ogni volta che lo accendi.
+    fn total_latency(corrector: &PitchCorrector) -> u32 {
+        (corrector.latency() + TubeCompressor::fixed_latency()) as u32
+    }
+
     fn publish_timing(&self) {
         if let Some(corrector) = &self.corrector {
-            let latency_ms = corrector.latency() as f32 / self.sample_rate * 1000.0;
+            let latency_ms = Self::total_latency(corrector) as f32 / self.sample_rate * 1000.0;
             self.display.set_timing(latency_ms, corrector.analysis_interval());
         }
     }
@@ -112,9 +122,13 @@ impl Plugin for SosaTune {
         self.current_voice = self.params.voice.value();
         corrector.set_voice(self.current_voice.to_dsp());
 
+        let mut compressor = TubeCompressor::new(self.sample_rate, channels);
+        compressor.snap_to(&self.params.comp.settings(self.params.bypass.value()));
+
         // Diciamo al DAW di quanto ritardiamo l'audio, cosi' lo compensa.
-        context.set_latency_samples(corrector.latency() as u32);
+        context.set_latency_samples(Self::total_latency(&corrector));
         self.corrector = Some(corrector);
+        self.compressor = Some(compressor);
         self.publish_timing();
         true
     }
@@ -122,6 +136,9 @@ impl Plugin for SosaTune {
     fn reset(&mut self) {
         if let Some(corrector) = &mut self.corrector {
             corrector.reset();
+        }
+        if let Some(compressor) = &mut self.compressor {
+            compressor.reset();
         }
     }
 
@@ -131,7 +148,7 @@ impl Plugin for SosaTune {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let Some(corrector) = self.corrector.as_mut() else {
+        let (Some(corrector), Some(compressor)) = (self.corrector.as_mut(), self.compressor.as_mut()) else {
             return ProcessStatus::Normal;
         };
 
@@ -140,7 +157,7 @@ impl Plugin for SosaTune {
         if voice != self.current_voice {
             self.current_voice = voice;
             corrector.set_voice(voice.to_dsp());
-            let latency = corrector.latency() as u32;
+            let latency = Self::total_latency(corrector);
             nih_plug::util::permit_alloc(|| context.set_latency_samples(latency));
             let latency_ms = latency as f32 / self.sample_rate * 1000.0;
             self.display.set_timing(latency_ms, corrector.analysis_interval());
@@ -168,6 +185,8 @@ impl Plugin for SosaTune {
         } else {
             settings
         };
+        let comp_settings = self.params.comp.settings(bypass);
+        let mut max_gain_reduction = 0.0f32;
         // Aggiorniamo il grafico solo se la finestra e' aperta.
         let gui_open = self.params.editor_state.is_open();
 
@@ -187,6 +206,8 @@ impl Plugin for SosaTune {
             }
 
             let report = corrector.process_frame(&mut frame[..num_inputs], &settings);
+            compressor.process_frame(&mut frame[..num_inputs], &comp_settings);
+            max_gain_reduction = max_gain_reduction.max(compressor.gain_reduction_db());
 
             for (ch, output) in channels.iter_mut().enumerate() {
                 // Le uscite in piu' (mono -> stereo) ricevono il primo canale.
@@ -195,6 +216,9 @@ impl Plugin for SosaTune {
             if let (Some(report), true) = (report, gui_open) {
                 self.display.push(&report);
             }
+        }
+        if gui_open {
+            self.display.set_gain_reduction(max_gain_reduction);
         }
 
         ProcessStatus::Normal

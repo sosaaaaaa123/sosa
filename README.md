@@ -118,6 +118,29 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 
 5. Sulla **tastiera** clicca un tasto per escludere o includere una nota (la scala diventa "Personalizzata").
 
+### Compressore a valvola
+
+Dopo la correzione c'è un compressore ottico a valvola, ispirato al comportamento dei grandi compressori ottici da studio (la famiglia del CL 1B). Si accende con il pulsante **ACCESO/SPENTO** nella fascia "Compressore a valvola" (parte spento, per non cambiare il suono dei progetti esistenti).
+
+| Controllo | Cosa fa | Da dove partire (voce) |
+|---|---|---|
+| Modalità | **Ottica**: attacco e rilascio automatici, che seguono la voce; **Manuale**: tempi esatti dalle manopole; **Ottica + manuale**: entrambi | Ottica |
+| Soglia | Oltre questo livello la voce viene compressa | 3-8 dB di riduzione sull'indicatore |
+| Rapporto | 2:1 delicato, 3-4:1 voce pop, 10:1 molto controllato | 3:1 |
+| Attacco / Rilascio | Solo nelle modalità manuali | 10 ms / 300 ms |
+| Valvola | Calore di valvola e trasformatori: fino a ~30% colore discreto, oltre saturazione evidente | 20-40% |
+| Mix | Compressione parallela (originale + compresso) | 100%, oppure 50-70% per un suono più naturale |
+| Uscita | Recupera il volume tolto dalla compressione | quanto indica l'indicatore |
+
+Come lavora:
+- **Cella ottica**: reagisce più in fretta ai picchi forti, rilascia in due fasi (veloce, poi lenta) e ha "memoria": dopo frasi lunghe e compresse il rilascio rallenta (da ~1 s fino a ~4,5 s per tornare a riposo), sulle frasi brevi recupera subito. È quello che rende musicali i compressori ottici.
+- **Ginocchio morbido** di 8 dB: entra in compressione gradualmente.
+- **Valvola**: curva asimmetrica, cioè soprattutto armoniche pari (calde). Al 30%, con un picco a −6 dBFS, la seconda armonica è a −49 dB (0,4%); al 100% a −14 dB.
+- **Trasformatore**: le frequenze basse saturano un po' di più, per dare corpo.
+- **Sovracampionamento 4×** con filtri a fase lineare da 110 dB: niente aliasing (misurato sotto −90 dB anche con una nota a 7 kHz e la valvola al massimo).
+- **Stereo collegato**: stessa compressione sui due lati, l'immagine stereo non si sposta.
+- **Latenza fissa** di 52 campioni (1,1 ms a 48 kHz), anche da spento: il DAW la compensa e accenderlo o spegnerlo non sposta mai la voce. Acceso e spento si passano con una dissolvenza di 10 ms, senza clic.
+
 ### L'interfaccia
 
 - **Indicatore circolare** (a sinistra): la nota che stai cantando e di quanti **centesimi** sei calante (−) o crescente (+); diventa verde entro ±10 centesimi. Sotto, la nota verso cui viene corretta.
@@ -170,16 +193,17 @@ voce ──► YIN ──────────► scala ───────
 
 ### Qualità misurata
 
-I test (`cargo test -p sosatune_dsp --release`, 29 in tutto) controllano anche la qualità del suono:
+I test (`cargo test -p sosatune_dsp --release`, 44 in tutto) controllano anche la qualità del suono:
 
 - correzione robotica di una melodia: in media **0,3 centesimi** dalla nota giusta; su voci reali circa **2 centesimi**;
 - le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni);
 - l'**armonicità** della voce (quanto è "pulita", senza ruvidità) in uscita è pari a quella in ingresso, sia su voci sintetiche sia reali;
-- vibrato naturale: rimesso con la profondità originale, oppure ridotto del 60-99%.
+- vibrato naturale: rimesso con la profondità originale, oppure ridotto del 60-99%;
+- compressore: curva entro 0,8 dB dal valore teorico, tempi di attacco e rilascio, rilascio ottico dipendente dalla frase, armoniche della valvola, aliasing sotto −90 dB, trasparenza (−90 dB) da spento o senza compressione, nessun clic all'accensione.
 
 Limiti noti: le trasposizioni estreme (un'ottava) e le voci molto acute (sopra ~600 Hz) cambiano un po' il timbro, come in ogni pitch shifter di questo tipo.
 
-Il motore non alloca memoria e non usa lock durante l'elaborazione: è sicuro per il tempo reale e usa circa l'1-2% di un core.
+Il motore non alloca memoria e non usa lock durante l'elaborazione: è sicuro per il tempo reale. Correzione e compressore insieme usano qualche percento di un core.
 
 ### Compatibilità controllata
 
@@ -196,7 +220,7 @@ Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (tr
 ```text
 sosatune/
 ├── dsp/                 il motore audio (nessuna libreria esterna)
-│   ├── src/             yin, fft, scale, corrector, psola, synth, wav
+│   ├── src/             yin, fft, scale, corrector, psola, compressor, oversampling, synth, wav
 │   ├── examples/        demo.rs e process.rs (provare su file WAV)
 │   └── tests/           test di robustezza
 ├── plugin/              il plugin VST3/CLAP

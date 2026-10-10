@@ -2,13 +2,14 @@
 //! DAW salva nel progetto e puo' automatizzare.
 
 use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType};
+use sosatune_dsp::{CompMode, CompressorSettings};
 use nih_plug::prelude::*;
 use crate::gui::EguiState;
 use std::sync::Arc;
 
 /// Dimensione iniziale della finestra del plugin (pixel).
 pub const EDITOR_WIDTH: u32 = 940;
-pub const EDITOR_HEIGHT: u32 = 620;
+pub const EDITOR_HEIGHT: u32 = 750;
 
 /// La tonalita' (la nota "di casa" della scala).
 ///
@@ -129,6 +130,103 @@ impl VoiceChoice {
     }
 }
 
+/// Le modalita' del compressore (come sull'hardware ottico a valvole).
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompModeChoice {
+    #[id = "fixed"]
+    #[name = "Ottica (automatica)"]
+    Fixed,
+    #[id = "manual"]
+    #[name = "Manuale"]
+    Manual,
+    #[id = "fixed-manual"]
+    #[name = "Ottica + manuale"]
+    FixedManual,
+}
+
+impl CompModeChoice {
+    pub fn to_dsp(self) -> CompMode {
+        match self {
+            CompModeChoice::Fixed => CompMode::Fixed,
+            CompModeChoice::Manual => CompMode::Manual,
+            CompModeChoice::FixedManual => CompMode::FixedManual,
+        }
+    }
+}
+
+/// Il compressore ottico a valvola, dopo la correzione dell'intonazione.
+#[derive(Params)]
+pub struct CompressorParams {
+    #[id = "comp-on"]
+    pub enabled: BoolParam,
+    #[id = "comp-threshold"]
+    pub threshold: FloatParam,
+    #[id = "comp-ratio"]
+    pub ratio: FloatParam,
+    #[id = "comp-attack"]
+    pub attack: FloatParam,
+    #[id = "comp-release"]
+    pub release: FloatParam,
+    #[id = "comp-mode"]
+    pub mode: EnumParam<CompModeChoice>,
+    #[id = "comp-tube"]
+    pub tube: FloatParam,
+    #[id = "comp-mix"]
+    pub mix: FloatParam,
+    #[id = "comp-output"]
+    pub output: FloatParam,
+}
+
+impl Default for CompressorParams {
+    fn default() -> Self {
+        let db = |name: &str, default: f32, min: f32, max: f32| {
+            FloatParam::new(name, default, FloatRange::Linear { min, max })
+                .with_unit(" dB")
+                .with_step_size(0.1)
+                .with_value_to_string(formatters::v2s_f32_rounded(1))
+        };
+        let ms = |name: &str, default: f32, min: f32, max: f32| {
+            FloatParam::new(name, default, FloatRange::Skewed { min, max, factor: FloatRange::skew_factor(-2.0) })
+                .with_unit(" ms")
+                .with_value_to_string(formatters::v2s_f32_rounded(1))
+        };
+        Self {
+            enabled: BoolParam::new("Compressore", false),
+            threshold: db("Soglia", -18.0, -50.0, 0.0),
+            ratio: FloatParam::new(
+                "Rapporto",
+                3.0,
+                FloatRange::Skewed { min: 1.5, max: 20.0, factor: FloatRange::skew_factor(-1.5) },
+            )
+            .with_unit(":1")
+            .with_step_size(0.1)
+            .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            attack: ms("Attacco", 10.0, 0.5, 300.0),
+            release: ms("Rilascio", 300.0, 50.0, 10000.0),
+            mode: EnumParam::new("Modalità", CompModeChoice::Fixed),
+            tube: percent_param("Valvola", 0.3, 0.0),
+            mix: percent_param("Mix", 1.0, 0.0),
+            output: db("Uscita", 0.0, -20.0, 20.0),
+        }
+    }
+}
+
+impl CompressorParams {
+    pub fn settings(&self, bypass: bool) -> CompressorSettings {
+        CompressorSettings {
+            enabled: self.enabled.value() && !bypass,
+            threshold_db: self.threshold.value(),
+            ratio: self.ratio.value(),
+            attack_ms: self.attack.value(),
+            release_ms: self.release.value(),
+            mode: self.mode.value().to_dsp(),
+            tube: self.tube.value(),
+            mix: self.mix.value(),
+            output_db: self.output.value(),
+        }
+    }
+}
+
 /// Le 12 note della scala personalizzata (attiva/disattiva).
 #[derive(Params)]
 pub struct CustomNotes {
@@ -204,8 +302,10 @@ impl CustomNotes {
 
 #[derive(Params)]
 pub struct SosaTuneParams {
-    /// Dimensione della finestra, salvata insieme al progetto.
-    #[persist = "editor-state"]
+    /// Dimensione della finestra, salvata insieme al progetto. (La chiave e'
+    /// cambiata quando la finestra e' diventata piu' alta: i progetti vecchi
+    /// non devono riaprirla con la misura precedente.)
+    #[persist = "editor-state-2"]
     pub editor_state: Arc<EguiState>,
 
     #[id = "key"]
@@ -257,6 +357,9 @@ pub struct SosaTuneParams {
 
     #[nested(group = "Scala personalizzata")]
     pub custom: CustomNotes,
+
+    #[nested(group = "Compressore")]
+    pub comp: CompressorParams,
 }
 
 impl Default for SosaTuneParams {
@@ -295,6 +398,7 @@ impl Default for SosaTuneParams {
                 .with_value_to_string(formatters::v2s_f32_rounded(1)),
             tracking: percent_param("Sensibilità", 0.3, 0.0),
             custom: CustomNotes::default(),
+            comp: CompressorParams::default(),
         }
     }
 }
