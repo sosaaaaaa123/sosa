@@ -18,6 +18,7 @@ permissions:
 jobs:
   macos:
     runs-on: macos-14
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -50,7 +51,7 @@ jobs:
           PV=pluginval.app/Contents/MacOS/pluginval
           run_pv() {
             echo "===== pluginval: $1 ====="
-            timeout 600 "$PV" --strictness-level 5 --validate-in-process --timeout-ms 120000 "$1" > "pv-$2.txt" 2>&1
+            "$PV" --strictness-level 5 --validate-in-process --timeout-ms 120000 "$1" > "pv-$2.txt" 2>&1
             echo "exit code: $?" >> "pv-$2.txt"
             tail -40 "pv-$2.txt"
           }

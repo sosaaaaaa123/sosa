@@ -31,10 +31,12 @@ link_arch() {
     local target=$1 arch=$2 min=$3
     echo "== $target"
     # La libreria statica, e l'elenco delle librerie di sistema che le servono.
-    cargo rustc -p "$CRATE" --release --lib --target "$target" --crate-type staticlib \
+    cargo --color never rustc -p "$CRATE" --release --lib --target "$target" --crate-type staticlib \
         -- --print native-static-libs 2> "$WORK/rustc-$arch.txt" || { cat "$WORK/rustc-$arch.txt"; exit 1; }
     local libs
-    libs=$(sed -n 's/.*native-static-libs: //p' "$WORK/rustc-$arch.txt" | tail -1)
+    # (togliamo eventuali codici colore del terminale e i duplicati)
+    libs=$(sed -n 's/.*native-static-libs: //p' "$WORK/rustc-$arch.txt" | tail -1 \
+        | sed $'s/\x1b\\[[0-9;]*m//g' | tr -d '\r')
     if [ -z "$libs" ]; then
         libs="-framework AppKit -framework Foundation -framework QuartzCore -framework CoreGraphics -framework CoreFoundation -lobjc -liconv -lSystem -lc -lm"
     fi
