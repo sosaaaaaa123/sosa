@@ -180,6 +180,12 @@ fn draw(
             );
             let at = |x: f32, y: f32| origin + Vec2::new(x, y);
             let painter = ui.painter().clone();
+            vertical_gradient(
+                &painter,
+                Rect::from_min_size(origin, Vec2::new(EDITOR_WIDTH as f32, EDITOR_HEIGHT as f32)),
+                Color32::from_rgb(0x13, 0x14, 0x19),
+                Color32::from_rgb(0x09, 0x0a, 0x0d),
+            );
 
             header(ui, &painter, params, setter, at(0.0, 0.0));
             tuning_ring(ui, &painter, display, at(layout::RING_X, layout::ROW_TOP));
@@ -248,16 +254,19 @@ fn bold(size: f32) -> FontId {
 
 // --- Piccoli aiuti per disegnare -------------------------------------------------
 
+/// Un pannello: piastra in grafite sfumata, con ombra, filo di luce in alto
+/// e titolo inciso (lo stesso materiale del compressore).
 fn panel(painter: &Painter, rect: Rect, title: &str) {
-    painter.rect(rect, CornerRadius::same(12), PANEL, Stroke::new(1.0_f32, BORDER), StrokeKind::Inside);
+    painter.rect_filled(rect.translate(Vec2::new(0.0, 4.0)), CornerRadius::same(12), Color32::from_black_alpha(110));
+    painter.rect_filled(rect, CornerRadius::same(12), PLATE_BOTTOM);
+    vertical_gradient(painter, rect.shrink(4.0), PLATE_TOP, PLATE_BOTTOM);
+    painter.rect_stroke(rect, CornerRadius::same(12), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Inside);
+    painter.line_segment(
+        [Pos2::new(rect.left() + 14.0, rect.top() + 1.5), Pos2::new(rect.right() - 14.0, rect.top() + 1.5)],
+        Stroke::new(1.0_f32, Color32::from_white_alpha(12)),
+    );
     if !title.is_empty() {
-        painter.text(
-            rect.left_top() + Vec2::new(16.0, 18.0),
-            Align2::LEFT_CENTER,
-            title,
-            bold(11.0),
-            TEXT_DIM,
-        );
+        engraved(painter, rect.left_top() + Vec2::new(18.0, 19.0), Align2::LEFT_CENTER, title, bold(10.5), LEGEND);
     }
 }
 
@@ -301,8 +310,12 @@ const PRESETS: [(&str, &str, f32, f32, f32, f32, f32); 4] = [
 
 fn header(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &ParamSetter, origin: Pos2) {
     let bar = Rect::from_min_size(origin, Vec2::new(EDITOR_WIDTH as f32, layout::HEADER_H));
-    painter.rect_filled(bar, CornerRadius::ZERO, HEADER);
-    painter.line_segment([bar.left_bottom(), bar.right_bottom()], Stroke::new(1.0_f32, BORDER));
+    vertical_gradient(painter, bar, Color32::from_rgb(0x1d, 0x1f, 0x25), Color32::from_rgb(0x11, 0x12, 0x16));
+    painter.line_segment([bar.left_bottom(), bar.right_bottom()], Stroke::new(1.0_f32, Color32::from_black_alpha(200)));
+    painter.line_segment(
+        [bar.left_bottom() + Vec2::new(0.0, 1.0), bar.right_bottom() + Vec2::new(0.0, 1.0)],
+        Stroke::new(1.0_f32, Color32::from_white_alpha(10)),
+    );
 
     // Marchio: "SOSA" bianco + "TUNE" oro.
     let y = bar.center().y;
@@ -319,8 +332,8 @@ fn header(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &ParamSet
     // Pulsanti degli stili, allineati a destra.
     let mut right = bar.right() - 20.0;
     for (name, help, retune, humanize, flex, vibrato, amount) in PRESETS.iter().rev() {
-        let width = 18.0 + name.len() as f32 * 7.6;
-        let chip = Rect::from_min_max(Pos2::new(right - width, y - 13.0), Pos2::new(right, y + 13.0));
+        let width = 22.0 + name.len() as f32 * 7.6;
+        let chip = Rect::from_min_max(Pos2::new(right - width, y - 12.0), Pos2::new(right, y + 12.0));
         right -= width + 8.0;
 
         let active = (params.retune_speed.value() - retune).abs() < 0.5
@@ -329,15 +342,7 @@ fn header(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &ParamSet
             && (params.vibrato.value() - vibrato).abs() < 0.01
             && (params.amount.value() - amount).abs() < 0.01;
         let response = ui.interact(chip, Id::new(("stile", *name)), Sense::click()).on_hover_text(*help);
-        let (fill, text, border) = if active {
-            (GOLD, BACKGROUND, GOLD)
-        } else if response.hovered() {
-            (PANEL_HI, TEXT, GOLD)
-        } else {
-            (PANEL, TEXT_DIM, BORDER)
-        };
-        painter.rect(chip, CornerRadius::same(13), fill, Stroke::new(1.0_f32, border), StrokeKind::Inside);
-        painter.text(chip.center(), Align2::CENTER_CENTER, *name, bold(11.0), text);
+        hardware_key(painter, chip, name, active, response.hovered(), 10.5);
 
         if response.clicked() {
             set_param(setter, &params.retune_speed, *retune);
@@ -476,52 +481,17 @@ fn knob<P: Param>(
     help: &str,
     bipolar: bool,
 ) {
-    let hit = Rect::from_center_size(center, Vec2::splat(radius * 2.0 + 20.0));
-    let response = drag_param(ui, setter, param, hit, label, help);
-
-    // Disegno: anello di sfondo, arco del valore, corpo e lancetta.
-    let value = param.modulated_normalized_value();
-    let start = 0.75 * PI;
-    let sweep = 1.5 * PI;
-    let angle = start + value * sweep;
-    let ring = radius + 7.0;
-    let width = if radius > 25.0 { 4.0_f32 } else { 3.0_f32 };
-    arc(painter, center, ring, start, start + sweep, Stroke::new(width, TRACK));
-    let from = if bipolar { 1.5 * PI } else { start };
-    if (angle - from).abs() > 0.01 {
-        arc(painter, center, ring, from, angle, Stroke::new(width, GOLD));
-    }
-    let body = if response.hovered() || response.dragged() { KNOB_RIM } else { KNOB_BODY };
-    painter.circle_filled(center, radius, body);
-    painter.circle_stroke(center, radius, Stroke::new(1.0_f32, KNOB_RIM));
-    painter.line_segment(
-        [polar(center, radius * 0.3, angle), polar(center, radius - 5.0, angle)],
-        Stroke::new(2.5_f32, TEXT),
-    );
-
-    let label_size = if radius > 25.0 { 11.0 } else { 10.0 };
-    painter.text(
-        center - Vec2::new(0.0, ring + 12.0),
-        Align2::CENTER_CENTER,
-        label,
-        regular(label_size),
-        TEXT_DIM,
-    );
-    painter.text(
-        center + Vec2::new(0.0, ring + 12.0),
-        Align2::CENTER_CENTER,
-        param.normalized_value_to_string(value, true),
-        regular(label_size + 2.0),
-        TEXT,
-    );
+    // Stesso modello di manopola del compressore, nelle due misure.
+    let size = if radius > 25.0 { 24.0 } else { 18.0 };
+    hardware_knob(ui, painter, setter, param, center, label, ("", ""), help, bipolar, false, size);
 }
 
 fn knobs(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &ParamSetter, origin: Pos2) {
     let rect = Rect::from_min_size(origin, Vec2::new(layout::KNOBS_W, layout::ROW_H));
     panel(painter, rect, "CORREZIONE");
     let column = |i: usize| origin.x + 46.0 + i as f32 * 91.0;
-    let big_y = origin.y + 102.0;
-    let small_y = origin.y + 210.0;
+    let big_y = origin.y + 96.0;
+    let small_y = origin.y + 200.0;
     let big = layout::BIG_KNOB;
     let small = layout::SMALL_KNOB;
 
@@ -563,7 +533,7 @@ fn selector<T: Enum + PartialEq + 'static>(
     title: &str,
     help: &str,
 ) {
-    painter.text(rect.left_top() - Vec2::new(0.0, 10.0), Align2::LEFT_CENTER, title, regular(10.0), TEXT_FAINT);
+    engraved(painter, rect.left_top() - Vec2::new(0.0, 10.0), Align2::LEFT_CENTER, title, bold(9.0), LEGEND);
 
     let names = T::variants();
     let current = param.value().to_index();
@@ -577,18 +547,28 @@ fn selector<T: Enum + PartialEq + 'static>(
     let r_middle = ui.interact(middle, Id::new((title, "centro")), Sense::click()).on_hover_text(help);
 
     let hovered = r_left.hovered() || r_right.hovered() || r_middle.hovered();
-    painter.rect(
+    painter.rect_filled(rect.translate(Vec2::new(0.0, 1.0)), CornerRadius::same(7), Color32::from_white_alpha(10));
+    painter.rect_filled(rect, CornerRadius::same(7), DISPLAY_BG);
+    painter.rect_stroke(
         rect,
-        CornerRadius::same(8),
-        PANEL_HI,
-        Stroke::new(1.0_f32, if hovered { GOLD } else { BORDER }),
+        CornerRadius::same(7),
+        Stroke::new(1.0_f32, if hovered { GOLD.gamma_multiply(0.6) } else { Color32::from_black_alpha(220) }),
         StrokeKind::Inside,
     );
+    for (button, r) in [(left.shrink(4.0), &r_left), (right.shrink(4.0), &r_right)] {
+        let (top, bottom) = if r.hovered() {
+            (Color32::from_rgb(0x3a, 0x3d, 0x46), Color32::from_rgb(0x26, 0x28, 0x2f))
+        } else {
+            (Color32::from_rgb(0x2c, 0x2f, 0x37), Color32::from_rgb(0x1c, 0x1e, 0x23))
+        };
+        vertical_gradient(painter, button, top, bottom);
+        painter.rect_stroke(button, CornerRadius::same(4), Stroke::new(1.0_f32, Color32::from_black_alpha(170)), StrokeKind::Inside);
+    }
     // Se il nome e' lungo, il carattere si rimpicciolisce per stare tra le frecce.
     let available = (middle.width() - 8.0).max(10.0);
     let wide = painter.layout_no_wrap(names[current].to_owned(), regular(14.0), TEXT).size().x;
     let size = if wide > available { (14.0 * available / wide).max(10.0) } else { 14.0 };
-    painter.text(middle.center(), Align2::CENTER_CENTER, names[current], regular(size), TEXT);
+    painter.text(middle.center(), Align2::CENTER_CENTER, names[current], regular(size), AMBER);
 
     let triangle = |center: Pos2, pointing_right: bool, active: bool| {
         let d = if pointing_right { 1.0 } else { -1.0 };
@@ -838,8 +818,8 @@ fn hardware_knob<P: Param>(
     help: &str,
     bipolar: bool,
     auto: bool,
+    radius: f32,
 ) {
-    let radius = comp_layout::KNOB_RADIUS;
     let hit = Rect::from_center_size(center, Vec2::splat(2.0 * radius + 18.0));
     let response = drag_param(ui, setter, param, hit, label, help);
     let active = response.hovered() || response.dragged();
@@ -864,8 +844,10 @@ fn hardware_knob<P: Param>(
     if (angle - from).abs() > 0.01 {
         arc(painter, center, radius + 4.0, from.min(angle), from.max(angle), Stroke::new(2.0_f32, gold));
     }
-    engraved(painter, polar(center, radius + 13.0, start) + Vec2::new(-1.0, 6.0), Align2::CENTER_CENTER, ends.0, regular(7.5), LEGEND_DIM);
-    engraved(painter, polar(center, radius + 13.0, start + sweep) + Vec2::new(1.0, 6.0), Align2::CENTER_CENTER, ends.1, regular(7.5), LEGEND_DIM);
+    if !ends.0.is_empty() {
+        engraved(painter, polar(center, radius + 13.0, start) + Vec2::new(-1.0, 6.0), Align2::CENTER_CENTER, ends.0, regular(7.5), LEGEND_DIM);
+        engraved(painter, polar(center, radius + 13.0, start + sweep) + Vec2::new(1.0, 6.0), Align2::CENTER_CENTER, ends.1, regular(7.5), LEGEND_DIM);
+    }
 
     // Ombra portata, gonna godronata, cappuccio lucido, indice dorato.
     painter.circle_filled(center + Vec2::new(0.0, 3.0), radius + 1.5, Color32::from_black_alpha(130));
@@ -891,7 +873,36 @@ fn hardware_knob<P: Param>(
     } else {
         (param.normalized_value_to_string(value, true), if active { GOLD } else { AMBER.gamma_multiply(0.92) })
     };
-    value_display(painter, center + Vec2::new(0.0, radius + 30.0), &text, color);
+    value_display(painter, center + Vec2::new(0.0, radius + 28.0), &text, color);
+}
+
+/// Tasto con retroilluminazione dorata quando e' scelto.
+fn hardware_key(painter: &Painter, key: Rect, name: &str, selected: bool, hovered: bool, size: f32) {
+    painter.rect_filled(key.translate(Vec2::new(0.0, 1.5)), CornerRadius::same(5), Color32::from_black_alpha(130));
+    if selected {
+        painter.rect_filled(key.expand(3.0), CornerRadius::same(7), Color32::from_rgba_unmultiplied(255, 175, 60, 22));
+        vertical_gradient(painter, key.shrink(1.0), Color32::from_rgb(0xff, 0xc9, 0x62), Color32::from_rgb(0xd9, 0x92, 0x22));
+        painter.rect_stroke(key, CornerRadius::same(5), Stroke::new(1.0_f32, Color32::from_rgb(0xff, 0xd8, 0x8a)), StrokeKind::Inside);
+    } else {
+        let (top, bottom) = if hovered {
+            (Color32::from_rgb(0x3a, 0x3d, 0x46), Color32::from_rgb(0x26, 0x28, 0x2f))
+        } else {
+            (Color32::from_rgb(0x30, 0x33, 0x3b), Color32::from_rgb(0x1f, 0x21, 0x27))
+        };
+        vertical_gradient(painter, key.shrink(1.0), top, bottom);
+        painter.rect_stroke(key, CornerRadius::same(5), Stroke::new(1.0_f32, Color32::from_black_alpha(170)), StrokeKind::Inside);
+        painter.line_segment(
+            [key.left_top() + Vec2::new(4.0, 1.5), key.right_top() + Vec2::new(-4.0, 1.5)],
+            Stroke::new(1.0_f32, Color32::from_white_alpha(16)),
+        );
+    }
+    painter.text(
+        key.center(),
+        Align2::CENTER_CENTER,
+        name,
+        bold(size),
+        if selected { Color32::from_rgb(0x2a, 0x1a, 0x05) } else if hovered { TEXT } else { LEGEND },
+    );
 }
 
 /// Strumento ad ago della riduzione di guadagno (da 0 a 20 dB).
@@ -1068,48 +1079,28 @@ fn compressor(
         if r.clicked() && choice != current {
             set_param(setter, &comp.mode, choice);
         }
-        let selected = choice == current;
-        painter.rect_filled(key.translate(Vec2::new(0.0, 1.5)), CornerRadius::same(4), Color32::from_black_alpha(120));
-        if selected {
-            vertical_gradient(painter, key.shrink(1.0), Color32::from_rgb(0xff, 0xc9, 0x62), Color32::from_rgb(0xd9, 0x92, 0x22));
-            painter.rect_stroke(key, CornerRadius::same(4), Stroke::new(1.0_f32, Color32::from_rgb(0xff, 0xd8, 0x8a)), StrokeKind::Inside);
-        } else {
-            let (top, bottom) = if r.hovered() {
-                (Color32::from_rgb(0x3a, 0x3d, 0x46), Color32::from_rgb(0x26, 0x28, 0x2f))
-            } else {
-                (Color32::from_rgb(0x30, 0x33, 0x3b), Color32::from_rgb(0x1f, 0x21, 0x27))
-            };
-            vertical_gradient(painter, key.shrink(1.0), top, bottom);
-            painter.rect_stroke(key, CornerRadius::same(4), Stroke::new(1.0_f32, Color32::from_black_alpha(160)), StrokeKind::Inside);
-        }
-        painter.text(
-            key.center(),
-            Align2::CENTER_CENTER,
-            name,
-            bold(8.0),
-            if selected { Color32::from_rgb(0x2a, 0x1a, 0x05) } else if r.hovered() { TEXT } else { LEGEND },
-        );
+        hardware_key(painter, key, name, choice == current, r.hovered(), 8.0);
     }
 
     // Manopole.
     let auto = current == CompModeChoice::Fixed;
     let knob_at = |i: usize| at(comp_layout::knob(i));
     hardware_knob(ui, painter, setter, &comp.threshold, knob_at(0), "SOGLIA", ("-50", "0"),
-        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", false, false);
+        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", false, false, comp_layout::KNOB_RADIUS);
     hardware_knob(ui, painter, setter, &comp.ratio, knob_at(1), "RAPPORTO", ("2", "10"),
-        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", false, false);
+        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", false, false, comp_layout::KNOB_RADIUS);
     hardware_knob(ui, painter, setter, &comp.attack, knob_at(2), "ATTACCO", ("0.5", "300"),
         "Quanto in fretta reagisce (modalità Manuale e Ott. + Man.). Valori bassi domano i picchi, \
-         valori alti lasciano passare l'attacco delle consonanti. In modalità Ottica è automatico.", false, auto);
+         valori alti lasciano passare l'attacco delle consonanti. In modalità Ottica è automatico.", false, auto, comp_layout::KNOB_RADIUS);
     hardware_knob(ui, painter, setter, &comp.release, knob_at(3), "RILASCIO", (".05", "10s"),
-        "Quanto in fretta torna a riposo (modalità Manuale e Ott. + Man.). In modalità Ottica è automatico.", false, auto);
+        "Quanto in fretta torna a riposo (modalità Manuale e Ott. + Man.). In modalità Ottica è automatico.", false, auto, comp_layout::KNOB_RADIUS);
     hardware_knob(ui, painter, setter, &comp.tube, knob_at(4), "VALVOLA", ("0", "100"),
         "Il calore della valvola e dei trasformatori: fino a ~30% è un colore discreto, \
-         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", false, false);
+         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", false, false, comp_layout::KNOB_RADIUS);
     hardware_knob(ui, painter, setter, &comp.mix, knob_at(5), "MIX", ("0", "100"),
-        "Compressione parallela: miscela tra la voce originale e quella compressa.", false, false);
+        "Compressione parallela: miscela tra la voce originale e quella compressa.", false, false, comp_layout::KNOB_RADIUS);
     hardware_knob(ui, painter, setter, &comp.output, knob_at(6), "USCITA", ("-20", "+20"),
-        "Volume in uscita, per recuperare quello tolto dalla compressione.", true, false);
+        "Volume in uscita, per recuperare quello tolto dalla compressione.", true, false, comp_layout::KNOB_RADIUS);
 }
 
 // --- Grafico dell'intonazione --------------------------------------------------
@@ -1149,6 +1140,10 @@ fn pitch_graph(painter: &Painter, params: &SosaTuneParams, display: &PitchDispla
     let low = state.graph_center - half_range;
     let high = state.graph_center + half_range;
     let plot = Rect::from_min_max(rect.min + Vec2::new(52.0, 34.0), rect.max - Vec2::new(16.0, 12.0));
+    let screen = Rect::from_min_max(Pos2::new(rect.left() + 12.0, plot.top() - 6.0), Pos2::new(rect.right() - 10.0, rect.bottom() - 8.0));
+    painter.rect_filled(screen.translate(Vec2::new(0.0, 1.0)), CornerRadius::same(8), Color32::from_white_alpha(10));
+    painter.rect_filled(screen, CornerRadius::same(8), DISPLAY_BG);
+    painter.rect_stroke(screen, CornerRadius::same(8), Stroke::new(1.0_f32, Color32::from_black_alpha(220)), StrokeKind::Inside);
     let y_of = |note: f32| plot.bottom() - (note - low) / (high - low) * plot.height();
     // Il punto piu' recente sta sul bordo destro, i piu' vecchi scorrono a sinistra.
     let x_of = |i: usize| {
