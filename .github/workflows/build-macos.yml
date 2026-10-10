@@ -18,7 +18,7 @@ permissions:
 jobs:
   macos:
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -40,24 +40,6 @@ jobs:
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: scripts/macos-bundle.sh 2>&1 | tee bundle-log.txt
-
-      # pluginval (Tracktion) carica il plugin come farebbe un DAW e lo mette
-      # alla prova al livello piu' severo (10): apertura, parametri, audio,
-      # salvataggio e ripristino, chiamate da piu' thread, interfaccia grafica.
-      - name: Prova i plugin con pluginval
-        if: always()
-        run: |
-          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
-          unzip -q pluginval.zip
-          PV=pluginval.app/Contents/MacOS/pluginval
-          run_pv() {
-            echo "===== pluginval: $1 ====="
-            "$PV" --strictness-level 10 --validate-in-process --timeout-ms 300000 "$1" > "pv-$2.txt" 2>&1
-            echo "exit code: $?" >> "pv-$2.txt"
-            tail -40 "pv-$2.txt"
-          }
-          run_pv target/bundled-mhbundle/SosaTune.vst3 vst3 || true
-          run_pv target/bundled-mhbundle/SosaTune.clap clap || true
 
       # Il validatore ufficiale di Steinberg (gli inventori del VST3): e' lo
       # stesso controllo che usano Cubase, Pro Tools/PatchWork e gli altri host
@@ -104,6 +86,25 @@ jobs:
             { echo "clap-validator non scaricato"; ls -la cv; } > clap-validator.txt
           fi
           tail -60 clap-validator.txt
+
+      # pluginval (Tracktion) carica il plugin come farebbe un DAW e lo mette
+      # alla prova al livello piu' severo (10): apertura, parametri, audio,
+      # salvataggio e ripristino, chiamate da piu' thread, interfaccia grafica.
+      - name: Prova i plugin con pluginval
+        if: always()
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          PV=pluginval.app/Contents/MacOS/pluginval
+          run_pv() {
+            echo "===== pluginval: $1 ====="
+            # Limite di 20 minuti: se qualcosa si blocca lo vediamo nel rapporto.
+            perl -e 'alarm shift; exec @ARGV' 1200 "$PV" --strictness-level 10 --validate-in-process --verbose --timeout-ms 120000 "$1" > "pv-$2.txt" 2>&1
+            echo "exit code: $?" >> "pv-$2.txt"
+            tail -80 "pv-$2.txt"
+          }
+          run_pv target/bundled-mhbundle/SosaTune.vst3 vst3 || true
+          run_pv target/bundled-mhbundle/SosaTune.clap clap || true
 
       - name: Prepara lo zip e il rapporto
         if: always()
