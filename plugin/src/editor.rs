@@ -755,7 +755,7 @@ const LAMP_OFF: Color32 = Color32::from_rgb(0x3a, 0x2c, 0x1e);
 
 /// Testo inciso nel metallo: un'ombra scura sotto e il testo chiaro sopra.
 fn engraved(painter: &Painter, pos: Pos2, align: Align2, text: &str, font: FontId, color: Color32) {
-    painter.text(pos + Vec2::new(0.0, 1.0), align, text, font.clone(), Color32::from_black_alpha(160));
+    painter.text(pos + Vec2::new(0.0, 1.0), align, text, font.clone(), Color32::from_black_alpha(110));
     painter.text(pos, align, text, font, color);
 }
 
@@ -813,8 +813,9 @@ fn hardware_knob<P: Param>(
             Stroke::new(if long { 1.4_f32 } else { 1.0_f32 }, ENGRAVING_DIM),
         );
     }
-    engraved(painter, polar(center, radius + 15.0, start) + Vec2::new(-2.0, 4.0), Align2::RIGHT_CENTER, ends.0, regular(8.0), ENGRAVING_DIM);
-    engraved(painter, polar(center, radius + 15.0, start + sweep) + Vec2::new(2.0, 4.0), Align2::LEFT_CENTER, ends.1, regular(8.0), ENGRAVING_DIM);
+    // Valori agli estremi della scala, appena sotto le tacche.
+    engraved(painter, polar(center, radius + 9.0, start) + Vec2::new(0.0, 9.0), Align2::CENTER_CENTER, ends.0, regular(8.0), ENGRAVING_DIM);
+    engraved(painter, polar(center, radius + 9.0, start + sweep) + Vec2::new(0.0, 9.0), Align2::CENTER_CENTER, ends.1, regular(8.0), ENGRAVING_DIM);
 
     // Ombra, gonna, cappuccio con riflesso, indice.
     painter.circle_filled(center + Vec2::new(0.0, 2.5), radius + 1.0, Color32::from_black_alpha(110));
@@ -836,7 +837,7 @@ fn hardware_knob<P: Param>(
     let text = readout.unwrap_or_else(|| param.normalized_value_to_string(value, true));
     engraved(
         painter,
-        center + Vec2::new(0.0, radius + 24.0),
+        center + Vec2::new(0.0, radius + 30.0),
         Align2::CENTER_CENTER,
         &text,
         regular(if active { 11.0 } else { 10.0 }),
@@ -928,12 +929,12 @@ fn compressor(
     let mut line_y = rect.top() + 4.0;
     let mut i = 0;
     while line_y < rect.bottom() - 3.0 {
-        let alpha = if i % 3 == 0 { 9 } else { 5 };
+        let alpha = if i % 4 == 0 { 5 } else { 2 };
         painter.line_segment(
             [Pos2::new(rect.left() + 20.0, line_y), Pos2::new(rect.right() - 20.0, line_y)],
             Stroke::new(1.0_f32, Color32::from_white_alpha(alpha)),
         );
-        line_y += 2.0;
+        line_y += 3.0;
         i += 1;
     }
     painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Inside);
@@ -1040,7 +1041,7 @@ fn compressor(
 
     // Manopole.
     let column = |i: usize| x(362.0 + 80.0 * i as f32);
-    let knob_y = y(72.0);
+    let knob_y = y(66.0);
     let auto = current == CompModeChoice::Fixed;
     let auto_text = || if auto { Some("AUTO".to_owned()) } else { None };
     hardware_knob(ui, painter, setter, &comp.threshold, Pos2::new(column(0), knob_y), "SOGLIA", ("-50", "0"),
