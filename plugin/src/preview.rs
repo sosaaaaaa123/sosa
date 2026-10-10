@@ -280,3 +280,177 @@ impl Canvas {
 fn edge(a: egui::Pos2, b: egui::Pos2, c: egui::Pos2) -> f32 {
     (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
 }
+
+#[cfg(test)]
+mod tests {
+    //! Prove dell'interfaccia del compressore: clic e trascinamenti "finti"
+    //! sull'interfaccia vera, controllando quali parametri cambiano.
+
+    use super::*;
+    use crate::editor::COMPRESSOR_ORIGIN;
+    use crate::params::CompModeChoice;
+    use std::sync::Mutex;
+
+    /// Un host che registra ogni modifica di parametro chiesta dall'interfaccia.
+    #[derive(Default)]
+    struct RecordingHost {
+        changes: Mutex<Vec<(ParamPtr, f32)>>,
+    }
+
+    impl GuiContext for RecordingHost {
+        fn plugin_api(&self) -> PluginApi {
+            PluginApi::Vst3
+        }
+        fn request_resize(&self) -> bool {
+            false
+        }
+        unsafe fn raw_begin_set_parameter(&self, _param: ParamPtr) {}
+        unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
+            self.changes.lock().unwrap().push((param, normalized));
+        }
+        unsafe fn raw_end_set_parameter(&self, _param: ParamPtr) {}
+        fn get_state(&self) -> PluginState {
+            unreachable!()
+        }
+        fn set_state(&self, _state: PluginState) {}
+    }
+
+    /// Fa girare l'interfaccia con una sequenza di eventi (uno per fotogramma).
+    fn run(params: &SosaTuneParams, frames: Vec<Vec<egui::Event>>) -> Vec<(ParamPtr, f32)> {
+        let display = PitchDisplay::default();
+        let host = RecordingHost::default();
+        let setter = ParamSetter::new(&host);
+        let ctx = egui::Context::default();
+        let mut gui = Headless::new(&ctx);
+        let size = egui::vec2(EDITOR_WIDTH as f32, EDITOR_HEIGHT as f32);
+        // Due fotogrammi a vuoto (caricamento dei caratteri), poi gli eventi.
+        let mut all = vec![Vec::new(), Vec::new()];
+        all.extend(frames);
+        all.push(Vec::new());
+        for (i, events) in all.into_iter().enumerate() {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                time: Some(i as f64 / 60.0),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| gui.draw(ctx, params, &display, &setter));
+        }
+        let changes = host.changes.lock().unwrap().clone();
+        changes
+    }
+
+    fn press(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        }
+    }
+
+    fn click(pos: egui::Pos2) -> Vec<Vec<egui::Event>> {
+        vec![vec![egui::Event::PointerMoved(pos)], vec![press(pos, true)], vec![press(pos, false)]]
+    }
+
+    /// Trascina in su di `pixels` punti.
+    fn drag_up(pos: egui::Pos2, pixels: f32) -> Vec<Vec<egui::Event>> {
+        let mut frames = vec![vec![egui::Event::PointerMoved(pos)], vec![press(pos, true)]];
+        let steps = 10;
+        for i in 1..=steps {
+            frames.push(vec![egui::Event::PointerMoved(pos - egui::vec2(0.0, pixels * i as f32 / steps as f32))]);
+        }
+        frames.push(vec![press(pos - egui::vec2(0.0, pixels), false)]);
+        frames
+    }
+
+    fn comp_point(dx: f32, dy: f32) -> egui::Pos2 {
+        egui::pos2(COMPRESSOR_ORIGIN.0 + dx, COMPRESSOR_ORIGIN.1 + dy)
+    }
+
+    #[test]
+    fn power_switch_turns_the_compressor_on_and_off() {
+        let params = SosaTuneParams::default();
+        assert!(!params.comp.enabled.value(), "deve partire spento");
+        let changes = run(&params, click(comp_point(258.0, 48.0)));
+        let enabled = params.comp.enabled.as_ptr();
+        assert!(
+            changes.iter().any(|&(p, v)| p == enabled && v == 1.0),
+            "la levetta non accende il compressore: {changes:?}"
+        );
+
+        let params = SosaTuneParams::preview();
+        let changes = run(&params, click(comp_point(258.0, 48.0)));
+        assert!(changes.iter().any(|&(p, v)| p == params.comp.enabled.as_ptr() && v == 0.0));
+    }
+
+    #[test]
+    fn mode_buttons_select_each_mode() {
+        let params = SosaTuneParams::preview();
+        let mode = params.comp.mode.as_ptr();
+        // Le tre righe: Ottica (gia' scelta), Manuale, Ottica + manuale.
+        for (row, expected) in [(1usize, CompModeChoice::Manual), (2, CompModeChoice::FixedManual)] {
+            let changes = run(&params, click(comp_point(250.0, 108.0 + 14.0 * row as f32)));
+            let normalized = params.comp.mode.preview_normalized(expected);
+            assert!(
+                changes.iter().any(|&(p, v)| p == mode && (v - normalized).abs() < 1e-6),
+                "riga {row}: {changes:?}"
+            );
+        }
+        // Cliccare la modalita' gia' scelta non cambia nulla.
+        let changes = run(&params, click(comp_point(250.0, 108.0)));
+        assert!(changes.iter().all(|&(p, _)| p != mode));
+    }
+
+    #[test]
+    fn every_knob_follows_the_mouse() {
+        let params = SosaTuneParams::preview();
+        let comp = &params.comp;
+        let knobs = [
+            comp.threshold.as_ptr(),
+            comp.ratio.as_ptr(),
+            comp.attack.as_ptr(),
+            comp.release.as_ptr(),
+            comp.tube.as_ptr(),
+            comp.mix.as_ptr(),
+            comp.output.as_ptr(),
+        ];
+        let starts = [
+            comp.threshold.unmodulated_normalized_value(),
+            comp.ratio.unmodulated_normalized_value(),
+            comp.attack.unmodulated_normalized_value(),
+            comp.release.unmodulated_normalized_value(),
+            comp.tube.unmodulated_normalized_value(),
+            comp.mix.unmodulated_normalized_value(),
+            comp.output.unmodulated_normalized_value(),
+        ];
+        for (i, (&ptr, &start)) in knobs.iter().zip(starts.iter()).enumerate() {
+            let changes = run(&params, drag_up(comp_point(362.0 + 80.0 * i as f32, 66.0), 40.0));
+            let last = changes.iter().filter(|(p, _)| *p == ptr).map(|&(_, v)| v).last();
+            let last = last.unwrap_or_else(|| panic!("la manopola {i} non risponde: {changes:?}"));
+            // In su = valore piu' alto (o al massimo, se c'era gia').
+            assert!(last > start || start >= 1.0, "manopola {i}: {start} -> {last}");
+            // Nessun altro parametro deve cambiare.
+            assert!(changes.iter().all(|(p, _)| *p == ptr), "manopola {i}: cambiano altri parametri");
+        }
+    }
+
+    #[test]
+    fn plugin_bypass_also_bypasses_the_compressor() {
+        let params = SosaTuneParams::preview();
+        assert!(params.comp.settings(false).enabled);
+        assert!(!params.comp.settings(true).enabled);
+        let defaults = SosaTuneParams::default();
+        assert!(!defaults.comp.settings(false).enabled, "spento per i progetti esistenti");
+    }
+
+    #[test]
+    fn preview_renders() {
+        let image = render(1.0);
+        assert_eq!(image.width, EDITOR_WIDTH as usize);
+        assert_eq!(image.height, EDITOR_HEIGHT as usize);
+        // Non e' un'immagine vuota: ci sono pixel chiari (testi, quadrante).
+        let bright = image.rgba.chunks(4).filter(|p| p[0] > 200 && p[1] > 180).count();
+        assert!(bright > 1000, "anteprima quasi vuota ({bright} pixel chiari)");
+    }
+}

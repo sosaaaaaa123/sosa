@@ -30,6 +30,16 @@ jobs:
       - name: Test del motore audio
         run: cargo test -p sosatune_dsp --release
 
+      # Prove dell'interfaccia (clic e trascinamenti sui comandi veri) e
+      # della configurazione del plugin.
+      - name: Test del plugin
+        if: always()
+        run: |
+          set +e
+          cargo test -p sosatune --release > plugin-test-log.txt 2>&1
+          echo "exit code: $?" >> plugin-test-log.txt
+          grep -E "^test |test result|panicked|exit code" plugin-test-log.txt
+
       - name: Compila il plugin (universale Intel + Apple Silicon)
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
@@ -139,6 +149,9 @@ jobs:
             echo
             echo "## Compilazione (ultime righe)"
             tail -60 build-log.txt || true
+            echo
+            echo "## Test del plugin (interfaccia)"
+            grep -E "^test |test result|panicked|error|exit code" plugin-test-log.txt || true
             echo
             echo "## Anteprima dell'interfaccia"
             tail -40 anteprima-log.txt || true

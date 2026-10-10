@@ -327,3 +327,121 @@ fn stereo_link_uses_the_same_gain_on_both_sides() {
     let ratio_out = rms(&out_r[24000..]) / rms(&out_l[24000..]);
     assert!((db(ratio_out) - db(0.01)).abs() < 0.1);
 }
+
+/// Tutte e tre le modalita' arrivano alla stessa compressione su una nota
+/// tenuta (la curva statica), e l'indicatore dice il vero.
+#[test]
+fn every_mode_reaches_the_curve_and_the_meter_is_honest() {
+    let level = -6.0f32;
+    let input = sine(1000.0, 10f32.powf(level / 20.0), 2.0);
+    for mode in [CompMode::Fixed, CompMode::Manual, CompMode::FixedManual] {
+        let settings = CompressorSettings {
+            threshold_db: -24.0,
+            ratio: 4.0,
+            mode,
+            attack_ms: 5.0,
+            release_ms: 500.0,
+            ..base()
+        };
+        let (out, gr) = run(&input, &settings);
+        let tail = 72000..96000;
+        let measured = db(rms(&input[tail.clone()])) - db(rms(&out[tail.clone()]));
+        let expected = TubeCompressor::static_gain_reduction(level, -24.0, 4.0);
+        assert!((measured - expected).abs() < 1.0, "{mode:?}: {measured:.2} dB invece di {expected:.2}");
+        let meter = gr[tail].iter().sum::<f32>() / 24000.0;
+        assert!((meter - measured).abs() < 0.5, "{mode:?}: indicatore {meter:.2} dB, reale {measured:.2} dB");
+    }
+}
+
+/// "Ottica + manuale" comprime almeno quanto ciascuna delle due da sola:
+/// attacco del piu' veloce, rilascio del piu' lento.
+#[test]
+fn fixed_manual_combines_both_cells() {
+    // Una frase forte di 0,6 s, poi silenzio.
+    let mut input = sine(500.0, 0.7, 0.6);
+    input.extend(std::iter::repeat(0.0).take((SR * 2.0) as usize));
+    let make = |mode| CompressorSettings {
+        threshold_db: -30.0,
+        ratio: 6.0,
+        mode,
+        attack_ms: 40.0,
+        release_ms: 120.0,
+        ..base()
+    };
+    let (_, fixed) = run(&input, &make(CompMode::Fixed));
+    let (_, manual) = run(&input, &make(CompMode::Manual));
+    let (_, both) = run(&input, &make(CompMode::FixedManual));
+    for i in (0..input.len()).step_by(240) {
+        let floor = fixed[i].max(manual[i]);
+        assert!(both[i] >= floor - 0.05, "campione {i}: {:.2} dB < {:.2} dB", both[i], floor);
+    }
+    // E durante la frase comprime davvero.
+    let during = (0.5 * SR) as usize;
+    assert!(both[during] > 10.0, "compressione {:.1} dB", both[during]);
+}
+
+/// Funziona a tutte le frequenze di campionamento dei DAW, mono e stereo,
+/// con la stessa curva.
+#[test]
+fn works_at_every_sample_rate_and_channel_count() {
+    for &sr in &[44100.0f32, 48000.0, 88200.0, 96000.0, 192000.0] {
+        for channels in [1usize, 2] {
+            let mut comp = TubeCompressor::new(sr, channels);
+            let settings = CompressorSettings {
+                threshold_db: -20.0,
+                ratio: 4.0,
+                mode: CompMode::Manual,
+                attack_ms: 2.0,
+                release_ms: 300.0,
+                ..base()
+            };
+            comp.snap_to(&settings);
+            let n = (sr * 1.0) as usize;
+            let w = 2.0 * std::f64::consts::PI * 1000.0 / sr as f64;
+            let (mut sum_in, mut sum_out) = (0.0f64, 0.0f64);
+            for i in 0..n {
+                let x = 0.5 * (w * i as f64).sin() as f32;
+                let mut frame = [x, x];
+                comp.process_frame(&mut frame[..channels], &settings);
+                if i > n / 2 {
+                    sum_in += (x as f64).powi(2);
+                    sum_out += (frame[0] as f64).powi(2);
+                    if channels == 2 {
+                        assert!((frame[0] - frame[1]).abs() < 1e-6, "{sr} Hz: canali diversi");
+                    }
+                }
+            }
+            let measured = 10.0 * (sum_in / sum_out).log10() as f32;
+            let expected = TubeCompressor::static_gain_reduction(db(0.5), -20.0, 4.0);
+            assert!((measured - expected).abs() < 1.0, "{sr} Hz, {channels} canali: {measured:.2} invece di {expected:.2}");
+        }
+    }
+}
+
+/// Su una voce bassa (90 Hz) il guadagno resta fermo durante la nota: niente
+/// "tremolio" a ogni ciclo, quindi niente distorsione aggiunta dal compressore.
+#[test]
+fn gain_does_not_ripple_on_low_voices() {
+    let input = sine(90.0, 0.5, 1.5);
+    for mode in [CompMode::Fixed, CompMode::Manual, CompMode::FixedManual] {
+        let settings = CompressorSettings {
+            threshold_db: -30.0,
+            ratio: 6.0,
+            mode,
+            attack_ms: 0.5,
+            release_ms: 50.0,
+            ..base()
+        };
+        let (out, gr) = run(&input, &settings);
+        let tail = &gr[48000..72000];
+        let max = tail.iter().cloned().fold(f32::MIN, f32::max);
+        let min = tail.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(max - min < 0.1, "{mode:?}: il guadagno oscilla di {:.2} dB", max - min);
+        // Distorsione: la terza armonica (dovuta al tremolio) resta trascurabile.
+        let seg = &out[48000..64000]; // esattamente 30 periodi
+        let f0 = amplitude_at(seg, 90.0);
+        let h2 = amplitude_at(seg, 180.0);
+        let h3 = amplitude_at(seg, 270.0);
+        assert!(db(h2.max(h3) / f0) < -60.0, "{mode:?}: armoniche a {:.1} dB", db(h2.max(h3) / f0));
+    }
+}

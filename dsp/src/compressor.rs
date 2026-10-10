@@ -59,6 +59,14 @@ const KAISER_BETA: f64 = 11.2;
 /// compressione molto gradualmente.
 const KNEE_DB: f32 = 8.0;
 
+/// Il rilevatore ricorda il picco degli ultimi `HOLD_SEGMENTS` segmenti da
+/// `HOLD_SEGMENT_MS` (cioe' 9-12 ms). L'onda raddrizzata ha un picco ogni
+/// mezzo periodo, quindi basta per tutte le note sopra ~56 Hz: su una nota
+/// tenuta il livello e' fermo e il guadagno non "trema" a ogni ciclo (sarebbe
+/// distorsione sulle voci basse). Il rilascio parte al massimo 12 ms dopo.
+const HOLD_SEGMENTS: usize = 4;
+const HOLD_SEGMENT_MS: f32 = 3.0;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompMode {
     /// Solo cella ottica: tempi automatici, dipendenti dal programma.
@@ -135,6 +143,13 @@ pub struct TubeCompressor {
     latency: usize,
     dry_pos: usize,
 
+    // Rilevatore con tenuta del picco.
+    hold_segments: [f32; HOLD_SEGMENTS],
+    hold_index: usize,
+    hold_current: f32,
+    hold_count: usize,
+    hold_segment_len: usize,
+
     // Coefficienti dei filtri fissi.
     dc_coeff: f32,
     detector_coeff: f32,
@@ -201,6 +216,11 @@ impl TubeCompressor {
             channel,
             latency,
             dry_pos: 0,
+            hold_segments: [0.0; HOLD_SEGMENTS],
+            hold_index: 0,
+            hold_current: 0.0,
+            hold_count: 0,
+            hold_segment_len: ((HOLD_SEGMENT_MS / 1000.0 * sample_rate).round() as usize).max(1),
             dc_coeff: one_pole(5.0, sample_rate),
             detector_coeff: one_pole(60.0, sample_rate),
             transformer_coeff: one_pole(150.0, 4.0 * sample_rate),
@@ -260,6 +280,10 @@ impl TubeCompressor {
             ch.clean.fill(0.0);
         }
         self.dry_pos = 0;
+        self.hold_segments = [0.0; HOLD_SEGMENTS];
+        self.hold_index = 0;
+        self.hold_current = 0.0;
+        self.hold_count = 0;
         self.gain_reduction = 0.0;
         self.manual_state = 0.0;
         self.opto_fast = 0.0;
@@ -304,7 +328,20 @@ impl TubeCompressor {
             ch.detector_x = x;
             peak = peak.max(ch.detector_y.abs());
         }
-        let level_db = 20.0 * (peak + 1e-9).log10();
+        // Tenuta del picco: il massimo del segmento in corso e dei precedenti.
+        self.hold_current = self.hold_current.max(peak);
+        self.hold_count += 1;
+        let mut held = self.hold_current;
+        for &segment in &self.hold_segments {
+            held = held.max(segment);
+        }
+        if self.hold_count >= self.hold_segment_len {
+            self.hold_segments[self.hold_index] = self.hold_current;
+            self.hold_index = (self.hold_index + 1) % HOLD_SEGMENTS;
+            self.hold_current = 0.0;
+            self.hold_count = 0;
+        }
+        let level_db = 20.0 * (held + 1e-9).log10();
         let target =
             Self::static_gain_reduction(level_db, settings.threshold_db, settings.ratio.clamp(1.0, 20.0));
 

@@ -75,6 +75,10 @@ mod layout {
     pub const SMALL_KNOB: f32 = 20.0;
 }
 
+/// Angolo in alto a sinistra del pannello del compressore (per le prove).
+#[cfg(test)]
+pub(crate) const COMPRESSOR_ORIGIN: (f32, f32) = (layout::MARGIN, layout::COMP_TOP);
+
 /// Stato che appartiene solo alla grafica (non viene salvato).
 struct GuiState {
     /// Copia degli ultimi punti del grafico (riusata a ogni fotogramma).
