@@ -9,7 +9,16 @@
 
 [workspace]
 members = ["dsp", "plugin", "xtask"]
+exclude = ["vendor"]
 resolver = "2"
+
+# nih-plug con alcune correzioni di compatibilita' (vedi vendor/nih-plug-sosatune.patch):
+# - CLAP: latenza comunicata all'host solo nei momenti permessi dalle specifiche
+# - CLAP: dopo il caricamento di un progetto l'host rilegge i valori dei parametri
+# - CLAP: ingresso mono -> uscita stereo dichiarato correttamente
+# - CLAP e VST3: dati di stato corrotti non fanno piu' chiudere il DAW
+[patch."https://github.com/robbert-vdh/nih-plug.git"]
+nih_plug = { path = "vendor/nih-plug" }
 
 [profile.release]
 lto = "thin"

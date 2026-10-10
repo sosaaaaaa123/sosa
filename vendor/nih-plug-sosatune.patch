@@ -1,0 +1,152 @@
+diff --git a/src/wrapper/clap/wrapper.rs b/src/wrapper/clap/wrapper.rs
+index 3b6a63e..ca8b2d8 100644
+--- a/src/wrapper/clap/wrapper.rs
++++ b/src/wrapper/clap/wrapper.rs
+@@ -126,6 +126,11 @@ pub struct Wrapper<P: ClapPlugin> {
+     editor_scaling_factor: AtomicF32,
+ 
+     is_processing: AtomicBool,
++    /// SosaTune: `true` while `clap_plugin::activate()` is running. CLAP only allows
++    /// `clap_host_latency::changed()` to be called during activation.
++    is_activating: AtomicBool,
++    /// SosaTune: `true` between a successful `activate()` and `deactivate()`.
++    is_active: AtomicBool,
+     /// The current IO configuration, modified through the `clap_plugin_audio_ports_config`
+     /// extension. Initialized to the plugin's first audio IO configuration.
+     current_audio_io_layout: AtomicCell<AudioIOLayout>,
+@@ -393,14 +398,15 @@ impl<P: ClapPlugin> MainThreadExecutor<Task<P>> for Wrapper<P> {
+                 Some(host_latency) => {
+                     nih_debug_assert!(is_gui_thread);
+ 
+-                    // XXX: The CLAP docs mention that you should request a restart if this happens
+-                    //      while the plugin is activated (which is not entirely the same thing as
+-                    //      is processing, but we'll treat it as the same thing). In practice just
+-                    //      calling the latency changed function also seems to work just fine.
+-                    if self.is_processing.load(Ordering::SeqCst) {
+-                        unsafe_clap_call! { &*self.host_callback=>request_restart(&*self.host_callback) };
+-                    } else {
++                    // SosaTune: follow the CLAP specification exactly. `changed()` may only be
++                    // called while the plugin is being activated. When the plugin is already
++                    // active the host must restart it (deactivate + activate), after which it
++                    // queries the new latency. When the plugin is inactive the host will query
++                    // the latency on the next activation anyway.
++                    if self.is_activating.load(Ordering::SeqCst) {
+                         unsafe_clap_call! { host_latency=>changed(&*self.host_callback) };
++                    } else if self.is_active.load(Ordering::SeqCst) {
++                        unsafe_clap_call! { &*self.host_callback=>request_restart(&*self.host_callback) };
+                     }
+                 }
+                 None => nih_debug_assert_failure!("Host does not support the latency extension"),
+@@ -544,6 +550,8 @@ impl<P: ClapPlugin> Wrapper<P> {
+             editor_scaling_factor: AtomicF32::new(1.0),
+ 
+             is_processing: AtomicBool::new(false),
++            is_activating: AtomicBool::new(false),
++            is_active: AtomicBool::new(false),
+             current_audio_io_layout: AtomicCell::new(
+                 P::AUDIO_IO_LAYOUTS.first().copied().unwrap_or_default(),
+             ),
+@@ -1889,10 +1897,12 @@ impl<P: ClapPlugin> Wrapper<P> {
+             param.update_smoother(buffer_config.sample_rate, true);
+         }
+ 
++        wrapper.is_activating.store(true, Ordering::SeqCst);
++
+         // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
+         let mut init_context = wrapper.make_init_context();
+         let mut plugin = wrapper.plugin.lock();
+-        if plugin.initialize(&audio_io_layout, &buffer_config, &mut init_context) {
++        let success = if plugin.initialize(&audio_io_layout, &buffer_config, &mut init_context) {
+             // NOTE: `Plugin::reset()` is called in `clap_plugin::start_processing()` instead of in
+             //       this function
+ 
+@@ -1907,13 +1917,24 @@ impl<P: ClapPlugin> Wrapper<P> {
+             true
+         } else {
+             false
+-        }
++        };
++
++        // SosaTune: dropping the init context sends the pending latency change. This must
++        // happen while `is_activating` is still set, since that is the only time CLAP allows
++        // `clap_host_latency::changed()` to be called.
++        drop(plugin);
++        drop(init_context);
++        wrapper.is_active.store(success, Ordering::SeqCst);
++        wrapper.is_activating.store(false, Ordering::SeqCst);
++
++        success
+     }
+ 
+     unsafe extern "C" fn deactivate(plugin: *const clap_plugin) {
+         check_null_ptr!((), plugin, (*plugin).plugin_data);
+         let wrapper = &*((*plugin).plugin_data as *const Self);
+ 
++        wrapper.is_active.store(false, Ordering::SeqCst);
+         wrapper.plugin.lock().deactivate();
+     }
+ 
+@@ -2505,11 +2526,15 @@ impl<P: ClapPlugin> Wrapper<P> {
+         } else {
+             index + num_input_ports
+         };
++        // SosaTune: an in-place pair is only valid when both main ports have the same channel
++        // count (e.g. not for mono in -> stereo out).
++        let main_ports_match = current_audio_io_layout.main_input_channels
++            == current_audio_io_layout.main_output_channels;
+         let pair_stable_id = match (is_input, is_main_port) {
+             // Ports are named linearly with inputs coming before outputs, so this is the index of
+             // the first output port
+-            (true, true) if has_main_output => num_input_ports,
+-            (false, true) if has_main_input => 0,
++            (true, true) if has_main_output && main_ports_match => num_input_ports,
++            (false, true) if has_main_input && main_ports_match => 0,
+             _ => CLAP_INVALID_ID,
+         };
+ 
+@@ -3152,6 +3177,12 @@ impl<P: ClapPlugin> Wrapper<P> {
+             return false;
+         }
+         let length = u64::from_le_bytes(length_bytes);
++        // SosaTune: never trust the length prefix. Corrupted or foreign data could otherwise
++        // request an allocation of many terabytes, which aborts the host. Our state is a few
++        // kilobytes of JSON, 64 MiB leaves plenty of headroom.
++        if length == 0 || length > 64 * 1024 * 1024 {
++            return false;
++        }
+ 
+         let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
+         if !read_stream(&*stream, read_buffer.spare_capacity_mut()) {
+@@ -3167,6 +3198,12 @@ impl<P: ClapPlugin> Wrapper<P> {
+                 let success = wrapper.set_state_inner(&mut state);
+                 if success {
+                     nih_trace!("Loaded state ({} bytes)", read_buffer.len());
++
++                    // SosaTune: the parameter values changed, so the host has to re-read them
++                    // (required by the CLAP specification, otherwise automation lanes and
++                    // generic editors can show stale values).
++                    let task_posted = wrapper.schedule_gui(Task::RescanParamValues);
++                    nih_debug_assert!(task_posted, "The task queue is full, dropping task...");
+                 }
+ 
+                 success
+diff --git a/src/wrapper/vst3/wrapper.rs b/src/wrapper/vst3/wrapper.rs
+index f284af5..fe4c031 100644
+--- a/src/wrapper/vst3/wrapper.rs
++++ b/src/wrapper/vst3/wrapper.rs
+@@ -431,7 +431,14 @@ impl<P: Vst3Plugin> IComponent for Wrapper<P> {
+             return kResultFalse;
+         }
+ 
+-        let stream_byte_size = (eof_pos - current_pos) as i32;
++        // SosaTune: reject impossible sizes instead of trying to allocate them (a negative
++        // size or several gigabytes would abort the host).
++        let stream_byte_size = eof_pos - current_pos;
++        if !(0..=64 * 1024 * 1024).contains(&stream_byte_size) {
++            nih_debug_assert_failure!("Invalid stream length");
++            return kResultFalse;
++        }
++        let stream_byte_size = stream_byte_size as i32;
+         let mut num_bytes_read = 0;
+         let mut read_buffer: Vec<u8> = Vec::with_capacity(stream_byte_size as usize);
+         state.read(
