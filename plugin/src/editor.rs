@@ -941,14 +941,13 @@ fn gain_reduction_meter(painter: &Painter, rect: Rect, db: f32, lit: bool) {
         clipped.line_segment([dial(a, arc_r), dial(a, arc_r + 8.0)], Stroke::new(1.4_f32, color));
         clipped.text(dial(a, arc_r + 16.0), Align2::CENTER_CENTER, label, bold(9.0), color);
     }
-    clipped.text(Pos2::new(rect.center().x, rect.bottom() - 30.0), Align2::CENTER_CENTER, "COMPRESSIONE", bold(7.5), METER_INK.gamma_multiply(0.75));
-    clipped.text(Pos2::new(rect.center().x, rect.bottom() - 20.0), Align2::CENTER_CENTER, "dB", regular(7.5), METER_INK.gamma_multiply(0.75));
+    clipped.text(Pos2::new(rect.center().x, rect.bottom() - 25.0), Align2::CENTER_CENTER, "dB COMPRESSIONE", bold(7.0), METER_INK.gamma_multiply(0.7));
 
     // Ago con ombra, poi il coperchio del perno.
     let a = angle_of(db);
     clipped.line_segment([dial(a, 30.0) + Vec2::new(2.0, 2.0), dial(a, scale_radius - 2.0) + Vec2::new(2.0, 2.0)], Stroke::new(1.8_f32, Color32::from_black_alpha(40)));
     clipped.line_segment([dial(a, 30.0), dial(a, scale_radius - 2.0)], Stroke::new(1.5_f32, Color32::from_rgb(0x1e, 0x17, 0x10)));
-    shaded_disc(&clipped, Pos2::new(rect.center().x, rect.bottom() + 4.0), 16.0, Vec2::new(-3.0, -6.0), Color32::from_rgb(0x4a, 0x4d, 0x57), Color32::from_rgb(0x15, 0x16, 0x1a));
+    shaded_disc(&clipped, Pos2::new(rect.center().x, rect.bottom() + 6.0), 13.0, Vec2::new(-3.0, -6.0), Color32::from_rgb(0x4a, 0x4d, 0x57), Color32::from_rgb(0x15, 0x16, 0x1a));
 
     // Riflesso del vetro, in diagonale.
     let mut glare = egui::Mesh::default();
@@ -983,7 +982,7 @@ fn compressor(
     painter.rect_stroke(rect, CornerRadius::same(12), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Inside);
     painter.line_segment(
         [Pos2::new(rect.left() + 14.0, rect.top() + 1.5), Pos2::new(rect.right() - 14.0, rect.top() + 1.5)],
-        Stroke::new(1.0_f32, Color32::from_white_alpha(22)),
+        Stroke::new(1.0_f32, Color32::from_white_alpha(12)),
     );
     for corner in [
         Pos2::new(x(11.0), y(11.0)),
