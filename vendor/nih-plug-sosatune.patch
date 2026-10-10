@@ -1,8 +1,7 @@
-diff --git a/src/wrapper/clap/wrapper.rs b/src/wrapper/clap/wrapper.rs
-index 3b6a63e..ca8b2d8 100644
---- a/src/wrapper/clap/wrapper.rs
-+++ b/src/wrapper/clap/wrapper.rs
-@@ -126,6 +126,11 @@ pub struct Wrapper<P: ClapPlugin> {
+diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/clap/wrapper.rs
+--- nih/src/wrapper/clap/wrapper.rs	2026-10-10 18:58:27.550480639 +0200
++++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/clap/wrapper.rs	2026-10-10 19:01:19.079431795 +0200
+@@ -126,6 +126,11 @@
      editor_scaling_factor: AtomicF32,
  
      is_processing: AtomicBool,
@@ -14,7 +13,7 @@ index 3b6a63e..ca8b2d8 100644
      /// The current IO configuration, modified through the `clap_plugin_audio_ports_config`
      /// extension. Initialized to the plugin's first audio IO configuration.
      current_audio_io_layout: AtomicCell<AudioIOLayout>,
-@@ -393,14 +398,15 @@ impl<P: ClapPlugin> MainThreadExecutor<Task<P>> for Wrapper<P> {
+@@ -393,14 +398,15 @@
                  Some(host_latency) => {
                      nih_debug_assert!(is_gui_thread);
  
@@ -37,7 +36,7 @@ index 3b6a63e..ca8b2d8 100644
                      }
                  }
                  None => nih_debug_assert_failure!("Host does not support the latency extension"),
-@@ -544,6 +550,8 @@ impl<P: ClapPlugin> Wrapper<P> {
+@@ -544,6 +550,8 @@
              editor_scaling_factor: AtomicF32::new(1.0),
  
              is_processing: AtomicBool::new(false),
@@ -46,7 +45,7 @@ index 3b6a63e..ca8b2d8 100644
              current_audio_io_layout: AtomicCell::new(
                  P::AUDIO_IO_LAYOUTS.first().copied().unwrap_or_default(),
              ),
-@@ -1889,10 +1897,12 @@ impl<P: ClapPlugin> Wrapper<P> {
+@@ -1889,10 +1897,12 @@
              param.update_smoother(buffer_config.sample_rate, true);
          }
  
@@ -60,7 +59,7 @@ index 3b6a63e..ca8b2d8 100644
              // NOTE: `Plugin::reset()` is called in `clap_plugin::start_processing()` instead of in
              //       this function
  
-@@ -1907,13 +1917,24 @@ impl<P: ClapPlugin> Wrapper<P> {
+@@ -1907,13 +1917,24 @@
              true
          } else {
              false
@@ -86,7 +85,7 @@ index 3b6a63e..ca8b2d8 100644
          wrapper.plugin.lock().deactivate();
      }
  
-@@ -2505,11 +2526,15 @@ impl<P: ClapPlugin> Wrapper<P> {
+@@ -2505,11 +2526,15 @@
          } else {
              index + num_input_ports
          };
@@ -104,7 +103,7 @@ index 3b6a63e..ca8b2d8 100644
              _ => CLAP_INVALID_ID,
          };
  
-@@ -3152,6 +3177,12 @@ impl<P: ClapPlugin> Wrapper<P> {
+@@ -3152,6 +3177,12 @@
              return false;
          }
          let length = u64::from_le_bytes(length_bytes);
@@ -117,7 +116,7 @@ index 3b6a63e..ca8b2d8 100644
  
          let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
          if !read_stream(&*stream, read_buffer.spare_capacity_mut()) {
-@@ -3167,6 +3198,12 @@ impl<P: ClapPlugin> Wrapper<P> {
+@@ -3167,6 +3198,12 @@
                  let success = wrapper.set_state_inner(&mut state);
                  if success {
                      nih_trace!("Loaded state ({} bytes)", read_buffer.len());
@@ -130,11 +129,120 @@ index 3b6a63e..ca8b2d8 100644
                  }
  
                  success
-diff --git a/src/wrapper/vst3/wrapper.rs b/src/wrapper/vst3/wrapper.rs
-index f284af5..fe4c031 100644
---- a/src/wrapper/vst3/wrapper.rs
-+++ b/src/wrapper/vst3/wrapper.rs
-@@ -431,7 +431,14 @@ impl<P: Vst3Plugin> IComponent for Wrapper<P> {
+diff -ruN nih/src/wrapper/vst3/context.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/context.rs
+--- nih/src/wrapper/vst3/context.rs	2026-10-10 18:58:27.553095659 +0200
++++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/context.rs	2026-10-10 23:45:20.065999595 +0200
+@@ -158,32 +158,38 @@
+     }
+ 
+     unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
+-        match &*self.inner.component_handler.borrow() {
+-            Some(handler) => match self.inner.param_ptr_to_hash.get(&param) {
+-                Some(hash) => {
+-                    // Only update the parameters manually if the host is not processing audio. If
+-                    // the plugin is currently processing audio, the host will pass this change back
+-                    // to the plugin in the audio callback. This also prevents the values from
+-                    // changing in the middle of the process callback, which would be unsound.
+-                    // FIXME: So this doesn't work for REAPER, because they just silently stop
+-                    //        processing audio when you bypass the plugin. Great. We can add a time
+-                    //        based heuristic to work around this in the meantime.
+-                    if !self.inner.is_processing.load(Ordering::SeqCst) {
+-                        self.inner.set_normalized_value_by_hash(
+-                            *hash,
+-                            normalized,
+-                            self.inner
+-                                .current_buffer_config
+-                                .load()
+-                                .map(|c| c.sample_rate),
+-                        );
+-                    }
++        match self.inner.param_ptr_to_hash.get(&param) {
++            Some(hash) => {
++                // SosaTune: the plugin applies editor changes itself instead of relying on the
++                // host to send them back to the processor (some hosts and plugin containers never
++                // do, and then the controls appear dead):
++                // - not processing, or the host stopped calling `process()` (transport stopped,
++                //   REAPER's bypass...): apply right away;
++                // - processing: queue the change, it is applied at the start of the next process
++                //   call (never in the middle of one).
++                let now_ns = self.inner.created_at.elapsed().as_nanos() as u64;
++                let last_ns = self.inner.last_process_ns.load(Ordering::SeqCst);
++                let idle = now_ns.saturating_sub(last_ns) > 150_000_000;
++                if !self.inner.is_processing.load(Ordering::SeqCst) || idle {
++                    self.inner.set_normalized_value_by_hash(
++                        *hash,
++                        normalized,
++                        self.inner
++                            .current_buffer_config
++                            .load()
++                            .map(|c| c.sample_rate),
++                    );
++                } else if self.inner.gui_param_queue.push((*hash, normalized)).is_err() {
++                    nih_debug_assert_failure!("The editor parameter queue is full");
++                }
+ 
++                // Tell the host about the change (automation, undo, saving). If the host never
++                // gave us a component handler the value has still been applied above.
++                if let Some(handler) = &*self.inner.component_handler.borrow() {
+                     handler.perform_edit(*hash, normalized as f64);
+                 }
+-                None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
+-            },
+-            None => nih_debug_assert_failure!("Component handler not yet set"),
++            }
++            None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
+         }
+ 
+         #[cfg(debug_assertions)]
+diff -ruN nih/src/wrapper/vst3/inner.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/inner.rs
+--- nih/src/wrapper/vst3/inner.rs	2026-10-10 18:58:27.553304174 +0200
++++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/inner.rs	2026-10-10 23:45:20.065670538 +0200
+@@ -1,11 +1,12 @@
+ use atomic_refcell::AtomicRefCell;
+ use crossbeam::atomic::AtomicCell;
++use crossbeam::queue::ArrayQueue;
+ use crossbeam::channel::{self, SendTimeoutError};
+ use parking_lot::{Mutex, RwLock};
+ use std::collections::{HashMap, HashSet, VecDeque};
+-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+ use std::sync::Arc;
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ use vst3_sys::base::{kInvalidArgument, kResultOk, tresult};
+ use vst3_sys::vst::{IComponentHandler, RestartFlags};
+ 
+@@ -63,6 +64,16 @@
+     /// Whether the plugin is currently processing audio. In other words, the last state
+     /// `IAudioProcessor::setActive()` has been called with.
+     pub is_processing: AtomicBool,
++    /// SosaTune: parameter changes made from the editor while the plugin is processing. They are
++    /// applied at the start of the next process call, so the controls keep working even in hosts
++    /// (or plugin containers) that never send the edits back to the processor.
++    pub gui_param_queue: ArrayQueue<(u32, f32)>,
++    /// SosaTune: reference point for `last_process_ns`.
++    pub created_at: Instant,
++    /// SosaTune: when the host last called `process()`, in nanoseconds since `created_at`. Used to
++    /// detect hosts that keep the plugin active but stop calling `process()` (e.g. with the
++    /// transport stopped), so editor changes can still be applied right away.
++    pub last_process_ns: AtomicU64,
+     /// The current audio IO layout. Modified through `IAudioProcessor::setBusArrangements()` after
+     /// matching the proposed bus arrangement to one of the supported ones. The plugin's first audio
+     /// IO layout is chosen as the default. Because of the way VST3 works it's not possible to
+@@ -288,6 +299,9 @@
+             event_loop: AtomicRefCell::new(None),
+ 
+             is_processing: AtomicBool::new(false),
++            gui_param_queue: ArrayQueue::new(4096),
++            created_at: Instant::now(),
++            last_process_ns: AtomicU64::new(0),
+             // Some hosts, like the current version of Bitwig and Ardour at the time of writing,
+             // will try using the plugin's default not yet initialized bus arrangement. Because of
+             // that, we'll always initialize this configuration even before the host requests a
+diff -ruN nih/src/wrapper/vst3/wrapper.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/wrapper.rs
+--- nih/src/wrapper/vst3/wrapper.rs	2026-10-10 18:58:27.553304174 +0200
++++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/wrapper.rs	2026-10-10 23:45:20.066423363 +0200
+@@ -431,7 +431,14 @@
              return kResultFalse;
          }
  
@@ -150,3 +258,21 @@ index f284af5..fe4c031 100644
          let mut num_bytes_read = 0;
          let mut read_buffer: Vec<u8> = Vec::with_capacity(stream_byte_size as usize);
          state.read(
+@@ -981,6 +988,17 @@
+             let mut process_events = self.inner.process_events.borrow_mut();
+             process_events.clear();
+ 
++            // SosaTune: first the changes made in the editor since the last block (see
++            // `WrapperGuiContext::raw_set_parameter_normalized()`), then the host's own changes.
++            self.inner.last_process_ns.store(
++                self.inner.created_at.elapsed().as_nanos() as u64,
++                Ordering::SeqCst,
++            );
++            while let Some((hash, normalized)) = self.inner.gui_param_queue.pop() {
++                self.inner
++                    .set_normalized_value_by_hash(hash, normalized, Some(sample_rate));
++            }
++
+             // First we'll go through the parameter changes. This may also include MIDI CC messages
+             // if the plugin supports those
+             if let Some(param_changes) = data.input_param_changes.upgrade() {
