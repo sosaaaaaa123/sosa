@@ -1,0 +1,39 @@
+# Compila automaticamente il plugin per Mac su GitHub (gratis per i progetti
+# pubblici e, entro certi limiti, anche per quelli privati).
+# Ogni volta che carichi delle modifiche, nella scheda "Actions" del progetto
+# trovi lo zip "Intona-macOS" con i file .vst3 e .clap pronti da installare.
+
+name: Compila per Mac
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa Rust (per Mac Intel e Apple Silicon)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Test del motore audio
+        run: cargo test -p intona_dsp --release
+
+      - name: Compila il plugin (universale Intel + Apple Silicon)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: cargo xtask bundle-universal intona --release
+
+      - name: Prepara lo zip
+        run: |
+          cd target/bundled
+          zip -r ../../Intona-macOS.zip Intona.vst3 Intona.clap
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Intona-macOS
+          path: Intona-macOS.zip
