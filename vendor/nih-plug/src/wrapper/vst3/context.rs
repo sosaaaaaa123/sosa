@@ -158,6 +158,7 @@ impl<P: Vst3Plugin> GuiContext for WrapperGuiContext<P> {
     }
 
     unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
+        crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_SET_CALLS);
         match self.inner.param_ptr_to_hash.get(&param) {
             Some(hash) => {
                 // SosaTune: the plugin applies editor changes itself instead of relying on the
@@ -171,6 +172,7 @@ impl<P: Vst3Plugin> GuiContext for WrapperGuiContext<P> {
                 let last_ns = self.inner.last_process_ns.load(Ordering::SeqCst);
                 let idle = now_ns.saturating_sub(last_ns) > 150_000_000;
                 if !self.inner.is_processing.load(Ordering::SeqCst) || idle {
+                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_DIRECT);
                     self.inner.set_normalized_value_by_hash(
                         *hash,
                         normalized,
@@ -181,15 +183,22 @@ impl<P: Vst3Plugin> GuiContext for WrapperGuiContext<P> {
                     );
                 } else if self.inner.gui_param_queue.push((*hash, normalized)).is_err() {
                     nih_debug_assert_failure!("The editor parameter queue is full");
+                } else {
+                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_QUEUED);
                 }
 
                 // Tell the host about the change (automation, undo, saving). If the host never
                 // gave us a component handler the value has still been applied above.
                 if let Some(handler) = &*self.inner.component_handler.borrow() {
                     handler.perform_edit(*hash, normalized as f64);
+                } else {
+                    crate::sosatune_diag::bump(&crate::sosatune_diag::HANDLER_MISSING);
                 }
             }
-            None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
+            None => {
+                crate::sosatune_diag::bump(&crate::sosatune_diag::UNKNOWN_PARAM);
+                nih_debug_assert_failure!("Unknown parameter: {:?}", param)
+            }
         }
 
         #[cfg(debug_assertions)]

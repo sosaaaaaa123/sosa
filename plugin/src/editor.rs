@@ -79,14 +79,133 @@ mod layout {
 #[cfg(test)]
 pub(crate) const COMPRESSOR_ORIGIN: (f32, f32) = (layout::MARGIN, layout::COMP_TOP);
 
+/// Registro diagnostico: scrive in
+/// `~/Library/Logs/DiagnosticReports/SosaTune-diagnostica.log` cosa succede
+/// quando si usano i comandi (mouse, manopole, valori, contatori del wrapper),
+/// una riga al secondo e solo quando qualcosa cambia. Serve a capire, su un
+/// computer reale, dove si perde un comando. Non tocca mai l'audio.
+mod diagnostics {
+    use super::*;
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Instant;
+
+    pub static DRAG_STARTS: AtomicU64 = AtomicU64::new(0);
+    pub static DRAG_SETS: AtomicU64 = AtomicU64::new(0);
+    pub static CLICK_SETS: AtomicU64 = AtomicU64::new(0);
+    const MAX_LINES: usize = 3000;
+
+    pub struct Diagnostics {
+        enabled: bool,
+        opened: Option<Instant>,
+        last_check: Option<Instant>,
+        last_line: String,
+        lines: usize,
+        moves: u64,
+        presses: u64,
+        releases: u64,
+        frames: u64,
+    }
+
+    impl Diagnostics {
+        pub fn new(enabled: bool) -> Self {
+            Self {
+                enabled,
+                opened: None,
+                last_check: None,
+                last_line: String::new(),
+                lines: 0,
+                moves: 0,
+                presses: 0,
+                releases: 0,
+                frames: 0,
+            }
+        }
+
+        fn write(&mut self, text: &str) {
+            if self.lines >= MAX_LINES {
+                return;
+            }
+            let Some(home) = std::env::var_os("HOME") else { return };
+            let path = std::path::Path::new(&home).join("Library/Logs/DiagnosticReports/SosaTune-diagnostica.log");
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let seconds = self.opened.map_or(0.0, |t| t.elapsed().as_secs_f32());
+                let _ = writeln!(file, "[{seconds:7.1} s] {text}");
+                self.lines += 1;
+            }
+        }
+
+        pub fn observe(&mut self, ctx: &egui::Context, params: &SosaTuneParams) {
+            if !self.enabled {
+                return;
+            }
+            if self.opened.is_none() {
+                self.opened = Some(Instant::now());
+                let unix = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                self.write(&format!(
+                    "=== SosaTune {} - finestra aperta (unix {unix}) ===",
+                    env!("CARGO_PKG_VERSION")
+                ));
+            }
+            self.frames += 1;
+            ctx.input(|i| {
+                for event in &i.raw.events {
+                    match event {
+                        egui::Event::PointerMoved(_) => self.moves += 1,
+                        egui::Event::PointerButton { pressed: true, .. } => self.presses += 1,
+                        egui::Event::PointerButton { pressed: false, .. } => self.releases += 1,
+                        _ => {}
+                    }
+                }
+            });
+            if self.last_check.is_some_and(|t| t.elapsed().as_secs_f32() < 1.0) {
+                return;
+            }
+            self.last_check = Some(Instant::now());
+            let screen = ctx.screen_rect();
+            let line = format!(
+                "finestra {:.0}x{:.0} ppp={:.2} | mouse: mossi={} premuti={} rilasciati={} sopra={} trascina={} | manopole: inizio={} valori={} clic={} | parametri: velocita={:.3} soglia={:.3} comp={} | {}",
+                screen.width(),
+                screen.height(),
+                ctx.pixels_per_point(),
+                self.moves,
+                self.presses,
+                self.releases,
+                ctx.is_pointer_over_area(),
+                ctx.dragged_id().is_some(),
+                DRAG_STARTS.load(Ordering::Relaxed),
+                DRAG_SETS.load(Ordering::Relaxed),
+                CLICK_SETS.load(Ordering::Relaxed),
+                params.retune_speed.unmodulated_normalized_value(),
+                params.comp.threshold.unmodulated_normalized_value(),
+                params.comp.enabled.value(),
+                nih_plug::sosatune_diag::summary(),
+            );
+            if line != self.last_line {
+                self.write(&format!("{line} | fotogrammi={}", self.frames));
+                self.last_line = line;
+            }
+        }
+    }
+}
+
 /// Stato che appartiene solo alla grafica (non viene salvato).
 struct GuiState {
+    /// Registro diagnostico (acceso solo nella finestra vera, non nelle prove).
+    diagnostics: diagnostics::Diagnostics,
     /// Copia degli ultimi punti del grafico (riusata a ogni fotogramma).
     points: Vec<PitchPoint>,
     /// Nota al centro del grafico (segue la voce con dolcezza).
     graph_center: f32,
     /// Indicatore della compressione: sale subito, scende con calma.
     meter_db: f32,
+    /// Indicatori IN/OUT (dB) e controllo che il DAW mandi audio.
+    level_in_db: f32,
+    level_out_db: f32,
+    last_blocks: usize,
+    last_audio_time: f64,
 }
 
 /// Avvolge l'interfaccia in una "rete di sicurezza": se la finestra non si
@@ -139,17 +258,22 @@ pub fn create(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Option
 fn create_inner(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Option<Box<dyn Editor>> {
     create_egui_editor(
         params.editor_state.clone(),
-        new_state(),
+        new_state(true),
         |ctx, _state| setup(ctx),
         move |ctx, setter, state| draw(ctx, &params, &display, setter, state),
     )
 }
 
-fn new_state() -> GuiState {
+fn new_state(diagnostics_enabled: bool) -> GuiState {
     GuiState {
+        diagnostics: diagnostics::Diagnostics::new(diagnostics_enabled),
         points: Vec::with_capacity(crate::shared::HISTORY_LEN),
         graph_center: 60.0,
         meter_db: 0.0,
+        level_in_db: -90.0,
+        level_out_db: -90.0,
+        last_blocks: 0,
+        last_audio_time: f64::NEG_INFINITY,
     }
 }
 
@@ -169,6 +293,7 @@ fn draw(
     setter: &ParamSetter,
     state: &mut GuiState,
 ) {
+    state.diagnostics.observe(ctx, params);
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(BACKGROUND))
         .show(ctx, |ui| {
@@ -188,6 +313,7 @@ fn draw(
             );
 
             header(ui, &painter, params, setter, at(0.0, 0.0));
+            signal_status(ui, &painter, display, state, at(318.0, 0.0));
             tuning_ring(ui, &painter, display, at(layout::RING_X, layout::ROW_TOP));
             knobs(ui, &painter, params, setter, at(layout::KNOBS_X, layout::ROW_TOP));
             selectors(ui, &painter, params, setter, display, at(layout::SELECT_X, layout::ROW_TOP));
@@ -205,7 +331,7 @@ pub(crate) struct Headless {
 impl Headless {
     pub(crate) fn new(ctx: &egui::Context) -> Self {
         setup(ctx);
-        Self { state: new_state() }
+        Self { state: new_state(false) }
     }
 
     pub(crate) fn draw(
@@ -254,6 +380,62 @@ fn bold(size: f32) -> FontId {
 
 // --- Piccoli aiuti per disegnare -------------------------------------------------
 
+/// Indicatori IN/OUT nell'intestazione e stato dell'audio: mostrano a colpo
+/// d'occhio se il DAW sta davvero facendo passare la voce da SosaTune.
+fn signal_status(ui: &Ui, painter: &Painter, display: &PitchDisplay, state: &mut GuiState, origin: Pos2) {
+    let (input_peak, output_peak, blocks, bypassed) = display.block_status();
+    let now = ui.input(|i| i.time);
+    if blocks != state.last_blocks {
+        state.last_blocks = blocks;
+        state.last_audio_time = now;
+    }
+    let receiving = now - state.last_audio_time < 0.5;
+    let to_db = |x: f32| if x > 1e-5 { 20.0 * x.log10() } else { -90.0 };
+    let (target_in, target_out) = if receiving { (to_db(input_peak), to_db(output_peak)) } else { (-90.0, -90.0) };
+    // Salgono subito, scendono con calma (come i misuratori veri).
+    let follow = |level: &mut f32, target: f32| {
+        *level = if target > *level { target } else { *level + (target - *level) * 0.12 };
+    };
+    follow(&mut state.level_in_db, target_in);
+    follow(&mut state.level_out_db, target_out);
+
+    let y = origin.y + layout::HEADER_H / 2.0;
+    let bar_left = origin.x + 34.0;
+    let bar_w = 110.0;
+    for (row, (label, db)) in [("IN", state.level_in_db), ("OUT", state.level_out_db)].into_iter().enumerate() {
+        let row_y = y - 8.0 + 16.0 * row as f32;
+        engraved(painter, Pos2::new(origin.x + 26.0, row_y), Align2::RIGHT_CENTER, label, bold(8.0), LEGEND_DIM);
+        let track = Rect::from_min_size(Pos2::new(bar_left, row_y - 3.5), Vec2::new(bar_w, 7.0));
+        painter.rect_filled(track, CornerRadius::same(3), DISPLAY_BG);
+        painter.rect_stroke(track, CornerRadius::same(3), Stroke::new(1.0_f32, Color32::from_black_alpha(200)), StrokeKind::Inside);
+        let fraction = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
+        if fraction > 0.0 {
+            let lit = Rect::from_min_size(track.min, Vec2::new(bar_w * fraction, track.height())).shrink(1.0);
+            let color = if db > -1.0 { METER_RED } else if db > -12.0 { AMBER } else { MINT };
+            painter.rect_filled(lit, CornerRadius::same(2), color);
+        }
+    }
+    let (text, color) = if bypassed && receiving {
+        ("BYPASS dal DAW", AMBER)
+    } else if !receiving {
+        ("nessun audio dal DAW", AMBER)
+    } else if input_peak < 1e-4 {
+        ("silenzio in ingresso", LEGEND_DIM)
+    } else {
+        ("audio OK", MINT)
+    };
+    let status = Rect::from_min_size(Pos2::new(bar_left + bar_w + 10.0, y - 10.0), Vec2::new(150.0, 20.0));
+    ui.interact(status.union(Rect::from_min_size(origin, Vec2::new(bar_w + 40.0, layout::HEADER_H))), Id::new("stato-audio"), Sense::hover())
+        .on_hover_text(
+            "IN: la voce che arriva dal DAW. OUT: la voce dopo SosaTune.\n\
+             \"nessun audio dal DAW\": il programma non sta facendo passare l'audio da SosaTune \
+             (riproduzione ferma, plugin in uno slot non attivo o traccia sbagliata).\n\
+             \"BYPASS dal DAW\": il DAW ha messo il plugin in bypass, la voce passa senza correzione.",
+        );
+    painter.circle_filled(Pos2::new(status.left() + 5.0, y), 3.5, color);
+    painter.text(Pos2::new(status.left() + 14.0, y), Align2::LEFT_CENTER, text, regular(10.0), color);
+}
+
 /// Un pannello: piastra in grafite sfumata, con ombra, filo di luce in alto
 /// e titolo inciso (lo stesso materiale del compressore).
 fn panel(painter: &Painter, rect: Rect, title: &str) {
@@ -293,6 +475,7 @@ fn note_label(note: i32) -> String {
 /// Imposta un parametro dall'interfaccia (avvisando il DAW, cosi' finisce
 /// nell'automazione e nell'annulla/ripeti).
 fn set_param<P: Param>(setter: &ParamSetter, param: &P, value: P::Plain) {
+    diagnostics::CLICK_SETS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     setter.begin_set_parameter(param);
     setter.set_parameter(param, value);
     setter.end_set_parameter(param);
@@ -443,6 +626,7 @@ fn drag_param<P: Param>(
     // cosi' anche i parametri "a scatti" si muovono in modo fluido.
     let memory_id = response.id.with("trascinamento");
     if response.drag_started() {
+        diagnostics::DRAG_STARTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         setter.begin_set_parameter(param);
         let start = (param.unmodulated_normalized_value(), 0.0f32);
         ui.memory_mut(|m| m.data.insert_temp(memory_id, start));
@@ -454,6 +638,7 @@ fn drag_param<P: Param>(
             .memory_mut(|m| m.data.get_temp::<(f32, f32)>(memory_id))
             .unwrap_or((param.unmodulated_normalized_value(), 0.0));
         let moved = moved - response.drag_delta().y * speed;
+        diagnostics::DRAG_SETS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         setter.set_parameter_normalized(param, (start + moved).clamp(0.0, 1.0));
         ui.memory_mut(|m| m.data.insert_temp(memory_id, (start, moved)));
     }

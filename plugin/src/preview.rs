@@ -54,6 +54,8 @@ pub fn render(scale: f32) -> PreviewImage {
             egui::ViewportId::ROOT,
             egui::ViewportInfo { native_pixels_per_point: Some(scale), ..Default::default() },
         );
+        // Il "DAW" finto manda audio: gli indicatori IN/OUT si muovono.
+        display.set_block(0.42, 0.37, false);
         let output = ctx.run(input, |ctx| gui.draw(ctx, &params, &display, &setter));
         for (id, delta) in output.textures_delta.set {
             apply_texture(&mut textures, id, delta);

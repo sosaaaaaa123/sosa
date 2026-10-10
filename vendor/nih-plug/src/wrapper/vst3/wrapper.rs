@@ -908,6 +908,7 @@ impl<P: Vst3Plugin> IAudioProcessor for Wrapper<P> {
         // Always reset the processing status when the plugin gets activated or deactivated
         self.inner.last_process_status.store(ProcessStatus::Normal);
         self.inner.is_processing.store(state, Ordering::SeqCst);
+        crate::sosatune_diag::IS_PROCESSING.store(state, Ordering::Relaxed);
 
         // This function is also used to reset buffers on the plugin, so we should do the same
         // thing. We don't call `reset()` in `setup_processing()` for that same reason.
@@ -990,11 +991,13 @@ impl<P: Vst3Plugin> IAudioProcessor for Wrapper<P> {
 
             // SosaTune: first the changes made in the editor since the last block (see
             // `WrapperGuiContext::raw_set_parameter_normalized()`), then the host's own changes.
+            crate::sosatune_diag::bump(&crate::sosatune_diag::PROCESS_CALLS);
             self.inner.last_process_ns.store(
                 self.inner.created_at.elapsed().as_nanos() as u64,
                 Ordering::SeqCst,
             );
             while let Some((hash, normalized)) = self.inner.gui_param_queue.pop() {
+                crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_FROM_QUEUE);
                 self.inner
                     .set_normalized_value_by_hash(hash, normalized, Some(sample_rate));
             }
@@ -1030,6 +1033,9 @@ impl<P: Vst3Plugin> IAudioProcessor for Wrapper<P> {
                                     total_buffer_len as u32,
                                 );
                                 let value = value as f32;
+                                crate::sosatune_diag::bump(&crate::sosatune_diag::HOST_PARAM_POINTS);
+                                crate::sosatune_diag::LAST_HOST_HASH.store(param_hash, Ordering::Relaxed);
+                                crate::sosatune_diag::LAST_HOST_VALUE_BITS.store(value.to_bits(), Ordering::Relaxed);
 
                                 // MIDI CC messages, channel pressure, and pitch bend are also sent
                                 // as parameter changes

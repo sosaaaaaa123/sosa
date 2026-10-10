@@ -8,7 +8,7 @@
 
 use sosatune_dsp::PitchReport;
 use nih_plug::prelude::AtomicF32;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 /// Quante analisi teniamo per il grafico (~5 secondi a una analisi ogni 5 ms).
 pub const HISTORY_LEN: usize = 1024;
@@ -31,6 +31,14 @@ pub struct PitchDisplay {
     interval_s: AtomicF32,
     /// Riduzione di guadagno del compressore (dB, la piu' alta dell'ultimo blocco).
     gain_reduction_db: AtomicF32,
+    /// Picco in ingresso e in uscita dell'ultimo blocco audio (0..1).
+    input_peak: AtomicF32,
+    output_peak: AtomicF32,
+    /// Quanti blocchi audio ha elaborato il plugin: se non cresce, il DAW non
+    /// sta mandando audio a SosaTune.
+    blocks: AtomicUsize,
+    /// Il DAW ha messo il plugin in bypass.
+    bypassed: AtomicBool,
 }
 
 impl Default for PitchDisplay {
@@ -44,6 +52,10 @@ impl Default for PitchDisplay {
             latency_ms: AtomicF32::new(0.0),
             interval_s: AtomicF32::new(0.005),
             gain_reduction_db: AtomicF32::new(0.0),
+            input_peak: AtomicF32::new(0.0),
+            output_peak: AtomicF32::new(0.0),
+            blocks: AtomicUsize::new(0),
+            bypassed: AtomicBool::new(false),
         }
     }
 }
@@ -65,6 +77,24 @@ impl PitchDisplay {
 
     pub fn set_gain_reduction(&self, db: f32) {
         self.gain_reduction_db.store(db, Ordering::Relaxed);
+    }
+
+    /// Chiamata dal thread audio alla fine di ogni blocco.
+    pub fn set_block(&self, input_peak: f32, output_peak: f32, bypassed: bool) {
+        self.input_peak.store(input_peak, Ordering::Relaxed);
+        self.output_peak.store(output_peak, Ordering::Relaxed);
+        self.bypassed.store(bypassed, Ordering::Relaxed);
+        self.blocks.fetch_add(1, Ordering::Release);
+    }
+
+    /// (picco in ingresso, picco in uscita, blocchi elaborati, bypass).
+    pub fn block_status(&self) -> (f32, f32, usize, bool) {
+        (
+            self.input_peak.load(Ordering::Relaxed),
+            self.output_peak.load(Ordering::Relaxed),
+            self.blocks.load(Ordering::Acquire),
+            self.bypassed.load(Ordering::Relaxed),
+        )
     }
 
     pub fn gain_reduction(&self) -> f32 {

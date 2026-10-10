@@ -189,6 +189,8 @@ impl Plugin for SosaTune {
         };
         let comp_settings = self.params.comp.settings(bypass);
         let mut max_gain_reduction = 0.0f32;
+        let mut input_peak = 0.0f32;
+        let mut output_peak = 0.0f32;
         // Aggiorniamo il grafico solo se la finestra e' aperta.
         let gui_open = self.params.editor_state.is_open();
 
@@ -207,6 +209,9 @@ impl Plugin for SosaTune {
                 *sample = channels[ch][i];
             }
 
+            for &x in &frame[..num_inputs] {
+                input_peak = input_peak.max(x.abs());
+            }
             let report = corrector.process_frame(&mut frame[..num_inputs], &settings);
             compressor.process_frame(&mut frame[..num_inputs], &comp_settings);
             max_gain_reduction = max_gain_reduction.max(compressor.gain_reduction_db());
@@ -214,6 +219,7 @@ impl Plugin for SosaTune {
             for (ch, output) in channels.iter_mut().enumerate() {
                 // Le uscite in piu' (mono -> stereo) ricevono il primo canale.
                 output[i] = if ch < num_inputs { frame[ch] } else { frame[0] };
+                output_peak = output_peak.max(output[i].abs());
             }
             if let (Some(report), true) = (report, gui_open) {
                 self.display.push(&report);
@@ -222,6 +228,8 @@ impl Plugin for SosaTune {
         if gui_open {
             self.display.set_gain_reduction(max_gain_reduction);
         }
+        // Per gli indicatori IN/OUT: dimostrano che l'audio passa davvero dal plugin.
+        self.display.set_block(input_peak, output_peak, bypass);
 
         ProcessStatus::Normal
     }
