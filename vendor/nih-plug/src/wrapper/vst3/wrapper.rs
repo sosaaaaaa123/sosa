@@ -988,6 +988,17 @@ impl<P: Vst3Plugin> IAudioProcessor for Wrapper<P> {
             let mut process_events = self.inner.process_events.borrow_mut();
             process_events.clear();
 
+            // SosaTune: first the changes made in the editor since the last block (see
+            // `WrapperGuiContext::raw_set_parameter_normalized()`), then the host's own changes.
+            self.inner.last_process_ns.store(
+                self.inner.created_at.elapsed().as_nanos() as u64,
+                Ordering::SeqCst,
+            );
+            while let Some((hash, normalized)) = self.inner.gui_param_queue.pop() {
+                self.inner
+                    .set_normalized_value_by_hash(hash, normalized, Some(sample_rate));
+            }
+
             // First we'll go through the parameter changes. This may also include MIDI CC messages
             // if the plugin supports those
             if let Some(param_changes) = data.input_param_changes.upgrade() {

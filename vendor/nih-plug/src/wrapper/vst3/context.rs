@@ -158,32 +158,38 @@ impl<P: Vst3Plugin> GuiContext for WrapperGuiContext<P> {
     }
 
     unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
-        match &*self.inner.component_handler.borrow() {
-            Some(handler) => match self.inner.param_ptr_to_hash.get(&param) {
-                Some(hash) => {
-                    // Only update the parameters manually if the host is not processing audio. If
-                    // the plugin is currently processing audio, the host will pass this change back
-                    // to the plugin in the audio callback. This also prevents the values from
-                    // changing in the middle of the process callback, which would be unsound.
-                    // FIXME: So this doesn't work for REAPER, because they just silently stop
-                    //        processing audio when you bypass the plugin. Great. We can add a time
-                    //        based heuristic to work around this in the meantime.
-                    if !self.inner.is_processing.load(Ordering::SeqCst) {
-                        self.inner.set_normalized_value_by_hash(
-                            *hash,
-                            normalized,
-                            self.inner
-                                .current_buffer_config
-                                .load()
-                                .map(|c| c.sample_rate),
-                        );
-                    }
+        match self.inner.param_ptr_to_hash.get(&param) {
+            Some(hash) => {
+                // SosaTune: the plugin applies editor changes itself instead of relying on the
+                // host to send them back to the processor (some hosts and plugin containers never
+                // do, and then the controls appear dead):
+                // - not processing, or the host stopped calling `process()` (transport stopped,
+                //   REAPER's bypass...): apply right away;
+                // - processing: queue the change, it is applied at the start of the next process
+                //   call (never in the middle of one).
+                let now_ns = self.inner.created_at.elapsed().as_nanos() as u64;
+                let last_ns = self.inner.last_process_ns.load(Ordering::SeqCst);
+                let idle = now_ns.saturating_sub(last_ns) > 150_000_000;
+                if !self.inner.is_processing.load(Ordering::SeqCst) || idle {
+                    self.inner.set_normalized_value_by_hash(
+                        *hash,
+                        normalized,
+                        self.inner
+                            .current_buffer_config
+                            .load()
+                            .map(|c| c.sample_rate),
+                    );
+                } else if self.inner.gui_param_queue.push((*hash, normalized)).is_err() {
+                    nih_debug_assert_failure!("The editor parameter queue is full");
+                }
 
+                // Tell the host about the change (automation, undo, saving). If the host never
+                // gave us a component handler the value has still been applied above.
+                if let Some(handler) = &*self.inner.component_handler.borrow() {
                     handler.perform_edit(*hash, normalized as f64);
                 }
-                None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
-            },
-            None => nih_debug_assert_failure!("Component handler not yet set"),
+            }
+            None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
         }
 
         #[cfg(debug_assertions)]

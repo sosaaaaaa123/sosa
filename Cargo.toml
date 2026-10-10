@@ -17,6 +17,7 @@ resolver = "2"
 # - CLAP: dopo il caricamento di un progetto l'host rilegge i valori dei parametri
 # - CLAP: ingresso mono -> uscita stereo dichiarato correttamente
 # - CLAP e VST3: dati di stato corrotti non fanno piu' chiudere il DAW
+# - VST3: le manopole funzionano anche negli host/contenitori che non rimandano le modifiche
 [patch."https://github.com/robbert-vdh/nih-plug.git"]
 nih_plug = { path = "vendor/nih-plug" }
 

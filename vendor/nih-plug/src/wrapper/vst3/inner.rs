@@ -1,11 +1,12 @@
 use atomic_refcell::AtomicRefCell;
 use crossbeam::atomic::AtomicCell;
+use crossbeam::queue::ArrayQueue;
 use crossbeam::channel::{self, SendTimeoutError};
 use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use vst3_sys::base::{kInvalidArgument, kResultOk, tresult};
 use vst3_sys::vst::{IComponentHandler, RestartFlags};
 
@@ -63,6 +64,16 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// Whether the plugin is currently processing audio. In other words, the last state
     /// `IAudioProcessor::setActive()` has been called with.
     pub is_processing: AtomicBool,
+    /// SosaTune: parameter changes made from the editor while the plugin is processing. They are
+    /// applied at the start of the next process call, so the controls keep working even in hosts
+    /// (or plugin containers) that never send the edits back to the processor.
+    pub gui_param_queue: ArrayQueue<(u32, f32)>,
+    /// SosaTune: reference point for `last_process_ns`.
+    pub created_at: Instant,
+    /// SosaTune: when the host last called `process()`, in nanoseconds since `created_at`. Used to
+    /// detect hosts that keep the plugin active but stop calling `process()` (e.g. with the
+    /// transport stopped), so editor changes can still be applied right away.
+    pub last_process_ns: AtomicU64,
     /// The current audio IO layout. Modified through `IAudioProcessor::setBusArrangements()` after
     /// matching the proposed bus arrangement to one of the supported ones. The plugin's first audio
     /// IO layout is chosen as the default. Because of the way VST3 works it's not possible to
@@ -288,6 +299,9 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             event_loop: AtomicRefCell::new(None),
 
             is_processing: AtomicBool::new(false),
+            gui_param_queue: ArrayQueue::new(4096),
+            created_at: Instant::now(),
+            last_process_ns: AtomicU64::new(0),
             // Some hosts, like the current version of Bitwig and Ardour at the time of writing,
             // will try using the plugin's default not yet initialized bus arrangement. Because of
             // that, we'll always initialize this configuration even before the host requests a
