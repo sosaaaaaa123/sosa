@@ -46,12 +46,16 @@ jobs:
       # Lo zip finisce anche nel ramo "build" del repository: si scarica da
       # GitHub con un clic, senza dover aprire la scheda Actions.
       - name: Pubblica lo zip nel ramo build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cp SosaTune-macOS.zip "$RUNNER_TEMP/"
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git switch --orphan build-output
-          cp "$RUNNER_TEMP/SosaTune-macOS.zip" .
+          set -x
+          OUT="$RUNNER_TEMP/build-branch"
+          mkdir -p "$OUT"
+          cp SosaTune-macOS.zip "$OUT/"
+          cd "$OUT"
+          git init -q -b build
           git add SosaTune-macOS.zip
-          git commit -m "SosaTune per Mac (${GITHUB_SHA::7})"
-          git push --force origin HEAD:build
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "SosaTune per Mac (${GITHUB_SHA::7})"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" build:build
