@@ -738,28 +738,44 @@ fn toggle_note(params: &SosaTuneParams, setter: &ParamSetter, pc: usize, notes: 
 // --- Compressore ottico a valvola ----------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
-// --- Compressore: pannello da rack analogico -----------------------------------
+// --- Compressore: pannello "hardware" nella palette di SosaTune ----------------
 //
 // Un apparecchio da studio immaginario, disegnato per SosaTune: pannello in
-// metallo scuro con le scritte incise, strumento ad ago per la riduzione di
-// guadagno, interruttore a levetta con spia, manopole a gonna con la scala
-// incisa attorno.
+// grafite, strumento ad ago retroilluminato, pulsante di accensione luminoso,
+// tasti retroilluminati per la modalita', manopole godronate con l'arco dorato
+// del valore e i numeri in piccoli display incassati.
 
-const PLATE_TOP: Color32 = Color32::from_rgb(0x34, 0x32, 0x2f);
-const PLATE_BOTTOM: Color32 = Color32::from_rgb(0x22, 0x21, 0x1f);
-const PLATE_EDGE: Color32 = Color32::from_rgb(0x48, 0x45, 0x40);
-const EAR: Color32 = Color32::from_rgb(0x1a, 0x19, 0x18);
-const ENGRAVING: Color32 = Color32::from_rgb(0xd8, 0xd0, 0xbc);
-const ENGRAVING_DIM: Color32 = Color32::from_rgb(0x8f, 0x89, 0x7c);
-const METER_FACE: Color32 = Color32::from_rgb(0xf1, 0xe4, 0xc2);
-const METER_INK: Color32 = Color32::from_rgb(0x2b, 0x24, 0x1a);
-const METER_RED: Color32 = Color32::from_rgb(0xb8, 0x3a, 0x2a);
-const LAMP_ON: Color32 = Color32::from_rgb(0xff, 0xb3, 0x40);
-const LAMP_OFF: Color32 = Color32::from_rgb(0x3a, 0x2c, 0x1e);
+/// Posizioni dei comandi del compressore, relative all'angolo del pannello
+/// (usate dal disegno e dalle prove dell'interfaccia).
+pub(crate) mod comp_layout {
+    /// Centro del pulsante di accensione.
+    pub const POWER: (f32, f32) = (266.0, 46.0);
+    /// Centro del tasto di ogni modalita' (riga 0, 1, 2).
+    pub const fn mode(row: usize) -> (f32, f32) {
+        (266.0, 96.0 + 19.0 * row as f32)
+    }
+    /// Centro di ogni manopola (0 = soglia ... 6 = uscita).
+    pub const fn knob(i: usize) -> (f32, f32) {
+        (378.0 + 78.0 * i as f32, 62.0)
+    }
+    pub const KNOB_RADIUS: f32 = 22.0;
+}
 
-/// Testo inciso nel metallo: un'ombra scura sotto e il testo chiaro sopra.
+const PLATE_TOP: Color32 = Color32::from_rgb(0x25, 0x27, 0x2e);
+const PLATE_BOTTOM: Color32 = Color32::from_rgb(0x16, 0x17, 0x1c);
+const PLATE_EDGE: Color32 = Color32::from_rgb(0x33, 0x36, 0x40);
+const LEGEND: Color32 = Color32::from_rgb(0xc9, 0xcc, 0xd6);
+const LEGEND_DIM: Color32 = Color32::from_rgb(0x6c, 0x71, 0x7e);
+const METER_LIGHT: Color32 = Color32::from_rgb(0xfb, 0xed, 0xc9);
+const METER_EDGE: Color32 = Color32::from_rgb(0xd9, 0xc2, 0x8c);
+const METER_INK: Color32 = Color32::from_rgb(0x2a, 0x22, 0x18);
+const METER_RED: Color32 = Color32::from_rgb(0xc2, 0x3b, 0x26);
+const AMBER: Color32 = Color32::from_rgb(0xff, 0xb4, 0x3c);
+const DISPLAY_BG: Color32 = Color32::from_rgb(0x0b, 0x0c, 0x0f);
+
+/// Testo inciso: un filo d'ombra sotto e il testo sopra.
 fn engraved(painter: &Painter, pos: Pos2, align: Align2, text: &str, font: FontId, color: Color32) {
-    painter.text(pos + Vec2::new(0.0, 1.0), align, text, font.clone(), Color32::from_black_alpha(110));
+    painter.text(pos + Vec2::new(0.0, 1.0), align, text, font.clone(), Color32::from_black_alpha(120));
     painter.text(pos, align, text, font, color);
 }
 
@@ -775,18 +791,41 @@ fn vertical_gradient(painter: &Painter, rect: Rect, top: Color32, bottom: Color3
     painter.add(Shape::mesh(mesh));
 }
 
-/// Vite del pannello, con la fessura inclinata.
-fn screw(painter: &Painter, center: Pos2, slot_angle: f32) {
-    painter.circle_filled(center, 5.0, Color32::from_rgb(0x6d, 0x69, 0x62));
-    painter.circle_stroke(center, 5.0, Stroke::new(1.0_f32, Color32::from_rgb(0x12, 0x11, 0x10)));
-    painter.circle_filled(center - Vec2::new(1.2, 1.2), 2.5, Color32::from_white_alpha(28));
-    painter.line_segment(
-        [polar(center, 3.6, slot_angle), polar(center, 3.6, slot_angle + PI)],
-        Stroke::new(1.4_f32, Color32::from_rgb(0x22, 0x20, 0x1d)),
-    );
+/// Un disco con sfumatura dal punto `light` (in genere in alto a sinistra,
+/// da dove arriva la luce) verso il bordo.
+fn shaded_disc(painter: &Painter, center: Pos2, radius: f32, light: Vec2, inner: Color32, outer: Color32) {
+    let mut mesh = egui::Mesh::default();
+    mesh.colored_vertex(center + light, inner);
+    let segments = 64;
+    for i in 0..=segments {
+        let a = i as f32 / segments as f32 * 2.0 * PI;
+        mesh.colored_vertex(center + Vec2::new(a.cos(), a.sin()) * radius, outer);
+    }
+    for i in 0..segments {
+        mesh.add_triangle(0, i + 1, i + 2);
+    }
+    painter.add(Shape::mesh(mesh));
 }
 
-/// Manopola a gonna con la scala incisa attorno.
+/// Una vite a croce incassata.
+fn screw(painter: &Painter, center: Pos2) {
+    painter.circle_filled(center, 4.5, Color32::from_black_alpha(140));
+    shaded_disc(painter, center, 3.8, Vec2::new(-1.2, -1.2), Color32::from_rgb(0x8a, 0x8d, 0x96), Color32::from_rgb(0x3a, 0x3d, 0x45));
+    let s = Stroke::new(1.0_f32, Color32::from_rgb(0x1e, 0x20, 0x25));
+    painter.line_segment([center - Vec2::new(2.2, 0.0), center + Vec2::new(2.2, 0.0)], s);
+    painter.line_segment([center - Vec2::new(0.0, 2.2), center + Vec2::new(0.0, 2.2)], s);
+}
+
+/// Display incassato con il valore.
+fn value_display(painter: &Painter, center: Pos2, text: &str, color: Color32) {
+    let rect = Rect::from_center_size(center, Vec2::new(66.0, 18.0));
+    painter.rect_filled(rect.translate(Vec2::new(0.0, 1.0)), CornerRadius::same(5), Color32::from_white_alpha(10));
+    painter.rect_filled(rect, CornerRadius::same(5), DISPLAY_BG);
+    painter.rect_stroke(rect, CornerRadius::same(5), Stroke::new(1.0_f32, Color32::from_black_alpha(200)), StrokeKind::Inside);
+    painter.text(center, Align2::CENTER_CENTER, text, regular(10.5), color);
+}
+
+/// Manopola godronata con scala, arco del valore e display.
 #[allow(clippy::too_many_arguments)]
 fn hardware_knob<P: Param>(
     ui: &Ui,
@@ -797,118 +836,128 @@ fn hardware_knob<P: Param>(
     label: &str,
     ends: (&str, &str),
     help: &str,
-    readout: Option<String>,
+    bipolar: bool,
+    auto: bool,
 ) {
-    let radius = 21.0;
-    let hit = Rect::from_center_size(center, Vec2::splat(2.0 * radius + 16.0));
+    let radius = comp_layout::KNOB_RADIUS;
+    let hit = Rect::from_center_size(center, Vec2::splat(2.0 * radius + 18.0));
     let response = drag_param(ui, setter, param, hit, label, help);
     let active = response.hovered() || response.dragged();
 
     let start = 0.75 * PI;
     let sweep = 1.5 * PI;
-    // Scala incisa: 11 tacche, piu' lunghe agli estremi e al centro.
-    for i in 0..=10 {
-        let a = start + sweep * i as f32 / 10.0;
-        let long = i == 0 || i == 5 || i == 10;
-        let inner = radius + 4.0;
-        let outer = radius + if long { 9.0 } else { 7.0 };
-        painter.line_segment(
-            [polar(center, inner, a), polar(center, outer, a)],
-            Stroke::new(if long { 1.4_f32 } else { 1.0_f32 }, ENGRAVING_DIM),
-        );
-    }
-    // Valori agli estremi della scala, appena sotto le tacche.
-    engraved(painter, polar(center, radius + 9.0, start) + Vec2::new(0.0, 9.0), Align2::CENTER_CENTER, ends.0, regular(8.0), ENGRAVING_DIM);
-    engraved(painter, polar(center, radius + 9.0, start + sweep) + Vec2::new(0.0, 9.0), Align2::CENTER_CENTER, ends.1, regular(8.0), ENGRAVING_DIM);
-
-    // Ombra, gonna, cappuccio con riflesso, indice.
-    painter.circle_filled(center + Vec2::new(0.0, 2.5), radius + 1.0, Color32::from_black_alpha(110));
-    painter.circle_filled(center, radius, Color32::from_rgb(0x15, 0x14, 0x13));
-    painter.circle_stroke(center, radius, Stroke::new(1.0_f32, Color32::from_rgb(0x4a, 0x47, 0x42)));
-    let cap = radius * 0.66;
-    painter.circle_filled(center, cap, Color32::from_rgb(0x2a, 0x28, 0x26));
-    painter.circle_stroke(center, cap, Stroke::new(1.0_f32, Color32::from_rgb(0x55, 0x52, 0x4c)));
-    arc(painter, center, cap - 2.0, 1.05 * PI, 1.55 * PI, Stroke::new(2.0_f32, Color32::from_white_alpha(30)));
     let value = param.modulated_normalized_value();
     let angle = start + value * sweep;
-    painter.line_segment(
-        [polar(center, cap + 1.0, angle), polar(center, radius - 2.0, angle)],
-        Stroke::new(2.6_f32, if active { GOLD } else { ENGRAVING }),
-    );
-    painter.circle_filled(polar(center, cap * 0.55, angle), 1.6, if active { GOLD } else { ENGRAVING_DIM });
 
-    engraved(painter, center - Vec2::new(0.0, radius + 22.0), Align2::CENTER_CENTER, label, bold(9.0), ENGRAVING);
-    let text = readout.unwrap_or_else(|| param.normalized_value_to_string(value, true));
-    engraved(
-        painter,
-        center + Vec2::new(0.0, radius + 30.0),
-        Align2::CENTER_CENTER,
-        &text,
-        regular(if active { 11.0 } else { 10.0 }),
-        if active { GOLD } else { ENGRAVING },
-    );
+    // Scala: tacche fini, piu' lunghe agli estremi e al centro.
+    for i in 0..=20 {
+        let a = start + sweep * i as f32 / 20.0;
+        let major = i % 5 == 0;
+        painter.line_segment(
+            [polar(center, radius + 6.0, a), polar(center, radius + if major { 10.0 } else { 8.0 }, a)],
+            Stroke::new(if major { 1.3_f32 } else { 0.8_f32 }, if major { LEGEND_DIM } else { TRACK }),
+        );
+    }
+    // Arco dorato del valore (dal centro per i comandi +/-).
+    let from = if bipolar { 1.5 * PI } else { start };
+    let gold = if auto { GOLD.gamma_multiply(0.35) } else { GOLD };
+    if (angle - from).abs() > 0.01 {
+        arc(painter, center, radius + 4.0, from.min(angle), from.max(angle), Stroke::new(2.0_f32, gold));
+    }
+    engraved(painter, polar(center, radius + 13.0, start) + Vec2::new(-1.0, 6.0), Align2::CENTER_CENTER, ends.0, regular(7.5), LEGEND_DIM);
+    engraved(painter, polar(center, radius + 13.0, start + sweep) + Vec2::new(1.0, 6.0), Align2::CENTER_CENTER, ends.1, regular(7.5), LEGEND_DIM);
+
+    // Ombra portata, gonna godronata, cappuccio lucido, indice dorato.
+    painter.circle_filled(center + Vec2::new(0.0, 3.0), radius + 1.5, Color32::from_black_alpha(130));
+    shaded_disc(painter, center, radius, Vec2::new(-6.0, -8.0), Color32::from_rgb(0x4a, 0x4d, 0x57), Color32::from_rgb(0x16, 0x17, 0x1b));
+    for i in 0..56 {
+        let a = i as f32 / 56.0 * 2.0 * PI + angle;
+        let light = (a - 1.25 * PI).cos() * 0.5 + 0.5; // piu' chiara in alto a sinistra
+        let c = Color32::from_white_alpha((10.0 + 30.0 * light) as u8);
+        painter.line_segment([polar(center, radius - 3.5, a), polar(center, radius - 0.5, a)], Stroke::new(1.0_f32, c));
+    }
+    painter.circle_stroke(center, radius, Stroke::new(1.0_f32, Color32::from_black_alpha(180)));
+    let cap = radius * 0.64;
+    shaded_disc(painter, center, cap, Vec2::new(-3.5, -5.0), Color32::from_rgb(0x5c, 0x60, 0x6b), Color32::from_rgb(0x24, 0x26, 0x2c));
+    painter.circle_stroke(center, cap, Stroke::new(1.0_f32, Color32::from_black_alpha(150)));
+    arc(painter, center, cap - 1.5, 1.1 * PI, 1.45 * PI, Stroke::new(1.5_f32, Color32::from_white_alpha(45)));
+    let pointer = if active { Color32::from_rgb(0xff, 0xd3, 0x7a) } else { GOLD };
+    painter.line_segment([polar(center, radius - 5.0, angle), polar(center, cap * 0.35, angle)], Stroke::new(2.4_f32, pointer));
+    painter.circle_filled(polar(center, radius - 5.0, angle), 1.2, pointer);
+
+    engraved(painter, center - Vec2::new(0.0, radius + 21.0), Align2::CENTER_CENTER, label, bold(9.5), if active { TEXT } else { LEGEND });
+    let (text, color) = if auto {
+        ("AUTO".to_owned(), LEGEND_DIM)
+    } else {
+        (param.normalized_value_to_string(value, true), if active { GOLD } else { AMBER.gamma_multiply(0.92) })
+    };
+    value_display(painter, center + Vec2::new(0.0, radius + 30.0), &text, color);
 }
 
 /// Strumento ad ago della riduzione di guadagno (da 0 a 20 dB).
 fn gain_reduction_meter(painter: &Painter, rect: Rect, db: f32, lit: bool) {
-    // Cornice e vetro.
-    painter.rect_filled(rect.expand(3.0), CornerRadius::same(5), Color32::from_rgb(0x0b, 0x0b, 0x0a));
-    painter.rect_stroke(rect.expand(3.0), CornerRadius::same(5), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Outside);
-    let face = if lit { METER_FACE } else { METER_FACE.gamma_multiply(0.55) };
-    vertical_gradient(painter, rect, face, face.gamma_multiply(0.86));
+    // Cornice metallica e vetro.
+    let bezel = rect.expand(5.0);
+    painter.rect_filled(bezel.translate(Vec2::new(0.0, 2.0)), CornerRadius::same(9), Color32::from_black_alpha(140));
+    painter.rect_filled(bezel, CornerRadius::same(9), Color32::from_rgb(0x2c, 0x2e, 0x35));
+    painter.rect_stroke(bezel, CornerRadius::same(9), Stroke::new(1.0_f32, Color32::from_rgb(0x4a, 0x4d, 0x57)), StrokeKind::Inside);
+    painter.rect_filled(rect.expand(1.0), CornerRadius::same(5), Color32::BLACK);
 
-    // L'ago ruota attorno a un perno sotto il quadrante.
-    let pivot = Pos2::new(rect.center().x, rect.bottom() + 34.0);
-    let scale_radius = rect.height() + 2.0;
-    let left = -0.30 * PI; // 20 dB
-    let right = 0.30 * PI; // 0 dB
-    // Scala compressa verso i valori alti, come sugli strumenti veri.
+    // Quadrante retroilluminato: piu' luminoso in basso al centro, dove sta la lampadina.
+    let clipped = painter.with_clip_rect(rect);
+    let (light, edge) = if lit { (METER_LIGHT, METER_EDGE) } else { (METER_LIGHT.gamma_multiply(0.45), METER_EDGE.gamma_multiply(0.4)) };
+    clipped.rect_filled(rect, CornerRadius::same(4), edge);
+    shaded_disc(&clipped, Pos2::new(rect.center().x, rect.bottom() + 10.0), rect.width() * 0.75, Vec2::ZERO, light, edge);
+
+    let pivot = Pos2::new(rect.center().x, rect.bottom() + 30.0);
+    let scale_radius = rect.height() - 4.0;
+    let left = -0.31 * PI; // 20 dB
+    let right = 0.31 * PI; // 0 dB
     let angle_of = |db: f32| {
         let p = (db.clamp(0.0, 20.0) / 20.0).powf(0.62);
         right + (left - right) * p
     };
     let dial = |a: f32, r: f32| pivot + Vec2::new(a.sin() * r, -a.cos() * r);
-    let clipped = painter.with_clip_rect(rect);
-    // Arco della scala (rosso oltre 10 dB).
-    let steps = 40;
+    let arc_r = scale_radius - 26.0;
+    // Arco della scala, piu' spesso e rosso oltre 10 dB.
+    let steps = 60;
     for i in 0..steps {
         let d0 = 20.0 * i as f32 / steps as f32;
         let d1 = 20.0 * (i + 1) as f32 / steps as f32;
-        let color = if d0 >= 10.0 { METER_RED } else { METER_INK };
+        let red = d0 >= 10.0;
         clipped.line_segment(
-            [dial(angle_of(d0), scale_radius - 30.0), dial(angle_of(d1), scale_radius - 30.0)],
-            Stroke::new(if d0 >= 10.0 { 2.2_f32 } else { 1.2_f32 }, color),
+            [dial(angle_of(d0), arc_r + if red { 1.5 } else { 0.0 }), dial(angle_of(d1), arc_r + if red { 1.5 } else { 0.0 })],
+            Stroke::new(if red { 3.5_f32 } else { 1.2_f32 }, if red { METER_RED } else { METER_INK }),
         );
+    }
+    // Tacche secondarie e principali con i numeri.
+    for i in 0..=20 {
+        let a = angle_of(i as f32);
+        clipped.line_segment([dial(a, arc_r), dial(a, arc_r + 4.0)], Stroke::new(0.8_f32, METER_INK.gamma_multiply(0.8)));
     }
     for (value, label) in [(0.0, "0"), (1.0, "1"), (2.0, "2"), (3.0, "3"), (5.0, "5"), (7.0, "7"), (10.0, "10"), (15.0, "15"), (20.0, "20")] {
         let a = angle_of(value);
         let color = if value >= 10.0 { METER_RED } else { METER_INK };
-        clipped.line_segment([dial(a, scale_radius - 30.0), dial(a, scale_radius - 23.0)], Stroke::new(1.3_f32, color));
-        clipped.text(dial(a, scale_radius - 16.0), Align2::CENTER_CENTER, label, regular(8.5), color);
+        clipped.line_segment([dial(a, arc_r), dial(a, arc_r + 8.0)], Stroke::new(1.4_f32, color));
+        clipped.text(dial(a, arc_r + 16.0), Align2::CENTER_CENTER, label, bold(9.0), color);
     }
-    clipped.text(
-        Pos2::new(rect.center().x, rect.bottom() - 26.0),
-        Align2::CENTER_CENTER,
-        "RIDUZIONE dB",
-        bold(8.0),
-        METER_INK.gamma_multiply(0.85),
-    );
-    // Ago e perno.
+    clipped.text(Pos2::new(rect.center().x, rect.bottom() - 30.0), Align2::CENTER_CENTER, "COMPRESSIONE", bold(7.5), METER_INK.gamma_multiply(0.75));
+    clipped.text(Pos2::new(rect.center().x, rect.bottom() - 20.0), Align2::CENTER_CENTER, "dB", regular(7.5), METER_INK.gamma_multiply(0.75));
+
+    // Ago con ombra, poi il coperchio del perno.
     let a = angle_of(db);
-    clipped.line_segment(
-        [dial(a, 26.0) + Vec2::new(1.5, 1.5), dial(a, scale_radius - 8.0) + Vec2::new(1.5, 1.5)],
-        Stroke::new(1.6_f32, Color32::from_black_alpha(45)),
-    );
-    clipped.line_segment([dial(a, 26.0), dial(a, scale_radius - 8.0)], Stroke::new(1.4_f32, Color32::from_rgb(0x1a, 0x16, 0x12)));
-    let hub = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - 12.0), rect.right_bottom());
-    clipped.rect_filled(hub, CornerRadius::ZERO, Color32::from_rgb(0x1c, 0x1a, 0x17));
-    // Riflesso del vetro.
-    let glare = Rect::from_min_max(rect.left_top(), Pos2::new(rect.right(), rect.top() + rect.height() * 0.35));
-    vertical_gradient(&clipped, glare, Color32::from_white_alpha(26), Color32::from_white_alpha(0));
-    if lit {
-        // Retroilluminazione calda.
-        painter.rect_stroke(rect, CornerRadius::same(2), Stroke::new(2.0_f32, Color32::from_rgba_unmultiplied(255, 170, 60, 30)), StrokeKind::Inside);
-    }
+    clipped.line_segment([dial(a, 30.0) + Vec2::new(2.0, 2.0), dial(a, scale_radius - 2.0) + Vec2::new(2.0, 2.0)], Stroke::new(1.8_f32, Color32::from_black_alpha(40)));
+    clipped.line_segment([dial(a, 30.0), dial(a, scale_radius - 2.0)], Stroke::new(1.5_f32, Color32::from_rgb(0x1e, 0x17, 0x10)));
+    shaded_disc(&clipped, Pos2::new(rect.center().x, rect.bottom() + 4.0), 16.0, Vec2::new(-3.0, -6.0), Color32::from_rgb(0x4a, 0x4d, 0x57), Color32::from_rgb(0x15, 0x16, 0x1a));
+
+    // Riflesso del vetro, in diagonale.
+    let mut glare = egui::Mesh::default();
+    glare.colored_vertex(rect.left_top(), Color32::from_white_alpha(38));
+    glare.colored_vertex(Pos2::new(rect.left() + rect.width() * 0.55, rect.top()), Color32::from_white_alpha(0));
+    glare.colored_vertex(Pos2::new(rect.left(), rect.top() + rect.height() * 0.7), Color32::from_white_alpha(0));
+    glare.add_triangle(0, 1, 2);
+    clipped.add(Shape::mesh(glare));
+    clipped.rect_stroke(rect, CornerRadius::same(4), Stroke::new(2.0_f32, Color32::from_black_alpha(60)), StrokeKind::Inside);
 }
 
 fn compressor(
@@ -923,58 +972,50 @@ fn compressor(
     let comp = &params.comp;
     let on = comp.enabled.value();
     let rect = Rect::from_min_size(origin, Vec2::new(EDITOR_WIDTH as f32 - 2.0 * layout::MARGIN, layout::COMP_H));
+    let at = |p: (f32, f32)| rect.min + Vec2::new(p.0, p.1);
     let x = |dx: f32| rect.left() + dx;
     let y = |dy: f32| rect.top() + dy;
 
-    // Pannello: ombra, metallo sfumato, spazzolatura, bordo, "orecchie" del rack.
-    painter.rect_filled(rect.translate(Vec2::new(0.0, 3.0)), CornerRadius::same(6), Color32::from_black_alpha(120));
-    painter.rect_filled(rect, CornerRadius::same(6), PLATE_BOTTOM);
-    vertical_gradient(painter, rect.shrink(2.0), PLATE_TOP, PLATE_BOTTOM);
-    let mut line_y = rect.top() + 4.0;
-    let mut i = 0;
-    while line_y < rect.bottom() - 3.0 {
-        let alpha = if i % 4 == 0 { 5 } else { 2 };
-        painter.line_segment(
-            [Pos2::new(rect.left() + 20.0, line_y), Pos2::new(rect.right() - 20.0, line_y)],
-            Stroke::new(1.0_f32, Color32::from_white_alpha(alpha)),
-        );
-        line_y += 3.0;
-        i += 1;
-    }
-    painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Inside);
-    for ear in [
-        Rect::from_min_max(rect.min, Pos2::new(x(18.0), rect.bottom())),
-        Rect::from_min_max(Pos2::new(rect.right() - 18.0, rect.top()), rect.max),
+    // Pannello: ombra, grafite sfumata, filo di luce in alto, viti.
+    painter.rect_filled(rect.translate(Vec2::new(0.0, 4.0)), CornerRadius::same(12), Color32::from_black_alpha(110));
+    painter.rect_filled(rect, CornerRadius::same(12), PLATE_BOTTOM);
+    vertical_gradient(painter, rect.shrink(4.0), PLATE_TOP, PLATE_BOTTOM);
+    painter.rect_stroke(rect, CornerRadius::same(12), Stroke::new(1.0_f32, PLATE_EDGE), StrokeKind::Inside);
+    painter.line_segment(
+        [Pos2::new(rect.left() + 14.0, rect.top() + 1.5), Pos2::new(rect.right() - 14.0, rect.top() + 1.5)],
+        Stroke::new(1.0_f32, Color32::from_white_alpha(22)),
+    );
+    for corner in [
+        Pos2::new(x(11.0), y(11.0)),
+        Pos2::new(rect.right() - 11.0, y(11.0)),
+        Pos2::new(x(11.0), rect.bottom() - 11.0),
+        Pos2::new(rect.right() - 11.0, rect.bottom() - 11.0),
     ] {
-        painter.rect_filled(ear.shrink(1.0), CornerRadius::same(5), EAR);
-        screw(painter, Pos2::new(ear.center().x, rect.top() + 18.0), 0.6);
-        screw(painter, Pos2::new(ear.center().x, rect.bottom() - 18.0), 2.1);
+        screw(painter, corner);
     }
 
-    // Strumento ad ago. Si muove con calma, come quelli veri (~300 ms).
+    // Strumento ad ago: si muove con calma, come quelli veri (~300 ms).
     let reading = if on { display.gain_reduction() } else { 0.0 };
     state.meter_db += (reading - state.meter_db) * 0.3;
-    let meter = Rect::from_min_max(Pos2::new(x(34.0), y(14.0)), Pos2::new(x(190.0), y(118.0)));
+    let meter = Rect::from_min_max(Pos2::new(x(30.0), y(16.0)), Pos2::new(x(200.0), y(116.0)));
     ui.interact(meter, Id::new("compressore-indicatore"), Sense::hover())
         .on_hover_text(format!(
             "Di quanti dB il compressore sta abbassando la voce in questo momento: {:.1} dB.",
             state.meter_db
         ));
     gain_reduction_meter(painter, meter, state.meter_db, on);
-    engraved(painter, Pos2::new(meter.center().x, y(136.0)), Align2::CENTER_CENTER, "COMPRESSORE A VALVOLA", bold(9.0), ENGRAVING);
+    engraved(painter, Pos2::new(meter.center().x, y(136.0)), Align2::CENTER_CENTER, "COMPRESSORE A VALVOLA", bold(9.5), GOLD);
 
     // Separatori incisi.
-    for sx in [204.0, 314.0] {
-        painter.line_segment([Pos2::new(x(sx), y(14.0)), Pos2::new(x(sx), y(136.0))], Stroke::new(1.0_f32, Color32::from_black_alpha(140)));
-        painter.line_segment([Pos2::new(x(sx + 1.0), y(14.0)), Pos2::new(x(sx + 1.0), y(136.0))], Stroke::new(1.0_f32, Color32::from_white_alpha(14)));
+    for sx in [218.0, 316.0] {
+        painter.line_segment([Pos2::new(x(sx), y(18.0)), Pos2::new(x(sx), y(132.0))], Stroke::new(1.0_f32, Color32::from_black_alpha(150)));
+        painter.line_segment([Pos2::new(x(sx + 1.0), y(18.0)), Pos2::new(x(sx + 1.0), y(132.0))], Stroke::new(1.0_f32, Color32::from_white_alpha(12)));
     }
 
-    // Interruttore a levetta con spia.
-    let toggle = Pos2::new(x(236.0), y(48.0));
-    let lamp = Pos2::new(x(282.0), y(48.0));
-    let switch_hit = Rect::from_center_size(Pos2::new(x(258.0), y(48.0)), Vec2::new(84.0, 64.0));
+    // Pulsante di accensione luminoso.
+    let power = at(comp_layout::POWER);
     let response = ui
-        .interact(switch_hit, Id::new("compressore-acceso"), Sense::click())
+        .interact(Rect::from_center_size(power, Vec2::splat(46.0)), Id::new("compressore-acceso"), Sense::click())
         .on_hover_cursor(CursorIcon::PointingHand)
         .on_hover_text(
             "Accende il compressore ottico a valvola, dopo la correzione: \
@@ -983,40 +1024,41 @@ fn compressor(
     if response.clicked() {
         set_param(setter, &comp.enabled, !on);
     }
-    engraved(painter, toggle - Vec2::new(0.0, 30.0), Align2::CENTER_CENTER, "ACCESO", bold(8.0), if on { ENGRAVING } else { ENGRAVING_DIM });
-    engraved(painter, toggle + Vec2::new(0.0, 30.0), Align2::CENTER_CENTER, "SPENTO", bold(8.0), if on { ENGRAVING_DIM } else { ENGRAVING });
-    painter.circle_filled(toggle, 10.0, Color32::from_rgb(0x8a, 0x86, 0x7e));
-    painter.circle_stroke(toggle, 10.0, Stroke::new(1.0_f32, Color32::from_rgb(0x2a, 0x28, 0x25)));
-    painter.circle_filled(toggle, 6.0, Color32::from_rgb(0x3a, 0x38, 0x34));
-    let tip = toggle + Vec2::new(0.0, if on { -18.0 } else { 18.0 });
-    painter.line_segment([toggle + Vec2::new(1.5, 2.0), tip + Vec2::new(1.5, 2.0)], Stroke::new(6.0_f32, Color32::from_black_alpha(90)));
-    painter.line_segment([toggle, tip], Stroke::new(5.0_f32, Color32::from_rgb(0xc9, 0xc4, 0xb8)));
-    painter.circle_filled(tip, 4.0, if response.hovered() { GOLD } else { Color32::from_rgb(0xe4, 0xdf, 0xd3) });
-    // Spia: con un alone quando e' accesa.
     if on {
-        for (r, a) in [(16.0, 18u8), (12.0, 35), (9.0, 60)] {
-            painter.circle_filled(lamp, r, Color32::from_rgba_unmultiplied(255, 170, 60, a));
+        for (r, a) in [(28.0, 14u8), (24.0, 26), (21.0, 44)] {
+            painter.circle_filled(power, r, Color32::from_rgba_unmultiplied(255, 175, 60, a));
         }
     }
-    painter.circle_filled(lamp, 7.0, if on { LAMP_ON } else { LAMP_OFF });
-    painter.circle_stroke(lamp, 7.5, Stroke::new(1.5_f32, Color32::from_rgb(0x6d, 0x69, 0x62)));
-    painter.circle_filled(lamp - Vec2::new(2.0, 2.0), 2.2, Color32::from_white_alpha(if on { 160 } else { 40 }));
+    painter.circle_filled(power + Vec2::new(0.0, 2.5), 19.0, Color32::from_black_alpha(140));
+    shaded_disc(painter, power, 19.0, Vec2::new(-4.0, -6.0), Color32::from_rgb(0x55, 0x58, 0x62), Color32::from_rgb(0x1a, 0x1b, 0x20));
+    let (lens_in, lens_out) = if on {
+        (Color32::from_rgb(0xff, 0xe2, 0xa0), AMBER)
+    } else if response.hovered() {
+        (Color32::from_rgb(0x5a, 0x4a, 0x30), Color32::from_rgb(0x2e, 0x26, 0x1a))
+    } else {
+        (Color32::from_rgb(0x46, 0x3a, 0x28), Color32::from_rgb(0x22, 0x1c, 0x14))
+    };
+    shaded_disc(painter, power, 13.0, Vec2::new(-2.0, -3.0), lens_in, lens_out);
+    painter.circle_stroke(power, 13.0, Stroke::new(1.0_f32, Color32::from_black_alpha(160)));
+    // Simbolo di accensione.
+    let symbol = if on { Color32::from_rgb(0x5a, 0x34, 0x06) } else { LEGEND_DIM };
+    arc(painter, power, 6.0, -0.32 * PI, 1.32 * PI, Stroke::new(1.8_f32, symbol));
+    painter.line_segment([power - Vec2::new(0.0, 8.5), power - Vec2::new(0.0, 2.5)], Stroke::new(1.8_f32, symbol));
+    engraved(painter, power + Vec2::new(0.0, 30.0), Align2::CENTER_CENTER, if on { "ACCESO" } else { "SPENTO" }, bold(8.5), if on { GOLD } else { LEGEND_DIM });
 
-    // Modalita': tre posizioni con il loro led.
-    engraved(painter, Pos2::new(x(258.0), y(92.0)), Align2::CENTER_CENTER, "MODALITÀ", bold(8.0), ENGRAVING);
+    // Modalita': tre tasti retroilluminati.
     let current = comp.mode.value();
     for (row, (choice, name)) in [
         (CompModeChoice::Fixed, "OTTICA"),
         (CompModeChoice::Manual, "MANUALE"),
-        (CompModeChoice::FixedManual, "OTT.+MAN."),
+        (CompModeChoice::FixedManual, "OTT. + MAN."),
     ]
     .into_iter()
     .enumerate()
     {
-        let row_y = y(108.0 + 14.0 * row as f32);
-        let hit = Rect::from_min_max(Pos2::new(x(216.0), row_y - 7.0), Pos2::new(x(304.0), row_y + 7.0));
+        let key = Rect::from_center_size(at(comp_layout::mode(row)), Vec2::new(82.0, 16.0));
         let r = ui
-            .interact(hit, Id::new(("compressore-modalita", row)), Sense::click())
+            .interact(key, Id::new(("compressore-modalita", row)), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand)
             .on_hover_text(
                 "Ottica: attacco e rilascio automatici, che seguono la voce come una vera \
@@ -1028,42 +1070,47 @@ fn compressor(
             set_param(setter, &comp.mode, choice);
         }
         let selected = choice == current;
-        let led = Pos2::new(x(224.0), row_y);
+        painter.rect_filled(key.translate(Vec2::new(0.0, 1.5)), CornerRadius::same(4), Color32::from_black_alpha(120));
         if selected {
-            painter.circle_filled(led, 6.0, Color32::from_rgba_unmultiplied(255, 170, 60, 40));
+            vertical_gradient(painter, key.shrink(1.0), Color32::from_rgb(0xff, 0xc9, 0x62), Color32::from_rgb(0xd9, 0x92, 0x22));
+            painter.rect_stroke(key, CornerRadius::same(4), Stroke::new(1.0_f32, Color32::from_rgb(0xff, 0xd8, 0x8a)), StrokeKind::Inside);
+        } else {
+            let (top, bottom) = if r.hovered() {
+                (Color32::from_rgb(0x3a, 0x3d, 0x46), Color32::from_rgb(0x26, 0x28, 0x2f))
+            } else {
+                (Color32::from_rgb(0x30, 0x33, 0x3b), Color32::from_rgb(0x1f, 0x21, 0x27))
+            };
+            vertical_gradient(painter, key.shrink(1.0), top, bottom);
+            painter.rect_stroke(key, CornerRadius::same(4), Stroke::new(1.0_f32, Color32::from_black_alpha(160)), StrokeKind::Inside);
         }
-        painter.circle_filled(led, 3.5, if selected { LAMP_ON } else { LAMP_OFF });
-        engraved(
-            painter,
-            Pos2::new(x(234.0), row_y),
-            Align2::LEFT_CENTER,
+        painter.text(
+            key.center(),
+            Align2::CENTER_CENTER,
             name,
-            regular(8.5),
-            if selected || r.hovered() { ENGRAVING } else { ENGRAVING_DIM },
+            bold(8.0),
+            if selected { Color32::from_rgb(0x2a, 0x1a, 0x05) } else if r.hovered() { TEXT } else { LEGEND },
         );
     }
 
     // Manopole.
-    let column = |i: usize| x(362.0 + 80.0 * i as f32);
-    let knob_y = y(66.0);
     let auto = current == CompModeChoice::Fixed;
-    let auto_text = || if auto { Some("AUTO".to_owned()) } else { None };
-    hardware_knob(ui, painter, setter, &comp.threshold, Pos2::new(column(0), knob_y), "SOGLIA", ("-50", "0"),
-        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", None);
-    hardware_knob(ui, painter, setter, &comp.ratio, Pos2::new(column(1), knob_y), "RAPPORTO", ("2", "10"),
-        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", None);
-    hardware_knob(ui, painter, setter, &comp.attack, Pos2::new(column(2), knob_y), "ATTACCO", ("0.5", "300"),
-        "Quanto in fretta reagisce (modalità Manuale e Ott.+Man.). Valori bassi domano i picchi, \
-         valori alti lasciano passare l'attacco delle consonanti. In modalità Ottica è automatico.", auto_text());
-    hardware_knob(ui, painter, setter, &comp.release, Pos2::new(column(3), knob_y), "RILASCIO", (".05", "10s"),
-        "Quanto in fretta torna a riposo (modalità Manuale e Ott.+Man.). In modalità Ottica è automatico.", auto_text());
-    hardware_knob(ui, painter, setter, &comp.tube, Pos2::new(column(4), knob_y), "VALVOLA", ("0", "100"),
+    let knob_at = |i: usize| at(comp_layout::knob(i));
+    hardware_knob(ui, painter, setter, &comp.threshold, knob_at(0), "SOGLIA", ("-50", "0"),
+        "Il livello oltre il quale la voce viene compressa. Più in basso = più compressione.", false, false);
+    hardware_knob(ui, painter, setter, &comp.ratio, knob_at(1), "RAPPORTO", ("2", "10"),
+        "Quanto comprime oltre la soglia: 2:1 delicato, 4:1 voce pop, 10:1 molto controllato.", false, false);
+    hardware_knob(ui, painter, setter, &comp.attack, knob_at(2), "ATTACCO", ("0.5", "300"),
+        "Quanto in fretta reagisce (modalità Manuale e Ott. + Man.). Valori bassi domano i picchi, \
+         valori alti lasciano passare l'attacco delle consonanti. In modalità Ottica è automatico.", false, auto);
+    hardware_knob(ui, painter, setter, &comp.release, knob_at(3), "RILASCIO", (".05", "10s"),
+        "Quanto in fretta torna a riposo (modalità Manuale e Ott. + Man.). In modalità Ottica è automatico.", false, auto);
+    hardware_knob(ui, painter, setter, &comp.tube, knob_at(4), "VALVOLA", ("0", "100"),
         "Il calore della valvola e dei trasformatori: fino a ~30% è un colore discreto, \
-         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", None);
-    hardware_knob(ui, painter, setter, &comp.mix, Pos2::new(column(5), knob_y), "MIX", ("0", "100"),
-        "Compressione parallela: miscela tra la voce originale e quella compressa.", None);
-    hardware_knob(ui, painter, setter, &comp.output, Pos2::new(column(6), knob_y), "USCITA", ("-20", "+20"),
-        "Volume in uscita, per recuperare quello tolto dalla compressione.", None);
+         oltre diventa saturazione evidente. Senza aliasing grazie al sovracampionamento 4×.", false, false);
+    hardware_knob(ui, painter, setter, &comp.mix, knob_at(5), "MIX", ("0", "100"),
+        "Compressione parallela: miscela tra la voce originale e quella compressa.", false, false);
+    hardware_knob(ui, painter, setter, &comp.output, knob_at(6), "USCITA", ("-20", "+20"),
+        "Volume in uscita, per recuperare quello tolto dalla compressione.", true, false);
 }
 
 // --- Grafico dell'intonazione --------------------------------------------------

@@ -287,7 +287,7 @@ mod tests {
     //! sull'interfaccia vera, controllando quali parametri cambiano.
 
     use super::*;
-    use crate::editor::COMPRESSOR_ORIGIN;
+    use crate::editor::{comp_layout, COMPRESSOR_ORIGIN};
     use crate::params::CompModeChoice;
     use std::sync::Mutex;
 
@@ -372,7 +372,7 @@ mod tests {
     fn power_switch_turns_the_compressor_on_and_off() {
         let params = SosaTuneParams::default();
         assert!(!params.comp.enabled.value(), "deve partire spento");
-        let changes = run(&params, click(comp_point(258.0, 48.0)));
+        let changes = run(&params, click(comp_point(comp_layout::POWER.0, comp_layout::POWER.1)));
         let enabled = params.comp.enabled.as_ptr();
         assert!(
             changes.iter().any(|&(p, v)| p == enabled && v == 1.0),
@@ -380,7 +380,7 @@ mod tests {
         );
 
         let params = SosaTuneParams::preview();
-        let changes = run(&params, click(comp_point(258.0, 48.0)));
+        let changes = run(&params, click(comp_point(comp_layout::POWER.0, comp_layout::POWER.1)));
         assert!(changes.iter().any(|&(p, v)| p == params.comp.enabled.as_ptr() && v == 0.0));
     }
 
@@ -390,7 +390,7 @@ mod tests {
         let mode = params.comp.mode.as_ptr();
         // Le tre righe: Ottica (gia' scelta), Manuale, Ottica + manuale.
         for (row, expected) in [(1usize, CompModeChoice::Manual), (2, CompModeChoice::FixedManual)] {
-            let changes = run(&params, click(comp_point(250.0, 108.0 + 14.0 * row as f32)));
+            let changes = run(&params, click(comp_point(comp_layout::mode(row).0, comp_layout::mode(row).1)));
             let normalized = params.comp.mode.preview_normalized(expected);
             assert!(
                 changes.iter().any(|&(p, v)| p == mode && (v - normalized).abs() < 1e-6),
@@ -398,7 +398,7 @@ mod tests {
             );
         }
         // Cliccare la modalita' gia' scelta non cambia nulla.
-        let changes = run(&params, click(comp_point(250.0, 108.0)));
+        let changes = run(&params, click(comp_point(comp_layout::mode(0).0, comp_layout::mode(0).1)));
         assert!(changes.iter().all(|&(p, _)| p != mode));
     }
 
@@ -425,7 +425,7 @@ mod tests {
             comp.output.unmodulated_normalized_value(),
         ];
         for (i, (&ptr, &start)) in knobs.iter().zip(starts.iter()).enumerate() {
-            let changes = run(&params, drag_up(comp_point(362.0 + 80.0 * i as f32, 66.0), 40.0));
+            let changes = run(&params, drag_up(comp_point(comp_layout::knob(i).0, comp_layout::knob(i).1), 40.0));
             let last = changes.iter().filter(|(p, _)| *p == ptr).map(|&(_, v)| v).last();
             let last = last.unwrap_or_else(|| panic!("la manopola {i} non risponde: {changes:?}"));
             // In su = valore piu' alto (o al massimo, se c'era gia').
