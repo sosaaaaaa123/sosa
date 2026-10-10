@@ -33,7 +33,7 @@ jobs:
       - name: Compila il plugin (universale Intel + Apple Silicon)
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
-        run: cargo xtask bundle-universal sosatune --release
+        run: cargo xtask bundle-universal sosatune --release 2>&1 | tee build-log.txt
 
       # Eseguibile in formato "bundle" (come i plugin JUCE): serve a FL Studio.
       - name: Crea i pacchetti in formato bundle
@@ -73,6 +73,9 @@ jobs:
             echo
             echo "## Firma"
             codesign -dv --verbose=2 target/bundled-mhbundle/SosaTune.vst3 2>&1 || true
+            echo
+            echo "## Compilazione (ultime righe)"
+            tail -60 build-log.txt || true
             echo
             echo "## Creazione dei pacchetti"
             cat bundle-log.txt || true

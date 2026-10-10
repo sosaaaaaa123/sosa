@@ -24,8 +24,8 @@
 use crate::params::{ScaleChoice, SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
 use crate::shared::{PitchDisplay, PitchPoint};
 use nih_plug::prelude::*;
-use nih_plug_egui::create_egui_editor;
-use nih_plug_egui::egui::{
+use crate::gui::create_egui_editor;
+use crate::gui::egui::{
     self, Align2, Color32, CornerRadius, CursorIcon, FontFamily, FontId, Id, Painter, Pos2, Rect,
     Sense, Shape, Stroke, StrokeKind, Ui, Vec2,
 };

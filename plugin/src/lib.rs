@@ -9,6 +9,7 @@ use nih_plug::prelude::*;
 use std::sync::Arc;
 
 mod editor;
+mod gui;
 mod params;
 mod shared;
 

@@ -3,7 +3,7 @@
 
 use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType};
 use nih_plug::prelude::*;
-use nih_plug_egui::EguiState;
+use crate::gui::EguiState;
 use std::sync::Arc;
 
 /// Dimensione iniziale della finestra del plugin (pixel).
