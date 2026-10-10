@@ -114,6 +114,7 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 | Formanti | Il timbro: + voce più piccola e chiara, − più grande e scura. La nota non cambia | 0 st |
 | Sensibilità | Alzala per voci con molta aria o sussurrate, abbassala se senti salti strani | 30% |
 | Trasponi | Sposta tutta la voce di semitoni, mantenendo il timbro | 0 st |
+| Bypass | Il pulsante di bypass del DAW: la voce passa senza correzione ma con lo stesso ritardo, cosi' resta a tempo | spento |
 
 5. Sulla **tastiera** clicca un tasto per escludere o includere una nota (la scala diventa "Personalizzata").
 
@@ -180,6 +181,16 @@ Limiti noti: le trasposizioni estreme (un'ottava) e le voci molto acute (sopra ~
 
 Il motore non alloca memoria e non usa lock durante l'elaborazione: è sicuro per il tempo reale e usa circa l'1-2% di un core.
 
+### Compatibilità controllata
+
+A ogni modifica il plugin viene messo alla prova automaticamente su un Mac, con gli stessi strumenti che usano i produttori di plugin professionali (il risultato completo è in `rapporto.txt`, nel ramo `build`):
+
+- **Validatore ufficiale Steinberg VST3**: 537 prove, 0 errori (canali mono, stereo, mono → stereo, frequenze da 22 a 384 kHz, bypass, salvataggio e ripristino);
+- **pluginval** al livello più severo (10): apertura, parametri, automazione, salvataggio, chiamate da più thread, blocchi audio di ogni dimensione;
+- **clap-validator**: 34 prove, 0 errori (formato CLAP).
+
+Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (traccia vocale mono in Pro Tools/PatchWork, Logic, Cubase...).
+
 ## Struttura del progetto
 
 ```text
@@ -192,6 +203,7 @@ sosatune/
 │   └── src/             lib.rs (collegamento al DAW), params.rs (parametri),
 │                        editor.rs (interfaccia), shared.rs (dati per il grafico)
 ├── xtask/               lo strumento che crea i file .vst3 e .clap
+├── vendor/nih-plug/     nih-plug con le correzioni di compatibilità (vedi nih-plug-sosatune.patch)
 └── .github/workflows/   compilazione automatica per Mac su GitHub
 ```
 
@@ -202,6 +214,7 @@ sosatune/
 - **Il DAW non vede il plugin**: controlla che i file siano nelle cartelle `~/Library/Audio/Plug-Ins/VST3` e `CLAP` e fai ripetere la scansione dei plugin.
 - **FL Studio lo segna come "error" nel Plugin Manager**: se succede anche ad altri plugin (FabFilter, Soundtoys...), è la verifica di FL che non funziona su quel Mac. In *Options → Manage plugins* togli la spunta a **Verify plugins**, attiva **Rescan plugins with errors** e premi **Find installed plugins**: SosaTune comparirà nell'elenco degli effetti del Mixer.
 - **macOS blocca il plugin** (succede solo se lo copi da un altro computer): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SosaTune.vst3`
+- **Pro Tools con Blue Cat PatchWork dà errore**: installa SosaTune.vst3 in `/Library/Audio/Plug-Ins/VST3` (la cartella di sistema), poi in PatchWork apri il menu dei plugin e scegli *Refresh/Rescan*. Se l'errore resta, fai una foto del messaggio: dice esattamente cosa non va.
 - **Compilarlo senza installare nulla**: se carichi il progetto su GitHub, il file `.github/workflows/build-macos.yml` lo compila da solo; lo zip pronto lo trovi nella scheda *Actions*.
 
 ## Prossimi passi
@@ -212,6 +225,6 @@ sosatune/
 
 ## Licenza
 
-GPL-3.0-or-later (richiesta dal formato VST3 di nih-plug).
+GPL-3.0-or-later (richiesta dal formato VST3 di nih-plug). La copia di nih-plug in `vendor/` è di Robbert van der Helm, licenza ISC.
 
 Il carattere dell'interfaccia è **Sora** (© The Sora Project Authors), con licenza SIL Open Font License 1.1: il testo completo è in `plugin/assets/Sora-OFL.txt`.
