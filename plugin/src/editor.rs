@@ -491,7 +491,7 @@ fn knobs(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &ParamSett
     panel(painter, rect, "CORREZIONE");
     let column = |i: usize| origin.x + 46.0 + i as f32 * 91.0;
     let big_y = origin.y + 96.0;
-    let small_y = origin.y + 200.0;
+    let small_y = origin.y + 205.0;
     let big = layout::BIG_KNOB;
     let small = layout::SMALL_KNOB;
 
@@ -873,7 +873,7 @@ fn hardware_knob<P: Param>(
     } else {
         (param.normalized_value_to_string(value, true), if active { GOLD } else { AMBER.gamma_multiply(0.92) })
     };
-    value_display(painter, center + Vec2::new(0.0, radius + 28.0), &text, color);
+    value_display(painter, center + Vec2::new(0.0, radius + 26.0), &text, color);
 }
 
 /// Tasto con retroilluminazione dorata quando e' scelto.
