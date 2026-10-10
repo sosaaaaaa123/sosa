@@ -79,7 +79,54 @@ struct GuiState {
     graph_center: f32,
 }
 
+/// Avvolge l'interfaccia in una "rete di sicurezza": se la finestra non si
+/// riesce ad aprire (per esempio perche' il Mac non concede la grafica OpenGL),
+/// il plugin continua a funzionare senza interfaccia invece di far chiudere
+/// di colpo l'intero DAW.
+struct SafeEditor(Box<dyn Editor>);
+
+impl Editor for SafeEditor {
+    fn spawn(
+        &self,
+        parent: ParentWindowHandle,
+        context: Arc<dyn GuiContext>,
+    ) -> Box<dyn std::any::Any + Send> {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.0.spawn(parent, context))) {
+            Ok(handle) => handle,
+            Err(_) => {
+                nih_error!("SosaTune: impossibile aprire l'interfaccia grafica, il plugin continua senza");
+                Box::new(())
+            }
+        }
+    }
+
+    fn size(&self) -> (u32, u32) {
+        self.0.size()
+    }
+
+    fn set_scale_factor(&self, factor: f32) -> bool {
+        self.0.set_scale_factor(factor)
+    }
+
+    fn param_value_changed(&self, id: &str, normalized_value: f32) {
+        self.0.param_value_changed(id, normalized_value)
+    }
+
+    fn param_modulation_changed(&self, id: &str, modulation_offset: f32) {
+        self.0.param_modulation_changed(id, modulation_offset)
+    }
+
+    fn param_values_changed(&self) {
+        self.0.param_values_changed()
+    }
+}
+
 pub fn create(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Option<Box<dyn Editor>> {
+    let editor = create_inner(params, display)?;
+    Some(Box::new(SafeEditor(editor)))
+}
+
+fn create_inner(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Option<Box<dyn Editor>> {
     let state = GuiState {
         points: Vec::with_capacity(crate::shared::HISTORY_LEN),
         graph_center: 60.0,
