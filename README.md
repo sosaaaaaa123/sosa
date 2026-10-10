@@ -193,13 +193,13 @@ voce ──► YIN ──────────► scala ───────
 
 ### Qualità misurata
 
-I test (`cargo test -p sosatune_dsp --release`, 44 in tutto) controllano anche la qualità del suono:
+I test (`cargo test -p sosatune_dsp --release`, 48 in tutto) controllano anche la qualità del suono:
 
 - correzione robotica di una melodia: in media **0,3 centesimi** dalla nota giusta; su voci reali circa **2 centesimi**;
 - le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni);
 - l'**armonicità** della voce (quanto è "pulita", senza ruvidità) in uscita è pari a quella in ingresso, sia su voci sintetiche sia reali;
 - vibrato naturale: rimesso con la profondità originale, oppure ridotto del 60-99%;
-- compressore: curva entro 0,8 dB dal valore teorico, tempi di attacco e rilascio, rilascio ottico dipendente dalla frase, armoniche della valvola, aliasing sotto −90 dB, trasparenza (−90 dB) da spento o senza compressione, nessun clic all'accensione.
+- compressore: curva entro 0,8 dB dal valore teorico in tutte e tre le modalità, indicatore fedele alla compressione reale (entro 0,5 dB), tempi di attacco e rilascio, rilascio ottico dipendente dalla frase, "Ottica + manuale" che unisce le due celle, guadagno fermo sulle voci basse (armoniche aggiunte sotto −60 dB a 90 Hz), armoniche della valvola, aliasing sotto −90 dB, trasparenza (−90 dB) da spento o senza compressione, nessun clic all'accensione, stessa curva da 44,1 a 192 kHz in mono e stereo.
 
 Limiti noti: le trasposizioni estreme (un'ottava) e le voci molto acute (sopra ~600 Hz) cambiano un po' il timbro, come in ogni pitch shifter di questo tipo.
 
@@ -211,7 +211,8 @@ A ogni modifica il plugin viene messo alla prova automaticamente su un Mac, con 
 
 - **Validatore ufficiale Steinberg VST3**: 537 prove, 0 errori (canali mono, stereo, mono → stereo, frequenze da 22 a 384 kHz, bypass, salvataggio e ripristino);
 - **pluginval** al livello più severo (10): apertura, parametri, automazione, salvataggio, chiamate da più thread, blocchi audio di ogni dimensione;
-- **clap-validator**: 34 prove, 0 errori (formato CLAP).
+- **clap-validator**: 34 prove, 0 errori (formato CLAP);
+- **prove dell'interfaccia** (`cargo test -p sosatune --release`): clic e trascinamenti simulati sui comandi veri del compressore (levetta, modalità, tutte le manopole) e bypass del DAW.
 
 Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (traccia vocale mono in Pro Tools/PatchWork, Logic, Cubase...).
 
