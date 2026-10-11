@@ -28,10 +28,11 @@ for fmt in vst3 clap; do
   # i file vengono installati cosi' come sono, che e' gia' quello che serve.)
   i=0
   while /usr/libexec/PlistBuddy -c "Print :$i" "$WORK/$fmt.plist" >/dev/null 2>&1; do
-    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/$fmt.plist" || true
+    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/$fmt.plist" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Add :$i:BundleIsRelocatable bool false" "$WORK/$fmt.plist"
     i=$((i + 1))
   done
-  echo "componenti $fmt: $i"
+  echo "componenti $fmt: $i"; /usr/libexec/PlistBuddy -c Print "$WORK/$fmt.plist"
   pkgbuild \
     --root "$root" \
     --component-plist "$WORK/$fmt.plist" \

@@ -191,7 +191,7 @@ jobs:
             cat clap-validator.txt || true
             echo
             echo "## Installer per Mac"
-            tail -20 pkg-log.txt || true
+            cat pkg-log.txt || true
             cat pkg-install.txt || true
           } > rapporto.txt 2>&1
 
