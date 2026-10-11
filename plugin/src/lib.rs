@@ -64,7 +64,7 @@ impl SosaTune {
 }
 
 impl Plugin for SosaTune {
-    const NAME: &'static str = "SosaTune";
+    const NAME: &'static str = "Sosa Tune";
     const VENDOR: &'static str = "Vladislav";
     const URL: &'static str = "";
     const EMAIL: &'static str = "";

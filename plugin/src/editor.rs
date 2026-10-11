@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! ┌──────────────────────────────────────────────────────────────────────────┐
-//! │ LUMINA      │ Vocal Range ⌄ │ Key & Scale ⌄ │ Default*   ←  →  ☰         │
+//! │ SOSA TUNE   │ Vocal Range ⌄ │ Key & Scale ⌄ │ Default*   ←  →  ☰         │
 //! │ AUTOTUNE    │ Alto/Tenor    │ A Major       │ Factory                     │
 //! ├──────────────────────────────────────────────────────────────────────────┤
 //! │ ● AutoKey Listen        ╭─────╮                                 (↶)      │
@@ -712,8 +712,8 @@ fn arrow(painter: &Painter, g: Geo, x: f32, y: f32, dir: f32, color: Color32) {
 
 fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState) {
     // Marchio.
-    spaced_text(painter, g.p(80.0, 120.0), g.d(266.0), "LUMINA", font(56.0, Weight::Light), TEXT);
-    spaced_text(painter, g.p(85.0, 163.0), g.d(190.0), "AUTOTUNE", font(18.0, Weight::Medium), Color32::from_rgb(0xdc, 0xe3, 0xee));
+    spaced_text(painter, g.p(80.0, 120.0), g.d(300.0), "SOSA TUNE", font(48.0, Weight::Light), TEXT);
+    spaced_text(painter, g.p(85.0, 163.0), g.d(214.0), "AUTOTUNE", font(18.0, Weight::Medium), Color32::from_rgb(0xdc, 0xe3, 0xee));
 
     // Separatori.
     for x in [407.0, 672.0] {
@@ -1403,7 +1403,7 @@ fn side_buttons(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, set
     let hit = Rect::from_center_size(center, Vec2::splat(g.d(76.0)));
     let response = ui
         .interact(hit, Id::new("accensione"), Sense::click())
-        .on_hover_text(if on { "SosaTune è acceso (clic per escluderlo)" } else { "SosaTune è escluso (clic per accenderlo)" });
+        .on_hover_text(if on { "Sosa Tune è acceso (clic per escluderlo)" } else { "Sosa Tune è escluso (clic per accenderlo)" });
     let r = g.d(36.0);
     if on {
         radial(painter, center, 0.0, r, Color32::from_rgb(0x02, 0x16, 0x2a), Color32::from_rgb(0x02, 0x3e, 0x6c));
