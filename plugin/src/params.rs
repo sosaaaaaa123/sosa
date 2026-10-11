@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 /// Dimensione iniziale della finestra del plugin (pixel).
 pub const EDITOR_WIDTH: u32 = 940;
-pub const EDITOR_HEIGHT: u32 = 750;
+pub const EDITOR_HEIGHT: u32 = 588;
 
 /// La tonalita' (la nota "di casa" della scala).
 ///
@@ -312,7 +312,7 @@ pub struct SosaTuneParams {
     /// Dimensione della finestra, salvata insieme al progetto. (La chiave e'
     /// cambiata quando la finestra e' diventata piu' alta: i progetti vecchi
     /// non devono riaprirla con la misura precedente.)
-    #[persist = "editor-state-2"]
+    #[persist = "editor-state-3"]
     pub editor_state: Arc<EguiState>,
 
     #[id = "key"]

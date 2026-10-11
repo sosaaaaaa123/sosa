@@ -18,13 +18,11 @@
 //! │  tastiera: note della scala (clic per includere/escludere)               │
 //! ├──────────────────────────────────────────────────────────────────────────┤
 //! │  COMPRESSORE A VALVOLA [ON] soglia rapporto attacco rilascio valvola ... ▮│
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │  grafico: voce originale (grigio) e corretta (oro)                       │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
 
 use crate::params::{CompModeChoice, ScaleChoice, SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
-use crate::shared::{PitchDisplay, PitchPoint};
+use crate::shared::PitchDisplay;
 use nih_plug::prelude::*;
 use crate::gui::create_egui_editor;
 use crate::gui::egui::{
@@ -51,8 +49,6 @@ const GOLD: Color32 = Color32::from_rgb(0xf4, 0xb9, 0x42);
 const MINT: Color32 = Color32::from_rgb(0x4f, 0xe0, 0xb6);
 const INPUT_LINE: Color32 = Color32::from_rgb(0x8e, 0x94, 0xa2);
 
-/// Quanti secondi mostra il grafico.
-const GRAPH_SECONDS: f32 = 4.0;
 
 /// Tutte le posizioni (in pixel, dall'angolo in alto a sinistra della finestra).
 mod layout {
@@ -69,7 +65,6 @@ mod layout {
     pub const KEYS_H: f32 = 70.0;
     pub const COMP_TOP: f32 = 426.0;
     pub const COMP_H: f32 = 150.0;
-    pub const GRAPH_TOP: f32 = 588.0;
     pub const MARGIN: f32 = 16.0;
     pub const BIG_KNOB: f32 = 30.0;
     pub const SMALL_KNOB: f32 = 20.0;
@@ -195,10 +190,6 @@ mod diagnostics {
 struct GuiState {
     /// Registro diagnostico (acceso solo nella finestra vera, non nelle prove).
     diagnostics: diagnostics::Diagnostics,
-    /// Copia degli ultimi punti del grafico (riusata a ogni fotogramma).
-    points: Vec<PitchPoint>,
-    /// Nota al centro del grafico (segue la voce con dolcezza).
-    graph_center: f32,
     /// Indicatore della compressione: sale subito, scende con calma.
     meter_db: f32,
     /// Indicatori IN/OUT (dB) e controllo che il DAW mandi audio.
@@ -267,8 +258,6 @@ fn create_inner(params: Arc<SosaTuneParams>, display: Arc<PitchDisplay>) -> Opti
 fn new_state(diagnostics_enabled: bool) -> GuiState {
     GuiState {
         diagnostics: diagnostics::Diagnostics::new(diagnostics_enabled),
-        points: Vec::with_capacity(crate::shared::HISTORY_LEN),
-        graph_center: 60.0,
         meter_db: 0.0,
         level_in_db: -90.0,
         level_out_db: -90.0,
@@ -319,7 +308,6 @@ fn draw(
             selectors(ui, &painter, params, setter, display, at(layout::SELECT_X, layout::ROW_TOP));
             keyboard(ui, &painter, params, setter, display, at(layout::MARGIN, layout::KEYS_TOP));
             compressor(ui, &painter, params, setter, display, state, at(layout::MARGIN, layout::COMP_TOP));
-            pitch_graph(&painter, params, display, state, at(layout::MARGIN, layout::GRAPH_TOP));
         });
 }
 
@@ -1288,103 +1276,3 @@ fn compressor(
         "Volume in uscita, per recuperare quello tolto dalla compressione.", true, false, comp_layout::KNOB_RADIUS);
 }
 
-// --- Grafico dell'intonazione --------------------------------------------------
-
-fn pitch_graph(painter: &Painter, params: &SosaTuneParams, display: &PitchDisplay, state: &mut GuiState, origin: Pos2) {
-    let size = Vec2::new(
-        EDITOR_WIDTH as f32 - 2.0 * layout::MARGIN,
-        EDITOR_HEIGHT as f32 - layout::GRAPH_TOP - layout::MARGIN,
-    );
-    let rect = Rect::from_min_size(origin, size);
-    panel(painter, rect, "GRAFICO");
-    // Legenda.
-    let legend_y = rect.top() + 18.0;
-    painter.line_segment(
-        [Pos2::new(rect.left() + 90.0, legend_y), Pos2::new(rect.left() + 108.0, legend_y)],
-        Stroke::new(2.0_f32, INPUT_LINE),
-    );
-    painter.text(Pos2::new(rect.left() + 114.0, legend_y), Align2::LEFT_CENTER, "voce originale", regular(11.0), TEXT_DIM);
-    painter.line_segment(
-        [Pos2::new(rect.left() + 210.0, legend_y), Pos2::new(rect.left() + 228.0, legend_y)],
-        Stroke::new(3.0_f32, GOLD),
-    );
-    painter.text(Pos2::new(rect.left() + 234.0, legend_y), Align2::LEFT_CENTER, "SosaTune", regular(11.0), TEXT_DIM);
-
-    let interval = display.interval_s().max(1e-4);
-    let count = (GRAPH_SECONDS / interval) as usize;
-    display.snapshot(count, &mut state.points);
-
-    // Centro verticale: la mediana delle note recenti, inseguita lentamente.
-    let mut recent: Vec<f32> = state.points.iter().map(|p| p.input).filter(|n| !n.is_nan()).collect();
-    if !recent.is_empty() {
-        recent.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let median = recent[recent.len() / 2];
-        state.graph_center += (median - state.graph_center) * 0.08;
-    }
-    let half_range = 6.0; // semitoni sopra e sotto il centro
-    let low = state.graph_center - half_range;
-    let high = state.graph_center + half_range;
-    let plot = Rect::from_min_max(rect.min + Vec2::new(52.0, 34.0), rect.max - Vec2::new(16.0, 12.0));
-    let screen = Rect::from_min_max(Pos2::new(rect.left() + 12.0, plot.top() - 6.0), Pos2::new(rect.right() - 10.0, rect.bottom() - 8.0));
-    painter.rect_filled(screen.translate(Vec2::new(0.0, 1.0)), CornerRadius::same(8), Color32::from_white_alpha(10));
-    painter.rect_filled(screen, CornerRadius::same(8), DISPLAY_BG);
-    painter.rect_stroke(screen, CornerRadius::same(8), Stroke::new(1.0_f32, Color32::from_black_alpha(220)), StrokeKind::Inside);
-    let y_of = |note: f32| plot.bottom() - (note - low) / (high - low) * plot.height();
-    // Il punto piu' recente sta sul bordo destro, i piu' vecchi scorrono a sinistra.
-    let x_of = |i: usize| {
-        let age = count.saturating_sub(1).saturating_sub(i);
-        plot.right() - age as f32 / count.max(1) as f32 * plot.width()
-    };
-
-    // Righe orizzontali: una per semitono, piu' evidenti per le note della scala.
-    // Le etichette non devono sovrapporsi: se le righe sono fitte (scala
-    // cromatica) scriviamo solo le note naturali, distanziate di almeno 13 px.
-    let notes = params.active_notes();
-    let row_spacing = plot.height() / (high - low);
-    let mut last_label_y = f32::INFINITY;
-    for note in low.ceil() as i32..=high.floor() as i32 {
-        let y = y_of(note as f32);
-        let in_scale = notes[pitch_class(note)];
-        let color = if in_scale { Color32::from_rgb(0x30, 0x34, 0x3f) } else { Color32::from_rgb(0x1f, 0x22, 0x29) };
-        painter.line_segment([Pos2::new(plot.left(), y), Pos2::new(plot.right(), y)], Stroke::new(1.0_f32, color));
-        let natural = matches!(pitch_class(note), 0 | 2 | 4 | 5 | 7 | 9 | 11);
-        let readable = row_spacing >= 13.0 || natural;
-        if in_scale && readable && last_label_y - y >= 13.0 {
-            painter.text(Pos2::new(rect.left() + 14.0, y), Align2::LEFT_CENTER, note_label(note), regular(10.0), TEXT_FAINT);
-            last_label_y = y;
-        }
-    }
-
-    // Le curve: ogni tratto continuo di note diventa una linea.
-    let offset = count.saturating_sub(state.points.len());
-    let draw_curve = |value: fn(&PitchPoint) -> f32, color: Color32, width: f32| {
-        let mut segment: Vec<Pos2> = Vec::new();
-        let flush = |segment: &mut Vec<Pos2>| {
-            if segment.len() >= 2 {
-                painter.add(Shape::line(std::mem::take(segment), Stroke::new(width, color)));
-            }
-            segment.clear();
-        };
-        for (i, point) in state.points.iter().enumerate() {
-            let note = value(point);
-            if note.is_nan() || note < low - 1.0 || note > high + 1.0 {
-                flush(&mut segment);
-                continue;
-            }
-            segment.push(Pos2::new(x_of(i + offset), y_of(note).clamp(plot.top(), plot.bottom())));
-        }
-        flush(&mut segment);
-    };
-    draw_curve(|p| p.input, INPUT_LINE, 1.5);
-    draw_curve(|p| p.output, GOLD, 2.5);
-
-    if state.points.iter().all(|p| p.input.is_nan()) {
-        painter.text(
-            plot.center(),
-            Align2::CENTER_CENTER,
-            "Avvia la riproduzione o canta: qui vedrai la tua intonazione",
-            regular(13.0),
-            TEXT_FAINT,
-        );
-    }
-}

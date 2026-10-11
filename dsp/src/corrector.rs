@@ -152,9 +152,17 @@ struct Analysis {
     ratio: f32,
     voiced: bool,
     valid: bool,
+    /// Quanto la correzione deve "inchiodare" la voce alla nota anche tra
+    /// un'analisi e l'altra (0 = segue la voce, 1 = robotico): vedi
+    /// [`local_period`].
+    lock: f32,
 }
 
 const HISTORY: usize = 64;
+
+/// Fino a quanti campioni prima della prima analisi cantata (e dopo l'ultima)
+/// la voce viene gia' trattata come nota (vedi [`lookup`]).
+const VOICED_EDGE_MS: f64 = 7.0;
 
 pub struct PitchCorrector {
     sample_rate: f32,
@@ -214,7 +222,9 @@ impl PitchCorrector {
         let channels = channels.clamp(1, MAX_CHANNELS);
         let detector = YinDetector::new(sample_rate, VoiceType::LOWEST_SUPPORTED_HZ);
         let shifter = PsolaShifter::new(channels, detector.capacity_max_period(), sample_rate);
-        let mono_len = (detector.max_frame_len() + 1).next_power_of_two();
+        // Il buffer serve anche alla misura "ciclo per ciclo" dei grani, che
+        // guarda fino a ~3 periodi indietro rispetto all'ultimo campione.
+        let mono_len = (detector.max_frame_len() + 4 * detector.capacity_max_period() + 1).next_power_of_two();
         let frame = vec![0.0; detector.max_frame_len()];
         let hop = ((sample_rate * 0.005).round() as usize).max(32);
 
@@ -325,10 +335,29 @@ impl PitchCorrector {
         let mut output = [0.0f32; MAX_CHANNELS];
         input[..channels].copy_from_slice(&frame[..channels]);
         let history = &self.history;
+        let mono = &self.mono;
+        let mono_mask = self.mono_mask;
+        let newest = self.position;
+        let edge = VOICED_EDGE_MS * 0.001 * self.sample_rate as f64;
         let formant = 2f32.powf(settings.formant.clamp(-12.0, 12.0) / 12.0);
         let unvoiced = GrainPitch { period: self.unvoiced_period, ratio: 1.0, voiced: false, formant };
         self.shifter.process(&input[..channels], &mut output[..channels], |t| {
-            lookup(history, t).map_or(unvoiced, |g| GrainPitch { formant, ..g })
+            let Some((mut g, lock)) = lookup(history, t, edge) else {
+                return unvoiced;
+            };
+            // Misura "ciclo per ciclo": l'intonazione esatta proprio dove cade
+            // questo grano. Le analisi (ogni 5 ms, su ~20 ms di audio) seguono
+            // bene le note tenute, ma nei passaggi veloci sono una media: senza
+            // questa misura la voce uscirebbe "storta" tra una nota e l'altra.
+            if g.voiced && lock > 0.0 {
+                if let Some(local) = local_period(mono, mono_mask, newest, t, g.period) {
+                    // Frequenza voluta = quella dell'analisi x rapporto; quella
+                    // vera qui e' sr/local: il rapporto si corregge di conseguenza.
+                    g.ratio *= (local / g.period).powf(lock);
+                    g.period = local;
+                }
+            }
+            GrainPitch { formant, ..g }
         });
         frame[..channels].copy_from_slice(&output[..channels]);
 
@@ -349,6 +378,7 @@ impl PitchCorrector {
         let window = self.detector.window_len() as f64;
         let report;
         let (center, period, ratio, voiced);
+        let mut lock = 0.0f32;
 
         // Un salto enorme di intonazione in mezzo a una nota e' quasi sempre un
         // errore del rilevatore (tipicamente un'ottava sopra, quando la voce si
@@ -372,30 +402,38 @@ impl PitchCorrector {
             // Da quanto si sta cantando questa nota? (serve a Humanize e al vibrato)
             let hop_seconds = self.hop as f32 / self.sample_rate;
             let reference = target.map_or(note, |t| t as f32);
+            // Inizio di una nota dopo una pausa (o una consonante).
+            let starting = !self.was_voiced;
             if target != self.current_target || !self.was_voiced {
                 self.current_target = target;
                 self.note_age = 0.0;
                 self.vibrato_in.reset_to(note - reference);
                 self.vibrato_out.reset_to(note - reference);
-                if !self.was_voiced && settings.retune_ms >= 1.0 {
-                    // Inizio di una nuova nota: si parte dall'intonazione naturale.
-                    self.correction = 0.0;
-                }
             } else {
                 self.note_age += hop_seconds;
             }
 
-            let desired = match target {
-                Some(t) => {
-                    let offset = t as f32 - note;
-                    offset * settings.amount.clamp(0.0, 1.0) * flex_weight(offset.abs(), settings.flex_tune)
-                }
-                None => 0.0,
-            };
+            let weight = target.map_or(0.0, |t| {
+                settings.amount.clamp(0.0, 1.0) * flex_weight((t as f32 - note).abs(), settings.flex_tune)
+            });
+            let desired = target.map_or(0.0, |t| (t as f32 - note) * weight);
+            if starting {
+                // Una nota che parte dopo una pausa parte gia' intonata: la
+                // velocita' di correzione vale per i passaggi da una nota
+                // all'altra. Se la voce partisse stonata e poi "scivolasse"
+                // sulla nota, si sentirebbe la correzione arrivare in ritardo.
+                // Solo con velocita' molto lente (stile naturale) si lascia un
+                // po' dell'attacco originale.
+                let keep_natural = ((settings.retune_ms - 60.0) / 240.0).clamp(0.0, 1.0);
+                self.correction = desired * (1.0 - keep_natural);
+            }
 
             // Humanize: sulle note tenute (oltre ~0,15 s) la velocita' rallenta.
             let sustain = smoothstep(0.15, 0.6, self.note_age);
             let retune_ms = settings.retune_ms + settings.humanize.clamp(0.0, 1.0) * 400.0 * sustain;
+            // Correzione veloce = voce "inchiodata" alla nota anche nei passaggi
+            // rapidi (misura ciclo per ciclo); correzione lenta = la voce resta libera.
+            lock = weight * (1.0 - retune_ms / 80.0).clamp(0.0, 1.0);
             if retune_ms < 1.0 {
                 self.correction = desired;
             } else {
@@ -451,7 +489,7 @@ impl PitchCorrector {
         }
 
         self.last_ratio = ratio;
-        self.history[self.history_head] = Analysis { center, period, ratio, voiced, valid: true };
+        self.history[self.history_head] = Analysis { center, period, ratio, voiced, valid: true, lock };
         self.history_head = (self.history_head + 1) % HISTORY;
         report
     }
@@ -459,7 +497,7 @@ impl PitchCorrector {
 
 /// Il pitch nel punto `t` dell'ingresso, interpolando tra le due analisi
 /// piu' vicine (una prima e una dopo `t`).
-fn lookup(history: &[Analysis; HISTORY], t: f64) -> Option<GrainPitch> {
+fn lookup(history: &[Analysis; HISTORY], t: f64, edge: f64) -> Option<(GrainPitch, f32)> {
     let mut before: Option<&Analysis> = None;
     let mut after: Option<&Analysis> = None;
     for a in history.iter().filter(|a| a.valid) {
@@ -471,21 +509,102 @@ fn lookup(history: &[Analysis; HISTORY], t: f64) -> Option<GrainPitch> {
             after = Some(a);
         }
     }
-    let as_pitch = |a: &Analysis| GrainPitch { period: a.period, ratio: a.ratio, voiced: a.voiced, formant: 1.0 };
+    let as_pitch = |a: &Analysis| {
+        (GrainPitch { period: a.period, ratio: a.ratio, voiced: a.voiced, formant: 1.0 }, if a.voiced { a.lock } else { 0.0 })
+    };
     match (before, after) {
         (Some(b), Some(a)) if b.voiced && a.voiced => {
             let w = ((t - b.center) / (a.center - b.center).max(1e-9)) as f32;
-            Some(GrainPitch {
-                period: b.period + (a.period - b.period) * w,
-                ratio: b.ratio + (a.ratio - b.ratio) * w,
-                voiced: true,
-                formant: 1.0,
-            })
+            Some((
+                GrainPitch {
+                    period: b.period + (a.period - b.period) * w,
+                    ratio: b.ratio + (a.ratio - b.ratio) * w,
+                    voiced: true,
+                    formant: 1.0,
+                },
+                b.lock + (a.lock - b.lock) * w,
+            ))
         }
+        // Al confine tra voce e consonante/pausa: l'analisi guarda ~20 ms di
+        // audio e il suo "centro" cade a meta', quindi la voce inizia (e
+        // finisce) qualche millisecondo prima (dopo) del centro della prima
+        // (ultima) analisi cantata. Quei millisecondi vanno gia' corretti come
+        // voce, altrimenti l'attacco della nota esce non corretto e "gratta".
+        (Some(_), Some(a)) if a.voiced && a.center - t <= edge => Some(as_pitch(a)),
+        (Some(b), Some(_)) if b.voiced && t - b.center <= edge => Some(as_pitch(b)),
         (Some(b), Some(a)) => Some(as_pitch(if t - b.center <= a.center - t { b } else { a })),
         (Some(only), None) | (None, Some(only)) => Some(as_pitch(only)),
         (None, None) => None,
     }
+}
+
+/// Il periodo esatto della voce attorno al punto `t` del segnale, partendo
+/// da una stima `p0` (dalle analisi): confronta un tratto di ~1,5 periodi con
+/// lo stesso tratto spostato di un periodo, centrati su `t`, e cerca lo
+/// spostamento che li fa coincidere meglio (entro ±3 semitoni da `p0`).
+/// Restituisce `None` se non c'e' una periodicita' chiara (consonanti,
+/// rumori) o se mancano i campioni: in quel caso vale la stima delle analisi.
+/// Non alloca memoria.
+fn local_period(buf: &[f32], mask: usize, newest: u64, t: f64, p0: f32) -> Option<f32> {
+    if !(16.0..=4096.0).contains(&p0) {
+        return None;
+    }
+    let len = ((1.5 * p0) as i64).max(32);
+    let lo = (p0 * 0.84).floor() as i64;
+    let hi = (p0 * 1.19).ceil() as i64;
+    let center = t.round() as i64;
+    let first = center - hi / 2 - len / 2 - 2;
+    let last = center + hi / 2 + len / 2 + 2;
+    if first < 0 || last > newest as i64 || (newest as i64 - first) as usize >= buf.len() {
+        return None;
+    }
+    let at = |i: i64| buf[i as usize & mask];
+    let score = |tau: i64, step: i64| -> f32 {
+        let a0 = center - tau / 2 - len / 2;
+        let b0 = a0 + tau;
+        let (mut ab, mut aa, mut bb) = (0.0f32, 0.0f32, 0.0f32);
+        let mut i = 0;
+        while i < len {
+            let a = at(a0 + i);
+            let b = at(b0 + i);
+            ab += a * b;
+            aa += a * a;
+            bb += b * b;
+            i += step;
+        }
+        if aa <= 1e-12 || bb <= 1e-12 {
+            return -1.0;
+        }
+        ab / (aa * bb).sqrt()
+    };
+    // Ricerca grossolana (un passo su due per i periodi lunghi), poi fine.
+    let coarse = if p0 > 64.0 { 2 } else { 1 };
+    let (mut best, mut best_score) = (lo, f32::MIN);
+    let mut tau = lo;
+    while tau <= hi {
+        let s = score(tau, coarse);
+        if s > best_score {
+            best_score = s;
+            best = tau;
+        }
+        tau += coarse;
+    }
+    let (mut fine, mut fine_score) = (best, f32::MIN);
+    for tau in (best - 2).max(lo)..=(best + 2).min(hi) {
+        let s = score(tau, 1);
+        if s > fine_score {
+            fine_score = s;
+            fine = tau;
+        }
+    }
+    // Serve un picco vero, non il bordo dell'intervallo di ricerca.
+    if fine_score < 0.8 || fine <= lo || fine >= hi {
+        return None;
+    }
+    let (minus, plus) = (score(fine - 1, 1), score(fine + 1, 1));
+    let den = minus - 2.0 * fine_score + plus;
+    let offset = if den < 0.0 { (0.5 * (minus - plus) / den).clamp(-0.5, 0.5) } else { 0.0 };
+    Some(fine as f32 + offset)
 }
 
 #[cfg(test)]

@@ -110,21 +110,6 @@ impl PitchDisplay {
         self.interval_s.load(Ordering::Relaxed)
     }
 
-    /// Copia in `out` gli ultimi `count` punti, dal piu' vecchio al piu' nuovo.
-    pub fn snapshot(&self, count: usize, out: &mut Vec<PitchPoint>) {
-        out.clear();
-        let written = self.written.load(Ordering::Acquire);
-        let count = count.min(HISTORY_LEN - 1).min(written);
-        for k in (1..=count).rev() {
-            let index = (written - k) % HISTORY_LEN;
-            out.push(PitchPoint {
-                input: self.input[index].load(Ordering::Relaxed),
-                output: self.output[index].load(Ordering::Relaxed),
-                target: self.target[index].load(Ordering::Relaxed),
-            });
-        }
-    }
-
     /// L'ultimo punto scritto, se c'e'.
     pub fn latest(&self) -> Option<PitchPoint> {
         let written = self.written.load(Ordering::Acquire);
