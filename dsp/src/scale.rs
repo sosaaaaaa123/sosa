@@ -114,6 +114,29 @@ impl NoteSnapper {
         self.current = None;
     }
 
+    /// La nota attuale (senza aggiornarla).
+    pub fn current(&self) -> Option<i32> {
+        self.current
+    }
+
+    /// Quale nota sceglierebbe [`update`](Self::update) per `note`, senza
+    /// cambiare nulla. `None` se la scala e' vuota.
+    pub fn propose(&self, note: f32, notes: &[bool; 12]) -> Option<i32> {
+        let nearest = nearest_note(note, notes)?;
+        let keep_current = match self.current {
+            Some(current) if current != nearest && notes[pitch_class(current)] => {
+                (note - current as f32).abs() < (note - nearest as f32).abs() + Self::HYSTERESIS
+            }
+            _ => false,
+        };
+        Some(if keep_current { self.current.unwrap_or(nearest) } else { nearest })
+    }
+
+    /// Imposta la nota (dopo aver deciso che il cambio e' vero).
+    pub fn set(&mut self, note: Option<i32>) {
+        self.current = note;
+    }
+
     pub fn update(&mut self, note: f32, notes: &[bool; 12]) -> Option<i32> {
         let nearest = match nearest_note(note, notes) {
             Some(n) => n,

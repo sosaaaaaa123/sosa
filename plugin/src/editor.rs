@@ -21,7 +21,7 @@
 //! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
 
-use crate::params::{CompModeChoice, ScaleChoice, SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
+use crate::params::{CompModeChoice, Key, ScaleChoice, SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
 use crate::shared::PitchDisplay;
 use nih_plug::prelude::*;
 use crate::gui::create_egui_editor;
@@ -197,6 +197,8 @@ struct GuiState {
     level_out_db: f32,
     last_blocks: usize,
     last_audio_time: f64,
+    /// Risultato dell'ultimo "RILEVA" (testo e quando e' stato premuto).
+    key_message: Option<(String, f64)>,
 }
 
 /// Avvolge l'interfaccia in una "rete di sicurezza": se la finestra non si
@@ -263,6 +265,7 @@ fn new_state(diagnostics_enabled: bool) -> GuiState {
         level_out_db: -90.0,
         last_blocks: 0,
         last_audio_time: f64::NEG_INFINITY,
+        key_message: None,
     }
 }
 
@@ -305,7 +308,7 @@ fn draw(
             signal_status(ui, &painter, display, state, at(318.0, 0.0));
             tuning_ring(ui, &painter, display, at(layout::RING_X, layout::ROW_TOP));
             knobs(ui, &painter, params, setter, at(layout::KNOBS_X, layout::ROW_TOP));
-            selectors(ui, &painter, params, setter, display, at(layout::SELECT_X, layout::ROW_TOP));
+            selectors(ui, &painter, params, setter, display, state, at(layout::SELECT_X, layout::ROW_TOP));
             keyboard(ui, &painter, params, setter, display, at(layout::MARGIN, layout::KEYS_TOP));
             compressor(ui, &painter, params, setter, display, state, at(layout::MARGIN, layout::COMP_TOP));
         });
@@ -767,10 +770,44 @@ fn selector<T: Enum + PartialEq + 'static>(
     }
 }
 
-fn selectors(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &ParamSetter, display: &PitchDisplay, origin: Pos2) {
+fn selectors(
+    ui: &Ui,
+    painter: &Painter,
+    params: &SosaTuneParams,
+    setter: &ParamSetter,
+    display: &PitchDisplay,
+    state: &mut GuiState,
+    origin: Pos2,
+) {
     let rect = Rect::from_min_size(origin, Vec2::new(layout::SELECT_W, layout::ROW_H));
     panel(painter, rect, "");
     let row = |y: f32| Rect::from_min_size(origin + Vec2::new(16.0, y), Vec2::new(layout::SELECT_W - 32.0, 34.0));
+
+    // Pulsante RILEVA: riconosce tonalita' e scala dalla voce gia' ascoltata.
+    let detect = Rect::from_min_size(origin + Vec2::new(layout::SELECT_W - 16.0 - 70.0, 10.0), Vec2::new(70.0, 17.0));
+    let response = ui
+        .interact(detect, Id::new("rileva-tonalita"), Sense::click())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text(
+            "Riconosce la tonalità della canzone dalla voce: fai suonare la traccia \
+             per almeno 10-20 secondi, poi premi. Imposta tonalità e scala (maggiore o minore), \
+             così SosaTune non può più portare la voce su note che non c'entrano.",
+        );
+    hardware_key(painter, detect, "RILEVA", false, response.hovered(), 8.0);
+    let now = ui.input(|i| i.time);
+    if response.clicked() {
+        let message = match crate::shared::detect_key(&display.note_profile()) {
+            Some((tonic, minor, confidence)) => {
+                set_param(setter, &params.key, Key::from_index(tonic));
+                set_param(setter, &params.scale, if minor { ScaleChoice::NaturalMinor } else { ScaleChoice::Major });
+                let name = Key::variants()[tonic];
+                let sure = if confidence > 0.5 { "" } else { " (poco sicura: riprova piu' tardi)" };
+                format!("Rilevata: {} {}{}", name, if minor { "minore" } else { "maggiore" }, sure)
+            }
+            None => "Fai suonare la voce qualche secondo, poi riprova".to_owned(),
+        };
+        state.key_message = Some((message, now));
+    }
 
     selector(ui, painter, setter, &params.key, row(30.0), "TONALITÀ", "La nota di base della scala della canzone.");
     selector(ui, painter, setter, &params.scale, row(94.0), "SCALA",
@@ -785,13 +822,20 @@ fn selectors(ui: &Ui, painter: &Painter, params: &SosaTuneParams, setter: &Param
         regular(11.0),
         TEXT_DIM,
     );
-    painter.text(
-        origin + Vec2::new(16.0, 242.0),
-        Align2::LEFT_CENTER,
-        "compensata automaticamente dal DAW",
-        regular(10.0),
-        TEXT_FAINT,
-    );
+    match &state.key_message {
+        Some((message, when)) if now - when < 8.0 => {
+            painter.text(origin + Vec2::new(16.0, 242.0), Align2::LEFT_CENTER, message, regular(10.0), GOLD);
+        }
+        _ => {
+            painter.text(
+                origin + Vec2::new(16.0, 242.0),
+                Align2::LEFT_CENTER,
+                "compensata automaticamente dal DAW",
+                regular(10.0),
+                TEXT_FAINT,
+            );
+        }
+    }
 }
 
 // --- Tastiera ------------------------------------------------------------------

@@ -190,6 +190,7 @@ impl Plugin for SosaTune {
         let comp_settings = self.params.comp.settings(bypass);
         let mut max_gain_reduction = 0.0f32;
         let mut input_peak = 0.0f32;
+        let analysis_interval = corrector.analysis_interval();
         let mut output_peak = 0.0f32;
         // Aggiorniamo il grafico solo se la finestra e' aperta.
         let gui_open = self.params.editor_state.is_open();
@@ -221,8 +222,13 @@ impl Plugin for SosaTune {
                 output[i] = if ch < num_inputs { frame[ch] } else { frame[0] };
                 output_peak = output_peak.max(output[i].abs());
             }
-            if let (Some(report), true) = (report, gui_open) {
-                self.display.push(&report);
+            if let Some(report) = report {
+                if report.voiced {
+                    self.display.add_note(report.input_note, analysis_interval);
+                }
+                if gui_open {
+                    self.display.push(&report);
+                }
             }
         }
         if gui_open {
