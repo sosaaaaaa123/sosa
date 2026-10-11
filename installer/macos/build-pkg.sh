@@ -24,8 +24,14 @@ for fmt in vst3 clap; do
   # gia' una copia altrove, l'installer aggiornerebbe quella invece di
   # installare nella cartella giusta.
   pkgbuild --analyze --root "$root" "$WORK/$fmt.plist"
-  /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$WORK/$fmt.plist"
-  /usr/libexec/PlistBuddy -c "Set :0:BundleOverwriteAction upgrade" "$WORK/$fmt.plist" || true
+  # (Se pkgbuild non riconosce il plugin come "bundle" l'elenco e' vuoto e
+  # i file vengono installati cosi' come sono, che e' gia' quello che serve.)
+  i=0
+  while /usr/libexec/PlistBuddy -c "Print :$i" "$WORK/$fmt.plist" >/dev/null 2>&1; do
+    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/$fmt.plist" || true
+    i=$((i + 1))
+  done
+  echo "componenti $fmt: $i"
   pkgbuild \
     --root "$root" \
     --component-plist "$WORK/$fmt.plist" \
