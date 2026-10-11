@@ -51,6 +51,45 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: scripts/macos-bundle.sh 2>&1 | tee bundle-log.txt
 
+      # Versione Audio Unit per Logic Pro e GarageBand: il plugin CLAP avvolto
+      # con clap-wrapper (vedi installer/auv2/CMakeLists.txt).
+      - name: Crea la versione Audio Unit (Logic Pro)
+        run: |
+          set -o pipefail
+          git clone -q --depth 1 --branch v0.16.0 https://github.com/free-audio/clap-wrapper "$RUNNER_TEMP/clap-wrapper"
+          cmake -S installer/auv2 -B build-auv2 -DCMAKE_BUILD_TYPE=Release \
+            -DCLAP_WRAPPER_DIR="$RUNNER_TEMP/clap-wrapper" \
+            -DSOSATUNE_CLAP="$PWD/target/bundled-mhbundle/SosaTune.clap" 2>&1 | tee auv2-log.txt
+          cmake --build build-auv2 --config Release -j 4 2>&1 | tail -40 | tee -a auv2-log.txt
+          comp=$(find build-auv2 -maxdepth 3 -name "SosaTune.component" -type d | head -1)
+          echo "component: $comp" | tee -a auv2-log.txt
+          rm -rf target/bundled-mhbundle/SosaTune.component
+          cp -R "$comp" target/bundled-mhbundle/SosaTune.component
+          codesign --force --deep -s - target/bundled-mhbundle/SosaTune.component
+          find target/bundled-mhbundle/SosaTune.component | tee -a auv2-log.txt
+          lipo -info target/bundled-mhbundle/SosaTune.component/Contents/MacOS/SosaTune | tee -a auv2-log.txt
+          plutil -p target/bundled-mhbundle/SosaTune.component/Contents/Info.plist | tee -a auv2-log.txt
+
+      # auval e' il validatore di Apple: Logic usa la stessa prova prima di
+      # accettare un Audio Unit.
+      - name: Prova la versione Audio Unit con auval
+        if: always()
+        run: |
+          set +e
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          rm -rf ~/Library/Audio/Plug-Ins/Components/SosaTune.component
+          cp -R target/bundled-mhbundle/SosaTune.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null
+          sleep 3
+          {
+            echo "## elenco Audio Unit"
+            auval -a 2>&1 | grep -i -E "SsTn|Vlad|Sosa"
+            echo "## auval -strict"
+            perl -e 'alarm 600; exec @ARGV' auval -strict -v aufx SsTn Vlad 2>&1
+            echo "exit code: $?"
+          } > auval.txt 2>&1
+          tail -80 auval.txt
+
       # Un'immagine dell'interfaccia vera, disegnata senza DAW (anteprima.png).
       - name: Anteprima dell'interfaccia
         if: always()
@@ -149,6 +188,7 @@ jobs:
             echo "exit code: $?"
             ls -la /Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS /Library/Audio/Plug-Ins/CLAP/SosaTune.clap/Contents/MacOS
             cmp /Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS/SosaTune target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune && echo "VST3 identico a quello collaudato"
+            ls -la /Library/Audio/Plug-Ins/Components/SosaTune.component/Contents/MacOS /Library/Audio/Plug-Ins/Components/SosaTune.component/Contents/PlugIns
             xattr -l /Library/Audio/Plug-Ins/VST3/SosaTune.vst3 || true
           } > pkg-install.txt 2>&1
           cat pkg-install.txt
@@ -156,7 +196,7 @@ jobs:
       - name: Prepara lo zip e il rapporto
         if: always()
         run: |
-          (cd target/bundled-mhbundle && zip -qry ../../SosaTune-macOS.zip SosaTune.vst3 SosaTune.clap) || true
+          (cd target/bundled-mhbundle && zip -qry ../../SosaTune-macOS.zip SosaTune.vst3 SosaTune.clap SosaTune.component) || true
           {
             echo "SosaTune ${GITHUB_SHA::7} - $(date -u)"
             echo
@@ -190,6 +230,9 @@ jobs:
             echo "## clap-validator"
             cat clap-validator.txt || true
             echo
+            echo "## Audio Unit (Logic Pro)"
+            cat auv2-log.txt || true
+            cat auval.txt || true            echo
             echo "## Installer per Mac"
             cat pkg-log.txt || true
             cat pkg-install.txt || true

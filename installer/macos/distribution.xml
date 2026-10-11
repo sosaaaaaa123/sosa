@@ -8,6 +8,7 @@
     <choices-outline>
         <line choice="vst3"/>
         <line choice="clap"/>
+        <line choice="au"/>
     </choices-outline>
     <choice id="vst3" title="Sosa Tune VST3" description="Per Pro Tools (tramite Blue Cat PatchWork), FL Studio, Ableton Live, Cubase, Studio One, Reaper e gli altri DAW VST3." start_selected="true">
         <pkg-ref id="com.vladislav.sosatune.vst3"/>
@@ -15,6 +16,10 @@
     <choice id="clap" title="Sosa Tune CLAP" description="Per Bitwig, Reaper e gli altri DAW che usano il formato CLAP." start_selected="true">
         <pkg-ref id="com.vladislav.sosatune.clap"/>
     </choice>
+    <choice id="au" title="Sosa Tune Audio Unit" description="Per Logic Pro, GarageBand, MainStage e gli altri programmi Apple (formato Audio Unit)." start_selected="true">
+        <pkg-ref id="com.vladislav.sosatune.component"/>
+    </choice>
+    <pkg-ref id="com.vladislav.sosatune.component" version="@VERSION@" onConclusion="none">SosaTune-component.pkg</pkg-ref>
     <pkg-ref id="com.vladislav.sosatune.vst3" version="@VERSION@" onConclusion="none">SosaTune-vst3.pkg</pkg-ref>
     <pkg-ref id="com.vladislav.sosatune.clap" version="@VERSION@" onConclusion="none">SosaTune-clap.pkg</pkg-ref>
 </installer-gui-script>

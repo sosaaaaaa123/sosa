@@ -5,6 +5,7 @@
 # L'installer mette:
 #   - Sosa Tune VST3 in /Library/Audio/Plug-Ins/VST3
 #   - Sosa Tune CLAP in /Library/Audio/Plug-Ins/CLAP
+#   - Sosa Tune Audio Unit (Logic Pro, GarageBand) in /Library/Audio/Plug-Ins/Components
 # e alla fine toglie il "blocco di sicurezza" (quarantena) dai plugin, cosi'
 # i DAW li caricano senza l'avviso "file dannoso".
 set -euo pipefail
@@ -15,8 +16,16 @@ WORK="$(mktemp -d)"
 OUT="SosaTune-Installer-macOS.pkg"
 HERE="installer/macos"
 
-for fmt in vst3 clap; do
-  upper=$(echo "$fmt" | tr '[:lower:]' '[:upper:]')
+for fmt in vst3 clap component; do
+  case "$fmt" in
+    vst3) upper="VST3" ;;
+    clap) upper="CLAP" ;;
+    component) upper="Components" ;;
+  esac
+  if [ ! -d "$SRC/SosaTune.$fmt" ]; then
+    echo "manca $SRC/SosaTune.$fmt" >&2
+    exit 1
+  fi
   root="$WORK/root-$fmt"
   mkdir -p "$root"
   cp -R "$SRC/SosaTune.$fmt" "$root/"

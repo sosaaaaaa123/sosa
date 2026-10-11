@@ -1,7 +1,7 @@
 #!/bin/bash
 # Dopo l'installazione: toglie la quarantena dai plugin e rimuove eventuali
 # copie vecchie nella cartella utente (due copie confondono i DAW).
-for dir in "/Library/Audio/Plug-Ins/VST3/SosaTune.vst3" "/Library/Audio/Plug-Ins/CLAP/SosaTune.clap"; do
+for dir in "/Library/Audio/Plug-Ins/VST3/SosaTune.vst3" "/Library/Audio/Plug-Ins/CLAP/SosaTune.clap" "/Library/Audio/Plug-Ins/Components/SosaTune.component"; do
   if [ -e "$dir" ]; then
     xattr -dr com.apple.quarantine "$dir" 2>/dev/null || true
     chmod -R a+rX "$dir" 2>/dev/null || true
@@ -11,7 +11,10 @@ user=$(stat -f%Su /dev/console 2>/dev/null || true)
 if [ -n "$user" ] && [ "$user" != "root" ]; then
   home=$(dscl . -read "/Users/$user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
   if [ -n "$home" ]; then
-    rm -rf "$home/Library/Audio/Plug-Ins/VST3/SosaTune.vst3" "$home/Library/Audio/Plug-Ins/CLAP/SosaTune.clap" 2>/dev/null || true
+    rm -rf "$home/Library/Audio/Plug-Ins/VST3/SosaTune.vst3" "$home/Library/Audio/Plug-Ins/CLAP/SosaTune.clap" \
+      "$home/Library/Audio/Plug-Ins/Components/SosaTune.component" 2>/dev/null || true
   fi
 fi
+# Logic rilegge l'elenco degli Audio Unit al prossimo avvio.
+killall -9 AudioComponentRegistrar 2>/dev/null || true
 exit 0
