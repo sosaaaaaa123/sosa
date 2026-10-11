@@ -122,10 +122,12 @@ where
                     }
                 }
 
-                // Ridisegno a intervalli regolari (grafico e indicatore sono "live"),
-                // ma non a ogni fotogramma dello schermo.
+                // Ridisegno a ogni "battito" della finestra (circa 66 al secondo,
+                // sempre alla stessa distanza): animazione fluida. Con un
+                // intervallo di 33 ms i fotogrammi cadevano a volte dopo 30 e a
+                // volte dopo 45 ms (il battito e' di 15 ms): l'animazione scattava.
                 (update)(egui_ctx, &setter, &mut state.write());
-                egui_ctx.request_repaint_after(super::FRAME_INTERVAL);
+                egui_ctx.request_repaint();
             },
         );
 

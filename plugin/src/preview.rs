@@ -44,6 +44,7 @@ pub fn render(scale: f32) -> PreviewImage {
     let mut pixels_per_point = scale;
     // Alcuni fotogrammi: i caratteri vengono caricati dal secondo, e
     // l'indicatore si posa sulla voce con dolcezza.
+    let started = std::time::Instant::now();
     for frame in 0..40 {
         let mut input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
@@ -67,6 +68,10 @@ pub fn render(scale: f32) -> PreviewImage {
         primitives = ctx.tessellate(output.shapes, pixels_per_point);
     }
 
+    eprintln!(
+        "Interfaccia: {:.2} ms per fotogramma (disegno + tassellazione)",
+        started.elapsed().as_secs_f64() * 1000.0 / 40.0
+    );
     let width = (EDITOR_WIDTH as f32 * pixels_per_point).round() as usize;
     let height = (EDITOR_HEIGHT as f32 * pixels_per_point).round() as usize;
     let mut canvas = Canvas { width, height, pixels: vec![[0.0; 4]; width * height] };

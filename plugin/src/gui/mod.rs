@@ -5,8 +5,9 @@
 //! 1. niente "vsync": su macOS, con la sincronizzazione verticale attiva, una
 //!    finestra coperta o nascosta puo' bloccare il thread principale del DAW
 //!    (tutto si "impalla");
-//! 2. l'interfaccia si ridisegna al massimo 30 volte al secondo invece che a
-//!    ogni fotogramma dello schermo (fino a 120 sui MacBook Pro).
+//! 2. l'interfaccia si ridisegna a ogni battito della finestra (~66 volte al
+//!    secondo, a intervalli regolari) invece che a ogni fotogramma dello
+//!    schermo (fino a 120 sui MacBook Pro).
 #![allow(clippy::type_complexity)]
 
 use crossbeam::atomic::AtomicCell;
@@ -20,9 +21,6 @@ use std::sync::Arc;
 
 /// Re-export for convenience.
 pub use egui_baseview::egui;
-
-/// Ogni quanto ridisegnare l'interfaccia (circa 30 fotogrammi al secondo).
-pub(crate) const FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
 
 mod window;
 

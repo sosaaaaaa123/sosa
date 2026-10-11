@@ -877,8 +877,13 @@ fn stage(
         state.last_audio_time = now;
     }
     let receiving = now - state.last_audio_time < 0.5;
+    // Le animazioni seguono il tempo vero e non il numero di fotogrammi:
+    // restano identiche a qualunque frequenza di ridisegno, senza scatti.
+    // (`frames` = quanti fotogrammi "da 30 al secondo" sono passati.)
+    let frames = ui.ctx().input(|i| i.unstable_dt).clamp(0.0, 0.1) * 30.0;
+    let ease = |k: f32| 1.0 - (1.0 - k).powf(frames);
     let target_level = if receiving { (input_peak * 3.0).clamp(0.0, 1.0) } else { 0.0 };
-    state.level += (target_level - state.level) * 0.15;
+    state.level += (target_level - state.level) * ease(0.15);
     let phase = (now as f32) * 0.8;
     let swell = 1.0 + 0.12 * state.level;
 
@@ -920,18 +925,35 @@ fn stage(
         }
         points
     };
+    // I tratti pienamente visibili diventano una sola linea continua (piu'
+    // morbida e molto piu' veloce da disegnare); solo le estremita' che
+    // sfumano restano a pezzetti.
     let draw_strand = |p: &Painter, points: &[(Pos2, f32)], color: Color32, width: f32, k: f32, glow: bool| {
-        for w in points.windows(2) {
-            let fade = 0.5 * (w[0].1 + w[1].1);
-            if fade <= 0.0 {
-                continue;
+        let layers: &[(f32, f32)] = if glow { &[(9.0, 0.06), (4.0, 0.14), (2.0, 0.35), (1.0, 1.0)] } else { &[(1.0, 1.0)] };
+        for &(scale, alpha) in layers {
+            let full = Stroke::new(width * scale, light(color, alpha * k));
+            let mut run: Vec<Pos2> = Vec::new();
+            for w in points.windows(2) {
+                let fade = 0.5 * (w[0].1 + w[1].1);
+                if fade >= 0.999 {
+                    if run.is_empty() {
+                        run.push(w[0].0);
+                    }
+                    run.push(w[1].0);
+                    continue;
+                }
+                if run.len() >= 2 {
+                    p.add(Shape::line(std::mem::take(&mut run), full));
+                } else {
+                    run.clear();
+                }
+                if fade > 0.0 {
+                    p.line_segment([w[0].0, w[1].0], Stroke::new(width * scale, light(color, alpha * k * fade)));
+                }
             }
-            if glow {
-                p.line_segment([w[0].0, w[1].0], Stroke::new(width * 9.0, light(color, 0.06 * k * fade)));
-                p.line_segment([w[0].0, w[1].0], Stroke::new(width * 4.0, light(color, 0.14 * k * fade)));
-                p.line_segment([w[0].0, w[1].0], Stroke::new(width * 2.0, light(color, 0.35 * k * fade)));
+            if run.len() >= 2 {
+                p.add(Shape::line(run, full));
             }
-            p.line_segment([w[0].0, w[1].0], Stroke::new(width, light(color, k * fade)));
         }
     };
     let strand_color = Color32::from_rgb(0xb4, 0xd2, 0xff);
@@ -1044,12 +1066,12 @@ fn stage(
         state.shown_note = Some(pc);
         state.note_light = 1.0;
         let cents = ((p.input - target) * 100.0).clamp(-100.0, 100.0);
-        state.meter_cents += (cents - state.meter_cents) * 0.35;
-        state.meter_lit += (1.0 - state.meter_lit) * 0.3;
+        state.meter_cents += (cents - state.meter_cents) * ease(0.35);
+        state.meter_lit += (1.0 - state.meter_lit) * ease(0.3);
     } else {
-        state.note_light = (state.note_light - 0.02).max(0.35);
-        state.meter_cents *= 0.9;
-        state.meter_lit = (state.meter_lit - 0.03).max(0.55);
+        state.note_light = (state.note_light - 0.02 * frames).max(0.35);
+        state.meter_cents *= 0.9f32.powf(frames);
+        state.meter_lit = (state.meter_lit - 0.03 * frames).max(0.55);
     }
     // Centro della lettera grande (come nell'immagine: 722, 421).
     let note_center = g.p(722.0, 421.0);
