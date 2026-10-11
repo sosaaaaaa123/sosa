@@ -1,0 +1,90 @@
+# Compila Sosa Tune per Windows (64 bit) e crea l'installer
+# "SosaTune-Installer-Windows.exe", che finisce nel ramo "build-windows".
+
+name: Compila per Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test del motore audio
+        run: cargo test -p sosatune_dsp --release
+
+      - name: Test del plugin
+        shell: bash
+        run: |
+          set +e
+          cargo test -p sosatune --release > plugin-test-log.txt 2>&1
+          echo "exit code: $?" >> plugin-test-log.txt
+          grep -E "^test |test result|panicked|exit code" plugin-test-log.txt
+
+      - name: Compila il plugin
+        shell: bash
+        run: cargo xtask bundle sosatune --release 2>&1 | tee build-log.txt
+
+      - name: Prova il plugin con pluginval
+        shell: bash
+        run: |
+          set +e
+          curl -sL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          unzip -q -o pluginval.zip -d pluginval
+          ./pluginval/pluginval.exe --strictness-level 10 --validate-in-process --skip-gui-tests --timeout-ms 600000 --validate target/bundled/SosaTune.vst3 > pv-vst3.txt 2>&1
+          echo "exit code: $?" >> pv-vst3.txt
+          tail -60 pv-vst3.txt
+
+      - name: Crea l'installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Qp installer\windows\SosaTune.iss
+          Get-ChildItem SosaTune-Installer-Windows.exe
+
+      - name: Prova l'installer (installazione silenziosa)
+        shell: pwsh
+        run: |
+          Start-Process -Wait -FilePath .\SosaTune-Installer-Windows.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART"
+          Get-ChildItem -Recurse "C:\Program Files\Common Files\VST3\SosaTune.vst3" | Select-Object FullName, Length | Out-String | Tee-Object install-check.txt
+          Get-ChildItem "C:\Program Files\Common Files\CLAP\SosaTune.clap" | Select-Object FullName, Length | Out-String | Tee-Object -Append install-check.txt
+
+      - name: Rapporto
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "Sosa Tune Windows ${GITHUB_SHA::7} - $(date -u)"
+            echo; echo "## Test del plugin"; grep -E "test result|panicked|exit code" plugin-test-log.txt || true
+            echo; echo "## Compilazione (ultime righe)"; tail -30 build-log.txt || true
+            echo; echo "## pluginval livello 10 - VST3"; tail -80 pv-vst3.txt || true
+            echo; echo "## Installazione di prova"; cat install-check.txt || true
+          } > rapporto-windows.txt 2>&1
+
+      - name: Pubblica nel ramo build-windows
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OUT="$RUNNER_TEMP/build-branch"
+          mkdir -p "$OUT"
+          cp rapporto-windows.txt "$OUT/"
+          if [ -f SosaTune-Installer-Windows.exe ]; then cp SosaTune-Installer-Windows.exe "$OUT/"; fi
+          cd "$OUT"
+          git init -q -b build-windows
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "Sosa Tune per Windows (${GITHUB_SHA::7})"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" build-windows:build-windows

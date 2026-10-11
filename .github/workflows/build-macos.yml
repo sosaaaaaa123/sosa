@@ -131,6 +131,28 @@ jobs:
           }
           run_pv target/bundled-mhbundle/SosaTune.vst3 vst3 || true
 
+      # L'installer per gli altri Mac (doppio clic e si installa da solo).
+      - name: Crea l'installer per Mac
+        if: always()
+        run: |
+          set +e
+          installer/macos/build-pkg.sh 1.0.0 > pkg-log.txt 2>&1
+          echo "exit code: $?" >> pkg-log.txt
+          cat pkg-log.txt
+
+      - name: Prova l'installer (installazione vera sul Mac di prova)
+        if: always()
+        run: |
+          set +e
+          {
+            sudo installer -pkg SosaTune-Installer-macOS.pkg -target / 2>&1
+            echo "exit code: $?"
+            ls -la /Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS /Library/Audio/Plug-Ins/CLAP/SosaTune.clap/Contents/MacOS
+            cmp /Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS/SosaTune target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune && echo "VST3 identico a quello collaudato"
+            xattr -l /Library/Audio/Plug-Ins/VST3/SosaTune.vst3 || true
+          } > pkg-install.txt 2>&1
+          cat pkg-install.txt
+
       - name: Prepara lo zip e il rapporto
         if: always()
         run: |
@@ -167,6 +189,10 @@ jobs:
             echo
             echo "## clap-validator"
             cat clap-validator.txt || true
+            echo
+            echo "## Installer per Mac"
+            tail -20 pkg-log.txt || true
+            cat pkg-install.txt || true
           } > rapporto.txt 2>&1
 
       - uses: actions/upload-artifact@v4
@@ -175,6 +201,7 @@ jobs:
           name: SosaTune-macOS
           path: |
             SosaTune-macOS.zip
+            SosaTune-Installer-macOS.pkg
             rapporto.txt
 
       # Lo zip e il rapporto finiscono anche nel ramo "build" del repository:
@@ -188,6 +215,7 @@ jobs:
           mkdir -p "$OUT"
           cp rapporto.txt "$OUT/"
           if [ -f SosaTune-macOS.zip ]; then cp SosaTune-macOS.zip "$OUT/"; fi
+          if [ -f SosaTune-Installer-macOS.pkg ]; then cp SosaTune-Installer-macOS.pkg "$OUT/"; fi
           if [ -f anteprima.png ]; then cp anteprima.png "$OUT/"; fi
           cd "$OUT"
           git init -q -b build
