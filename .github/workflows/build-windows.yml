@@ -56,8 +56,12 @@ jobs:
       - name: Prova l'installer (installazione silenziosa)
         shell: pwsh
         run: |
+          # Scelta predefinita: solo VST3.
           Start-Process -Wait -FilePath .\SosaTune-Installer-Windows.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART"
-          Get-ChildItem -Recurse "C:\Program Files\Common Files\VST3\SosaTune.vst3" | Select-Object FullName, Length | Out-String | Tee-Object install-check.txt
+          "Predefinita - VST3: $(Test-Path 'C:\Program Files\Common Files\VST3\SosaTune.vst3')  CLAP: $(Test-Path 'C:\Program Files\Common Files\CLAP\SosaTune.clap')" | Tee-Object install-check.txt
+          # Con entrambi i formati scelti.
+          Start-Process -Wait -FilePath .\SosaTune-Installer-Windows.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/COMPONENTS=vst3,clap"
+          Get-ChildItem -Recurse "C:\Program Files\Common Files\VST3\SosaTune.vst3" | Select-Object FullName, Length | Out-String | Tee-Object -Append install-check.txt
           Get-ChildItem "C:\Program Files\Common Files\CLAP\SosaTune.clap" | Select-Object FullName, Length | Out-String | Tee-Object -Append install-check.txt
 
       - name: Rapporto
