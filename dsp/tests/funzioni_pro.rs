@@ -267,3 +267,81 @@ fn voice_between_two_scale_notes_does_not_warble() {
     let arrived = arrived.expect("il Re deve essere raggiunto");
     assert!(arrived < 0.5 + 0.07, "il Re arriva dopo {:.0} ms", (arrived - 0.5) * 1000.0);
 }
+
+/// Intonazione (nota MIDI, riferita a 440 Hz) del pezzo `[from, to)` di un segnale.
+fn measured_note(signal: &[f32], from: f32, to: f32) -> f32 {
+    let mut yin = YinDetector::new(SR, 70.0);
+    let len = yin.frame_len();
+    let mut notes = Vec::new();
+    let mut start = (from * SR) as usize;
+    while start + len <= (to * SR) as usize {
+        let est = yin.detect(&signal[start..start + len]);
+        if est.voiced {
+            notes.push(hz_to_note(SR / est.period));
+        }
+        start += len / 2;
+    }
+    assert!(!notes.is_empty(), "nessuna nota misurata");
+    mean(&notes)
+}
+
+#[test]
+fn detune_moves_the_whole_scale() {
+    // Un La cantato a 432 Hz (accordatura "a 432"), cromatico.
+    let la_432 = hz_to_note(432.0);
+    let input = voice(1.2, |_| la_432);
+    let at_440 = CorrectionSettings { retune_ms: 0.0, ..Default::default() };
+    let at_432 = CorrectionSettings { reference_hz: 432.0, ..at_440 };
+
+    // A 440 Hz la voce viene portata sul La a 440.
+    let (out, _) = run(&input, &at_440);
+    let n = measured_note(&out, 0.5, 1.1);
+    assert!((n - 69.0).abs() < 0.08, "a 440 Hz: nota {n}");
+
+    // A 432 Hz la voce e' gia' intonata: resta a 432, e l'indicatore lo vede.
+    let (out, reports) = run(&input, &at_432);
+    let n = measured_note(&out, 0.5, 1.1);
+    assert!((n - la_432).abs() < 0.08, "a 432 Hz: nota {n} invece di {la_432}");
+    let shown = mean(&reports.iter().filter(|(t, r)| *t > 0.5 && r.voiced).map(|(_, r)| r.input_note).collect::<Vec<_>>());
+    assert!((shown - 69.0).abs() < 0.05, "l'indicatore a 432 Hz mostra {shown}");
+}
+
+#[test]
+fn classic_style_glides_into_each_note() {
+    // Una nota che parte 40 centesimi sotto: lo stile moderno la fa partire
+    // gia' intonata, quello classico parte dalla voce e ci scivola sopra.
+    let input = voice(0.8, |_| 59.6);
+    let modern = CorrectionSettings { retune_ms: 60.0, ..Default::default() };
+    let classic = CorrectionSettings { classic: true, ..modern };
+    let first = |s: &CorrectionSettings| {
+        let (_, reports) = run(&input, s);
+        let outs: Vec<f32> = reports.iter().filter(|(_, r)| r.voiced).map(|(_, r)| r.output_note).collect();
+        (outs[0], outs[outs.len() - 1])
+    };
+    let (m_start, m_end) = first(&modern);
+    let (c_start, c_end) = first(&classic);
+    assert!((m_start - 60.0).abs() < 0.05, "moderno: parte da {m_start}");
+    assert!((c_start - 59.6).abs() < 0.1, "classico: parte da {c_start}");
+    assert!((m_end - 60.0).abs() < 0.03 && (c_end - 60.0).abs() < 0.03, "arrivo: {m_end} {c_end}");
+}
+
+#[test]
+fn hq_mode_adds_five_ms_and_still_corrects() {
+    let mut corrector = PitchCorrector::new(SR, 1);
+    let low = corrector.latency();
+    corrector.set_quality(true);
+    let hq = corrector.latency();
+    assert_eq!(hq - low, (SR * 0.005).round() as usize, "latenza HQ");
+
+    let input = voice(1.0, |_| 60.35);
+    let settings = CorrectionSettings { retune_ms: 0.0, ..Default::default() };
+    let mut out = Vec::new();
+    for &x in &input {
+        let mut f = [x];
+        corrector.process_frame(&mut f, &settings);
+        out.push(f[0]);
+    }
+    // L'uscita e' in ritardo della latenza: misuriamo la parte finale.
+    let n = measured_note(&out, 0.5, 0.95);
+    assert!((n - 60.0).abs() < 0.08, "HQ: nota {n}");
+}

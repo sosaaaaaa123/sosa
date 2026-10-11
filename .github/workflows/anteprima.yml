@@ -1,0 +1,54 @@
+# Prova veloce dell'interfaccia: compila solo il necessario per le prove del
+# plugin e per l'anteprima (anteprima.png), senza pacchetti e validatori.
+# Parte quando si caricano modifiche nel ramo "grafica"; il risultato
+# (anteprima.png e anteprima-log.txt) finisce nel ramo "anteprima".
+
+name: Anteprima interfaccia
+
+on:
+  push:
+    branches: [grafica]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  anteprima:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Prove e anteprima
+        run: |
+          set +e
+          {
+            echo "=== ${GITHUB_SHA::7} ==="
+            echo "=== test del motore ==="
+            cargo test -p sosatune_dsp --release 2>&1 | grep -E "^test |test result|panicked|error|warning: unused"
+            echo "=== test del plugin ==="
+            cargo test -p sosatune --release 2>&1 | grep -vE "^\s+(Compiling|Downloaded|Downloading)"
+            echo "=== anteprima ==="
+            cargo run --release -p sosatune --example anteprima -- anteprima.png 2>&1 | tail -20
+          } > anteprima-log.txt 2>&1
+          tail -150 anteprima-log.txt
+
+      - name: Pubblica nel ramo anteprima
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OUT="$RUNNER_TEMP/anteprima-branch"
+          mkdir -p "$OUT"
+          cp anteprima-log.txt "$OUT/" || true
+          if [ -f anteprima.png ]; then cp anteprima.png "$OUT/"; fi
+          cd "$OUT"
+          git init -q -b anteprima
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
+            commit -q -m "Anteprima (${GITHUB_SHA::7})"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" anteprima:anteprima

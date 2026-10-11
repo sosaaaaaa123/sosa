@@ -17,6 +17,9 @@
 //!   --vibrato 0         da -100 (toglie) a +100 (aggiunge) il vibrato naturale
 //!   --formanti 0        spostamento del timbro in semitoni (da -12 a +12)
 //!   --sensibilita 30    0-100: piu' alta = riconosce anche voci con molta aria
+//!   --la 440            accordatura: frequenza del La4 in Hz (400-480)
+//!   --modo bassa        bassa (latenza minima) | hq (piu' preciso, piu' latenza)
+//!   --stile moderno     moderno | classico
 //!   --pitch file.csv    salva anche l'andamento dell'intonazione (per grafici)
 
 use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType, NOTE_NAMES};
@@ -104,6 +107,7 @@ fn main() {
     let mut settings = CorrectionSettings::default();
     let mut voice = VoiceType::AltoTenor;
     let mut pitch_csv: Option<String> = None;
+    let mut hq = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -123,6 +127,9 @@ fn main() {
                 "vibrato" => settings.vibrato = (number() / 100.0).clamp(-1.0, 1.0),
                 "formanti" | "formant" => settings.formant = number().clamp(-12.0, 12.0),
                 "sensibilita" | "tracking" => settings.tracking = (number() / 100.0).clamp(0.0, 1.0),
+                "la" | "a4" => settings.reference_hz = number().clamp(400.0, 480.0),
+                "modo" | "mode" => hq = matches!(value.to_lowercase().as_str(), "hq" | "alta" | "high"),
+                "stile" | "style" => settings.classic = value.to_lowercase().starts_with("class"),
                 "pitch" => pitch_csv = Some(value.clone()),
                 _ => fail(&format!("opzione sconosciuta --{name}")),
             }
@@ -143,6 +150,7 @@ fn main() {
     let sr = audio.sample_rate as f32;
 
     let mut corrector = PitchCorrector::new(sr, channels);
+    corrector.set_quality(hq);
     corrector.set_voice(voice);
     let latency = corrector.latency();
     println!(

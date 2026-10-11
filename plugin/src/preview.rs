@@ -7,8 +7,8 @@
 //! `examples/anteprima.rs`, che salva il risultato in PNG).
 //!
 //! Per rendere l'anteprima realistica, prima del disegno una voce sintetica
-//! leggermente stonata passa nel correttore vero: il grafico e l'indicatore
-//! mostrano quindi dati reali.
+//! leggermente stonata passa nel correttore vero: la nota nella sfera e
+//! l'indicatore mostrano quindi dati reali.
 
 use crate::editor::Headless;
 use crate::gui::egui;
@@ -16,7 +16,7 @@ use crate::params::{SosaTuneParams, EDITOR_HEIGHT, EDITOR_WIDTH};
 use crate::shared::PitchDisplay;
 use nih_plug::prelude::*;
 use sosatune_dsp::synth::{sing_melody, SungNote};
-use sosatune_dsp::{CorrectionSettings, PitchCorrector, TubeCompressor};
+use sosatune_dsp::{CorrectionSettings, PitchCorrector};
 use std::collections::HashMap;
 
 /// Un'immagine RGBA (8 bit per canale, alfa sempre 255).
@@ -42,9 +42,9 @@ pub fn render(scale: f32) -> PreviewImage {
     let size = egui::vec2(EDITOR_WIDTH as f32, EDITOR_HEIGHT as f32);
     let mut primitives = Vec::new();
     let mut pixels_per_point = scale;
-    // Alcuni fotogrammi: i caratteri vengono caricati dal secondo, e il grafico
-    // si centra sulla voce con dolcezza.
-    for frame in 0..90 {
+    // Alcuni fotogrammi: i caratteri vengono caricati dal secondo, e
+    // l'indicatore si posa sulla voce con dolcezza.
+    for frame in 0..40 {
         let mut input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
             time: Some(frame as f64 / 30.0),
@@ -88,47 +88,35 @@ pub fn render(scale: f32) -> PreviewImage {
     PreviewImage { width, height, rgba }
 }
 
-/// Fa cantare al correttore (e al compressore) la melodia di prova, con le
-/// impostazioni del plugin, e mette il risultato nel grafico e nell'indicatore.
+/// Fa cantare al correttore la melodia di prova (in La maggiore), con le
+/// impostazioni del plugin, e mette il risultato nell'indicatore.
 fn sing_into(params: &SosaTuneParams, display: &PitchDisplay) {
     let sr = 44100.0;
     let n = |note: f32, cents: f32, seconds: f32| SungNote { note, detune_cents: cents, seconds };
-    let rest = |seconds: f32| SungNote { note: -1.0, detune_cents: 0.0, seconds };
     let melody = [
-        n(60.0, 30.0, 0.45), n(62.0, -40.0, 0.45), n(64.0, 35.0, 0.45), n(60.0, -25.0, 0.45),
-        n(60.0, 40.0, 0.45), n(62.0, -35.0, 0.45), n(64.0, 30.0, 0.45), n(60.0, -30.0, 0.45),
-        rest(0.25),
-        n(64.0, -30.0, 0.45), n(65.0, 40.0, 0.45), n(67.0, -22.0, 0.9),
+        n(64.0, 30.0, 0.45), n(66.0, -40.0, 0.45), n(68.0, 25.0, 0.45), n(64.0, -25.0, 0.45),
+        n(66.0, 35.0, 0.45), n(69.0, -18.0, 1.2),
     ];
     let (audio, _) = sing_melody(&melody, sr, 25.0);
 
     let mut corrector = PitchCorrector::new(sr, 1);
+    corrector.set_quality(params.quality.value() == crate::params::QualityChoice::Hq);
     corrector.set_voice(params.voice.value().to_dsp());
-    let settings = CorrectionSettings {
-        notes: params.active_notes(),
-        retune_ms: params.retune_speed.value(),
-        amount: params.amount.value(),
-        humanize: params.humanize.value(),
-        flex_tune: params.flex_tune.value(),
-        tracking: params.tracking.value(),
-        ..Default::default()
-    };
-    let comp_settings = params.comp.settings(false);
-    let mut compressor = TubeCompressor::new(sr, 1);
-    compressor.snap_to(&comp_settings);
-    let latency_ms = (corrector.latency() + TubeCompressor::fixed_latency()) as f32 / sr * 1000.0;
+    let settings: CorrectionSettings = params.correction_settings();
+    let latency_ms = corrector.latency() as f32 / sr * 1000.0;
     display.set_timing(latency_ms, corrector.analysis_interval());
 
     // Ci fermiamo a meta' dell'ultima nota, cosi' l'indicatore mostra una nota.
-    let stop = (5.3 * sr) as usize;
+    let stop = (3.0 * sr) as usize;
     for &sample in audio.iter().take(stop) {
         let mut frame = [sample];
         if let Some(report) = corrector.process_frame(&mut frame, &settings) {
             display.push(&report);
+            if report.voiced {
+                display.add_note(report.input_note, corrector.analysis_interval());
+            }
         }
-        compressor.process_frame(&mut frame, &comp_settings);
     }
-    display.set_gain_reduction(compressor.gain_reduction_db());
 }
 
 /// Un "host" finto: l'anteprima non cambia nessun parametro.
@@ -285,12 +273,14 @@ fn edge(a: egui::Pos2, b: egui::Pos2, c: egui::Pos2) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    //! Prove dell'interfaccia del compressore: clic e trascinamenti "finti"
-    //! sull'interfaccia vera, controllando quali parametri cambiano.
+    //! Prove dell'interfaccia: clic e trascinamenti "finti" sull'interfaccia
+    //! vera, controllando quali parametri cambiano.
 
     use super::*;
-    use crate::editor::{comp_layout, COMPRESSOR_ORIGIN};
-    use crate::params::CompModeChoice;
+    use crate::editor::layout;
+    use crate::params::{Key, QualityChoice, ScaleChoice, StyleChoice, VoiceChoice};
+    use crate::presets::FACTORY;
+    use std::sync::atomic::Ordering;
     use std::sync::Mutex;
 
     /// Un host che registra ogni modifica di parametro chiesta dall'interfaccia.
@@ -343,16 +333,11 @@ mod tests {
     }
 
     fn press(pos: egui::Pos2, pressed: bool) -> egui::Event {
-        egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: egui::Modifiers::default(),
-        }
+        egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::default() }
     }
 
     fn click(pos: egui::Pos2) -> Vec<Vec<egui::Event>> {
-        vec![vec![egui::Event::PointerMoved(pos)], vec![press(pos, true)], vec![press(pos, false)]]
+        vec![vec![egui::Event::PointerMoved(pos)], vec![press(pos, true)], vec![press(pos, false)], vec![]]
     }
 
     /// Trascina in su di `pixels` punti.
@@ -366,84 +351,139 @@ mod tests {
         frames
     }
 
-    fn comp_point(dx: f32, dy: f32) -> egui::Pos2 {
-        egui::pos2(COMPRESSOR_ORIGIN.0 + dx, COMPRESSOR_ORIGIN.1 + dy)
-    }
-
-    #[test]
-    fn power_switch_turns_the_compressor_on_and_off() {
-        let params = SosaTuneParams::default();
-        assert!(!params.comp.enabled.value(), "deve partire spento");
-        let changes = run(&params, click(comp_point(comp_layout::POWER.0, comp_layout::POWER.1)));
-        let enabled = params.comp.enabled.as_ptr();
-        assert!(
-            changes.iter().any(|&(p, v)| p == enabled && v == 1.0),
-            "la levetta non accende il compressore: {changes:?}"
-        );
-
-        let params = SosaTuneParams::preview();
-        let changes = run(&params, click(comp_point(comp_layout::POWER.0, comp_layout::POWER.1)));
-        assert!(changes.iter().any(|&(p, v)| p == params.comp.enabled.as_ptr() && v == 0.0));
-    }
-
-    #[test]
-    fn mode_buttons_select_each_mode() {
-        let params = SosaTuneParams::preview();
-        let mode = params.comp.mode.as_ptr();
-        // Le tre righe: Ottica (gia' scelta), Manuale, Ottica + manuale.
-        for (row, expected) in [(1usize, CompModeChoice::Manual), (2, CompModeChoice::FixedManual)] {
-            let changes = run(&params, click(comp_point(comp_layout::mode(row).0, comp_layout::mode(row).1)));
-            let normalized = params.comp.mode.preview_normalized(expected);
-            assert!(
-                changes.iter().any(|&(p, v)| p == mode && (v - normalized).abs() < 1e-6),
-                "riga {row}: {changes:?}"
-            );
-        }
-        // Cliccare la modalita' gia' scelta non cambia nulla.
-        let changes = run(&params, click(comp_point(comp_layout::mode(0).0, comp_layout::mode(0).1)));
-        assert!(changes.iter().all(|&(p, _)| p != mode));
+    fn last_value(changes: &[(ParamPtr, f32)], ptr: ParamPtr) -> Option<f32> {
+        changes.iter().filter(|(p, _)| *p == ptr).map(|&(_, v)| v).last()
     }
 
     #[test]
     fn every_knob_follows_the_mouse() {
         let params = SosaTuneParams::preview();
-        let comp = &params.comp;
         let knobs = [
-            comp.threshold.as_ptr(),
-            comp.ratio.as_ptr(),
-            comp.attack.as_ptr(),
-            comp.release.as_ptr(),
-            comp.tube.as_ptr(),
-            comp.mix.as_ptr(),
-            comp.output.as_ptr(),
+            (layout::retune(), params.retune_speed.as_ptr(), params.retune_speed.unmodulated_normalized_value()),
+            (layout::humanize(), params.humanize.as_ptr(), params.humanize.unmodulated_normalized_value()),
+            (layout::flex(), params.flex_tune.as_ptr(), params.flex_tune.unmodulated_normalized_value()),
+            (layout::detune(), params.detune.as_ptr(), params.detune.unmodulated_normalized_value()),
         ];
-        let starts = [
-            comp.threshold.unmodulated_normalized_value(),
-            comp.ratio.unmodulated_normalized_value(),
-            comp.attack.unmodulated_normalized_value(),
-            comp.release.unmodulated_normalized_value(),
-            comp.tube.unmodulated_normalized_value(),
-            comp.mix.unmodulated_normalized_value(),
-            comp.output.unmodulated_normalized_value(),
-        ];
-        for (i, (&ptr, &start)) in knobs.iter().zip(starts.iter()).enumerate() {
-            let changes = run(&params, drag_up(comp_point(comp_layout::knob(i).0, comp_layout::knob(i).1), 40.0));
-            let last = changes.iter().filter(|(p, _)| *p == ptr).map(|&(_, v)| v).last();
-            let last = last.unwrap_or_else(|| panic!("la manopola {i} non risponde: {changes:?}"));
-            // In su = valore piu' alto (o al massimo, se c'era gia').
-            assert!(last > start || start >= 1.0, "manopola {i}: {start} -> {last}");
-            // Nessun altro parametro deve cambiare.
+        for (i, &(pos, ptr, start)) in knobs.iter().enumerate() {
+            let changes = run(&params, drag_up(pos, 40.0));
+            let last = last_value(&changes, ptr).unwrap_or_else(|| panic!("la manopola {i} non risponde: {changes:?}"));
+            assert!(last > start, "manopola {i}: {start} -> {last}");
             assert!(changes.iter().all(|(p, _)| *p == ptr), "manopola {i}: cambiano altri parametri");
         }
     }
 
     #[test]
-    fn plugin_bypass_also_bypasses_the_compressor() {
+    fn mode_and_style_buttons_work() {
         let params = SosaTuneParams::preview();
-        assert!(params.comp.settings(false).enabled);
-        assert!(!params.comp.settings(true).enabled);
-        let defaults = SosaTuneParams::default();
-        assert!(!defaults.comp.settings(false).enabled, "spento per i progetti esistenti");
+        let changes = run(&params, click(layout::mode_hq()));
+        let hq = params.quality.preview_normalized(QualityChoice::Hq);
+        assert_eq!(last_value(&changes, params.quality.as_ptr()), Some(hq), "HQ: {changes:?}");
+        // La modalita' gia' scelta non cambia nulla.
+        let changes = run(&params, click(layout::mode_low()));
+        assert!(changes.is_empty(), "{changes:?}");
+
+        let changes = run(&params, click(layout::classic()));
+        let classic = params.style.preview_normalized(StyleChoice::Classic);
+        assert_eq!(last_value(&changes, params.style.as_ptr()), Some(classic), "Classic: {changes:?}");
+        let changes = run(&params, click(layout::modern()));
+        assert!(changes.is_empty(), "{changes:?}");
+    }
+
+    #[test]
+    fn power_button_is_the_daw_bypass() {
+        let params = SosaTuneParams::preview();
+        let changes = run(&params, click(layout::power()));
+        assert_eq!(last_value(&changes, params.bypass.as_ptr()), Some(1.0), "{changes:?}");
+    }
+
+    #[test]
+    fn clicking_a_note_edits_the_scale() {
+        let params = SosaTuneParams::preview();
+        // La maggiore: il Do (naturale) non c'e'. Cliccandolo entra nella scala
+        // personalizzata insieme alle note di La maggiore.
+        let changes = run(&params, click(layout::note(0)));
+        let custom = params.scale.preview_normalized(ScaleChoice::Custom);
+        assert_eq!(last_value(&changes, params.scale.as_ptr()), Some(custom));
+        assert_eq!(last_value(&changes, params.custom.note(0).as_ptr()), Some(1.0), "Do aggiunto");
+        assert_eq!(last_value(&changes, params.custom.note(9).as_ptr()), Some(1.0), "La resta");
+        assert_eq!(last_value(&changes, params.custom.note(10).as_ptr()), Some(0.0), "La# fuori");
+    }
+
+    #[test]
+    fn preset_arrows_and_list_load_presets() {
+        let params = SosaTuneParams::preview();
+        let changes = run(&params, click(layout::preset_next()));
+        let retune = params.retune_speed.preview_normalized(FACTORY[1].retune_ms);
+        assert_eq!(last_value(&changes, params.retune_speed.as_ptr()), Some(retune), "{changes:?}");
+        assert_eq!(params.preset.load(Ordering::Relaxed), 1);
+
+        let params = SosaTuneParams::preview();
+        let changes = run(&params, click(layout::preset_prev()));
+        let last = FACTORY.len() - 1;
+        let retune = params.retune_speed.preview_normalized(FACTORY[last].retune_ms);
+        assert_eq!(last_value(&changes, params.retune_speed.as_ptr()), Some(retune));
+        let style = params.style.preview_normalized(FACTORY[last].style);
+        assert_eq!(last_value(&changes, params.style.as_ptr()), Some(style));
+
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::preset_list());
+        frames.extend(click(layout::preset_item(3)));
+        let changes = run(&params, frames);
+        let retune = params.retune_speed.preview_normalized(FACTORY[3].retune_ms);
+        assert_eq!(last_value(&changes, params.retune_speed.as_ptr()), Some(retune), "{changes:?}");
+    }
+
+    #[test]
+    fn dropdowns_set_voice_key_and_scale() {
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::voice_field());
+        frames.extend(click(layout::voice_item(0)));
+        let changes = run(&params, frames);
+        let soprano = params.voice.preview_normalized(VoiceChoice::Soprano);
+        assert_eq!(last_value(&changes, params.voice.as_ptr()), Some(soprano), "{changes:?}");
+
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::key_field());
+        frames.extend(click(layout::key_item(7)));
+        frames.extend(click(layout::scale_item(1)));
+        let changes = run(&params, frames);
+        assert_eq!(last_value(&changes, params.key.as_ptr()), Some(params.key.preview_normalized(Key::G)), "{changes:?}");
+        let minor = params.scale.preview_normalized(ScaleChoice::NaturalMinor);
+        assert_eq!(last_value(&changes, params.scale.as_ptr()), Some(minor), "{changes:?}");
+    }
+
+    #[test]
+    fn settings_panel_knobs_work() {
+        let params = SosaTuneParams::preview();
+        let start = params.transpose.unmodulated_normalized_value();
+        let mut frames = click(layout::settings());
+        frames.extend(drag_up(layout::settings_knob(1), 40.0));
+        let changes = run(&params, frames);
+        let last = last_value(&changes, params.transpose.as_ptr()).expect("Transpose non risponde");
+        assert!(last > start, "{start} -> {last}");
+    }
+
+    #[test]
+    fn autokey_button_toggles_listening() {
+        let params = SosaTuneParams::preview();
+        params.autokey.store(false, Ordering::Relaxed);
+        assert!(!params.autokey.load(Ordering::Relaxed));
+        run(&params, click(layout::autokey()));
+        assert!(params.autokey.load(Ordering::Relaxed));
+        run(&params, click(layout::autokey()));
+        assert!(!params.autokey.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn help_and_undo_buttons_do_not_break_anything() {
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::help());
+        frames.extend(click(layout::help()));
+        frames.extend(click(layout::undo()));
+        frames.extend(click(layout::redo()));
+        let changes = run(&params, frames);
+        // Nulla da annullare: nessun parametro cambia.
+        assert!(changes.is_empty(), "{changes:?}");
     }
 
     #[test]
@@ -451,8 +491,8 @@ mod tests {
         let image = render(1.0);
         assert_eq!(image.width, EDITOR_WIDTH as usize);
         assert_eq!(image.height, EDITOR_HEIGHT as usize);
-        // Non e' un'immagine vuota: ci sono pixel chiari (testi, quadrante).
-        let bright = image.rgba.chunks(4).filter(|p| p[0] > 200 && p[1] > 180).count();
+        // Non e' un'immagine vuota: ci sono pixel chiari (testi, sfera).
+        let bright = image.rgba.chunks(4).filter(|p| p[0] > 200 && p[1] > 200 && p[2] > 200).count();
         assert!(bright > 1000, "anteprima quasi vuota ({bright} pixel chiari)");
     }
 }

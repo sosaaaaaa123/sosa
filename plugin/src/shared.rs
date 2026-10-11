@@ -29,8 +29,6 @@ pub struct PitchDisplay {
     written: AtomicUsize,
     latency_ms: AtomicF32,
     interval_s: AtomicF32,
-    /// Riduzione di guadagno del compressore (dB, la piu' alta dell'ultimo blocco).
-    gain_reduction_db: AtomicF32,
     /// Picco in ingresso e in uscita dell'ultimo blocco audio (0..1).
     input_peak: AtomicF32,
     output_peak: AtomicF32,
@@ -40,7 +38,7 @@ pub struct PitchDisplay {
     /// Il DAW ha messo il plugin in bypass.
     bypassed: AtomicBool,
     /// Quanto tempo (s) e' stata cantata ciascuna delle 12 note: serve a
-    /// riconoscere la tonalita' della canzone (pulsante RILEVA).
+    /// riconoscere la tonalita' della canzone ("AutoKey Listen").
     note_seconds: [AtomicF32; 12],
 }
 
@@ -54,7 +52,6 @@ impl Default for PitchDisplay {
             written: AtomicUsize::new(0),
             latency_ms: AtomicF32::new(0.0),
             interval_s: AtomicF32::new(0.005),
-            gain_reduction_db: AtomicF32::new(0.0),
             input_peak: AtomicF32::new(0.0),
             output_peak: AtomicF32::new(0.0),
             blocks: AtomicUsize::new(0),
@@ -79,10 +76,6 @@ impl PitchDisplay {
         self.interval_s.store(interval_s, Ordering::Relaxed);
     }
 
-    pub fn set_gain_reduction(&self, db: f32) {
-        self.gain_reduction_db.store(db, Ordering::Relaxed);
-    }
-
     /// Chiamata dal thread audio a ogni analisi cantata: conta quanto tempo
     /// si sta su ciascuna nota. Le note cantate "in mezzo" contano meno.
     pub fn add_note(&self, note: f32, seconds: f32) {
@@ -95,6 +88,13 @@ impl PitchDisplay {
         let pc = (nearest as i32).rem_euclid(12) as usize;
         let slot = &self.note_seconds[pc];
         slot.store(slot.load(Ordering::Relaxed) + seconds * weight, Ordering::Relaxed);
+    }
+
+    /// Ricomincia a contare da zero (quando si accende "AutoKey Listen").
+    pub fn reset_notes(&self) {
+        for slot in &self.note_seconds {
+            slot.store(0.0, Ordering::Relaxed);
+        }
     }
 
     /// Secondi cantati su ciascuna nota (Do, Do#, ... Si).
@@ -118,10 +118,6 @@ impl PitchDisplay {
             self.blocks.load(Ordering::Acquire),
             self.bypassed.load(Ordering::Relaxed),
         )
-    }
-
-    pub fn gain_reduction(&self) -> f32 {
-        self.gain_reduction_db.load(Ordering::Relaxed)
     }
 
     pub fn latency_ms(&self) -> f32 {

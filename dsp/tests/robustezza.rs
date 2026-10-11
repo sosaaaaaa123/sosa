@@ -33,6 +33,8 @@ fn every_sample_rate_and_voice_type_is_stable() {
         for &voice in &[VoiceType::Soprano, VoiceType::AltoTenor, VoiceType::LowMale] {
             for &channels in &[1usize, 2] {
                 let mut corrector = PitchCorrector::new(sr, channels);
+                // HQ sulle configurazioni stereo, bassa latenza sulle mono.
+                corrector.set_quality(channels == 2);
                 corrector.set_voice(voice);
                 let settings = CorrectionSettings {
                     notes: scale_notes(2, ScaleKind::MinorPentatonic),
@@ -44,6 +46,8 @@ fn every_sample_rate_and_voice_type_is_stable() {
                     vibrato: 0.8,
                     formant: -3.0,
                     tracking: 0.8,
+                    reference_hz: 432.0,
+                    classic: channels == 1,
                 };
                 let mut peak = 0.0f32;
                 for &x in &input {
@@ -78,7 +82,12 @@ fn changing_settings_while_running_is_safe() {
             vibrato: (k % 7) as f32 / 3.0 - 1.0,
             formant: (k % 13) as f32 - 6.0,
             tracking: (k % 5) as f32 / 4.0,
+            reference_hz: 420.0 + (k % 9) as f32 * 5.0,
+            classic: k % 4 == 1,
         };
+        if i % 30000 == 0 {
+            corrector.set_quality(k % 2 == 1);
+        }
         if i % 20000 == 0 {
             corrector.set_voice(match k % 3 {
                 0 => VoiceType::Soprano,

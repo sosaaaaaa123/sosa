@@ -58,6 +58,11 @@ pub struct PsolaShifter {
     capacity_max_period: f32,
     /// Ritardo tra ingresso e uscita (campioni).
     latency: usize,
+    /// Ritardo in piu' (campioni) per la modalita' HQ: l'analisi della voce
+    /// "vede" piu' avanti del punto che si sta elaborando. E il massimo
+    /// previsto all'allocazione.
+    lookahead: usize,
+    lookahead_capacity: usize,
 
     /// Indice assoluto del prossimo campione.
     position: u64,
@@ -92,7 +97,8 @@ impl PsolaShifter {
     pub fn new(channels: usize, capacity_max_period: usize, sample_rate: f32) -> Self {
         let channels = channels.clamp(1, MAX_CHANNELS);
         let cap = capacity_max_period.max(Self::MIN_PERIOD as usize) as f32;
-        let max_latency = Self::latency_for(cap);
+        let lookahead_capacity = Self::lookahead_capacity(sample_rate);
+        let max_latency = Self::latency_for(cap) + lookahead_capacity;
         // Spazio per la latenza piu' qualche periodo di storia (serve ad allineare i grani).
         let input_len = (max_latency + 6 * cap as usize + 8).next_power_of_two();
         let output_len = (2 * cap as usize + 8).next_power_of_two();
@@ -106,6 +112,8 @@ impl PsolaShifter {
             max_period: cap,
             capacity_max_period: cap,
             latency: max_latency,
+            lookahead: 0,
+            lookahead_capacity,
             position: 0,
             next_center: 0.0,
             analysis_mark: 0.0,
@@ -131,11 +139,25 @@ impl PsolaShifter {
         (2.75 * max_period).ceil() as usize + 3
     }
 
+    /// Il ritardo in piu' massimo previsto (vedi [`set_lookahead`](Self::set_lookahead)): 15 ms.
+    pub fn lookahead_capacity(sample_rate: f32) -> usize {
+        (sample_rate * 0.015).ceil() as usize
+    }
+
     /// Imposta il periodo massimo (in base al tipo di voce). Cambia la
     /// latenza e azzera lo stato. Non alloca memoria.
     pub fn set_max_period(&mut self, max_period: f32) {
         self.max_period = max_period.clamp(Self::MIN_PERIOD, self.capacity_max_period);
-        self.latency = Self::latency_for(self.max_period);
+        self.latency = Self::latency_for(self.max_period) + self.lookahead;
+        self.reset();
+    }
+
+    /// Ritardo aggiuntivo (campioni, al massimo
+    /// [`lookahead_capacity`](Self::lookahead_capacity)). Cambia la latenza e
+    /// azzera lo stato. Non alloca memoria.
+    pub fn set_lookahead(&mut self, samples: usize) {
+        self.lookahead = samples.min(self.lookahead_capacity);
+        self.latency = Self::latency_for(self.max_period) + self.lookahead;
         self.reset();
     }
 

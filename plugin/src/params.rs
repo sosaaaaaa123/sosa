@@ -2,14 +2,17 @@
 //! DAW salva nel progetto e puo' automatizzare.
 
 use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType};
-use sosatune_dsp::{CompMode, CompressorSettings};
+use sosatune_dsp::CorrectionSettings;
 use nih_plug::prelude::*;
 use crate::gui::EguiState;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
 /// Dimensione iniziale della finestra del plugin (pixel).
-pub const EDITOR_WIDTH: u32 = 940;
-pub const EDITOR_HEIGHT: u32 = 588;
+/// La grafica e' disegnata sulle proporzioni dell'immagine di riferimento
+/// (1448 x 1086, cioe' 4:3).
+pub const EDITOR_WIDTH: u32 = 960;
+pub const EDITOR_HEIGHT: u32 = 720;
 
 /// La tonalita' (la nota "di casa" della scala).
 ///
@@ -130,108 +133,28 @@ impl VoiceChoice {
     }
 }
 
-/// Le modalita' del compressore (come sull'hardware ottico a valvole).
+/// Modalita' di elaborazione: latenza minima oppure analisi piu' precisa.
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompModeChoice {
-    #[id = "fixed"]
-    #[name = "Ottica (automatica)"]
-    Fixed,
-    #[id = "manual"]
-    #[name = "Manuale"]
-    Manual,
-    #[id = "fixed-manual"]
-    #[name = "Ottica + manuale"]
-    FixedManual,
+pub enum QualityChoice {
+    #[id = "low-latency"]
+    #[name = "Low Latency"]
+    LowLatency,
+    #[id = "hq"]
+    #[name = "HQ"]
+    Hq,
 }
 
-impl CompModeChoice {
-    pub fn to_dsp(self) -> CompMode {
-        match self {
-            CompModeChoice::Fixed => CompMode::Fixed,
-            CompModeChoice::Manual => CompMode::Manual,
-            CompModeChoice::FixedManual => CompMode::FixedManual,
-        }
-    }
-}
-
-/// Il compressore ottico a valvola, dopo la correzione dell'intonazione.
-#[derive(Params)]
-pub struct CompressorParams {
-    #[id = "comp-on"]
-    pub enabled: BoolParam,
-    #[id = "comp-threshold"]
-    pub threshold: FloatParam,
-    #[id = "comp-ratio"]
-    pub ratio: FloatParam,
-    #[id = "comp-attack"]
-    pub attack: FloatParam,
-    #[id = "comp-release"]
-    pub release: FloatParam,
-    #[id = "comp-mode"]
-    pub mode: EnumParam<CompModeChoice>,
-    #[id = "comp-tube"]
-    pub tube: FloatParam,
-    #[id = "comp-mix"]
-    pub mix: FloatParam,
-    #[id = "comp-output"]
-    pub output: FloatParam,
-}
-
-impl Default for CompressorParams {
-    fn default() -> Self {
-        // Parte spento: i progetti esistenti non cambiano suono.
-        Self::new(false)
-    }
-}
-
-impl CompressorParams {
-    fn new(enabled: bool) -> Self {
-        let db = |name: &str, default: f32, min: f32, max: f32| {
-            FloatParam::new(name, default, FloatRange::Linear { min, max })
-                .with_unit(" dB")
-                .with_step_size(0.1)
-                .with_value_to_string(formatters::v2s_f32_rounded(1))
-        };
-        let ms = |name: &str, default: f32, min: f32, max: f32| {
-            FloatParam::new(name, default, FloatRange::Skewed { min, max, factor: FloatRange::skew_factor(-2.0) })
-                .with_unit(" ms")
-                .with_value_to_string(formatters::v2s_f32_rounded(1))
-        };
-        Self {
-            enabled: BoolParam::new("Compressore", enabled),
-            threshold: db("Soglia", -18.0, -50.0, 0.0),
-            ratio: FloatParam::new(
-                "Rapporto",
-                3.0,
-                FloatRange::Skewed { min: 1.5, max: 20.0, factor: FloatRange::skew_factor(-1.5) },
-            )
-            .with_unit(":1")
-            .with_step_size(0.1)
-            .with_value_to_string(formatters::v2s_f32_rounded(1)),
-            attack: ms("Attacco", 10.0, 0.5, 300.0),
-            release: ms("Rilascio", 300.0, 50.0, 10000.0),
-            mode: EnumParam::new("Modalità", CompModeChoice::Fixed),
-            tube: percent_param("Valvola", 0.3, 0.0),
-            mix: percent_param("Mix", 1.0, 0.0),
-            output: db("Uscita", 0.0, -20.0, 20.0),
-        }
-    }
-}
-
-impl CompressorParams {
-    pub fn settings(&self, bypass: bool) -> CompressorSettings {
-        CompressorSettings {
-            enabled: self.enabled.value() && !bypass,
-            threshold_db: self.threshold.value(),
-            ratio: self.ratio.value(),
-            attack_ms: self.attack.value(),
-            release_ms: self.release.value(),
-            mode: self.mode.value().to_dsp(),
-            tube: self.tube.value(),
-            mix: self.mix.value(),
-            output_db: self.output.value(),
-        }
-    }
+/// Stile della correzione.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StyleChoice {
+    /// Note che partono gia' intonate, nessun rimbalzo tra due note.
+    #[id = "modern"]
+    #[name = "Modern"]
+    Modern,
+    /// Ogni nota scivola sulla nota giusta, il bersaglio cambia subito.
+    #[id = "classic"]
+    #[name = "Classic"]
+    Classic,
 }
 
 /// Le 12 note della scala personalizzata (attiva/disattiva).
@@ -312,8 +235,17 @@ pub struct SosaTuneParams {
     /// Dimensione della finestra, salvata insieme al progetto. (La chiave e'
     /// cambiata quando la finestra e' diventata piu' alta: i progetti vecchi
     /// non devono riaprirla con la misura precedente.)
-    #[persist = "editor-state-3"]
+    #[persist = "editor-state-4"]
     pub editor_state: Arc<EguiState>,
+
+    /// L'ultimo preset caricato (indice in `presets::FACTORY`).
+    #[persist = "preset"]
+    pub preset: Arc<AtomicUsize>,
+
+    /// "AutoKey Listen": la tonalita' viene riconosciuta dalla voce e
+    /// impostata da sola.
+    #[persist = "autokey"]
+    pub autokey: Arc<AtomicBool>,
 
     #[id = "key"]
     pub key: EnumParam<Key>,
@@ -362,11 +294,20 @@ pub struct SosaTuneParams {
     #[id = "tracking"]
     pub tracking: FloatParam,
 
+    /// Accordatura: frequenza del La4 ("Detune").
+    #[id = "detune"]
+    pub detune: FloatParam,
+
+    /// Low Latency / HQ.
+    #[id = "quality"]
+    pub quality: EnumParam<QualityChoice>,
+
+    /// Modern / Classic.
+    #[id = "style"]
+    pub style: EnumParam<StyleChoice>,
+
     #[nested(group = "Scala personalizzata")]
     pub custom: CustomNotes,
-
-    #[nested(group = "Compressore")]
-    pub comp: CompressorParams,
 }
 
 impl Default for SosaTuneParams {
@@ -376,19 +317,7 @@ impl Default for SosaTuneParams {
             key: EnumParam::new("Tonalità", Key::C),
             scale: EnumParam::new("Scala", ScaleChoice::Chromatic),
             voice: EnumParam::new("Voce", VoiceChoice::AltoTenor),
-            retune_speed: FloatParam::new(
-                "Velocità",
-                20.0,
-                FloatRange::Skewed {
-                    min: 0.0,
-                    max: 400.0,
-                    // Piu' risoluzione sui valori bassi, dove si sente di piu' la differenza.
-                    factor: FloatRange::skew_factor(-1.5),
-                },
-            )
-            .with_unit(" ms")
-            .with_step_size(1.0)
-            .with_value_to_string(formatters::v2s_f32_rounded(0)),
+            retune_speed: retune_param(20.0),
             amount: FloatParam::new("Quantità", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit("%")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
@@ -404,10 +333,34 @@ impl Default for SosaTuneParams {
                 .with_step_size(0.1)
                 .with_value_to_string(formatters::v2s_f32_rounded(1)),
             tracking: percent_param("Sensibilità", 0.3, 0.0),
+            detune: FloatParam::new("Detune", 440.0, FloatRange::Linear { min: 410.0, max: 470.0 })
+                .with_unit(" Hz")
+                .with_step_size(0.1)
+                .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            quality: EnumParam::new("Mode", QualityChoice::LowLatency),
+            style: EnumParam::new("Style", StyleChoice::Modern),
             custom: CustomNotes::default(),
-            comp: CompressorParams::default(),
+            preset: Arc::new(AtomicUsize::new(0)),
+            autokey: Arc::new(AtomicBool::new(false)),
         }
     }
+}
+
+/// Retune Speed: 0 ms = effetto robotico, fino a 400 ms.
+fn retune_param(default: f32) -> FloatParam {
+    FloatParam::new(
+        "Velocità",
+        default,
+        FloatRange::Skewed {
+            min: 0.0,
+            max: 400.0,
+            // Piu' risoluzione sui valori bassi, dove si sente di piu' la differenza.
+            factor: FloatRange::skew_factor(-1.5),
+        },
+    )
+    .with_unit(" ms")
+    .with_step_size(1.0)
+    .with_value_to_string(formatters::v2s_f32_rounded(0))
 }
 
 /// Un parametro in percentuale, da `min` (0 o -1) a 1.
@@ -419,10 +372,36 @@ fn percent_param(name: &str, default: f32, min: f32) -> FloatParam {
 }
 
 impl SosaTuneParams {
-    /// Valori per l'anteprima (vedi `preview.rs`): come quelli iniziali, ma
-    /// con il compressore acceso per mostrarlo al lavoro.
+    /// Valori per l'anteprima (vedi `preview.rs`): quelli dell'immagine di
+    /// riferimento (La maggiore, Retune Speed 15, Humanize 24, Flex Tune 28).
     pub(crate) fn preview() -> Self {
-        Self { comp: CompressorParams::new(true), ..Self::default() }
+        let p = Self::default();
+        Self {
+            key: EnumParam::new("Tonalità", Key::A),
+            scale: EnumParam::new("Scala", ScaleChoice::Major),
+            retune_speed: retune_param(15.0),
+            humanize: percent_param("Humanize", 0.24, 0.0),
+            flex_tune: percent_param("Flex-Tune", 0.28, 0.0),
+            autokey: Arc::new(AtomicBool::new(true)),
+            ..p
+        }
+    }
+
+    /// Le impostazioni per il motore audio.
+    pub fn correction_settings(&self) -> CorrectionSettings {
+        CorrectionSettings {
+            notes: self.active_notes(),
+            retune_ms: self.retune_speed.value(),
+            amount: self.amount.value(),
+            transpose: self.transpose.value() as f32,
+            humanize: self.humanize.value(),
+            flex_tune: self.flex_tune.value(),
+            vibrato: self.vibrato.value(),
+            formant: self.formant.value(),
+            tracking: self.tracking.value(),
+            reference_hz: self.detune.value(),
+            classic: self.style.value() == StyleChoice::Classic,
+        }
     }
 
     /// Le note ammesse in questo momento (dipendono da tonalita' e scala).

@@ -23,21 +23,15 @@
 //!
 //! Il punto di ingresso e' [`PitchCorrector`]: gli dai un campione alla volta e lui
 //! restituisce il campione corretto.
-//!
-//! Dopo la correzione c'e' [`TubeCompressor`], un compressore ottico a valvola
-//! (vedi `compressor.rs`) con saturazione sovracampionata.
 
-pub mod compressor;
 pub mod corrector;
 pub mod fft;
-pub mod oversampling;
 pub mod psola;
 pub mod scale;
 pub mod synth;
 pub mod wav;
 pub mod yin;
 
-pub use compressor::{CompMode, CompressorSettings, TubeCompressor};
 pub use corrector::{CorrectionSettings, PitchCorrector, PitchReport};
 pub use scale::{ScaleKind, VoiceType};
 
