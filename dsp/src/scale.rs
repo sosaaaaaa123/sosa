@@ -110,6 +110,19 @@ impl NoteSnapper {
     /// precedente prima di cambiare bersaglio.
     pub const HYSTERESIS: f32 = 0.15;
 
+    /// Isteresi tra due note precise. Tra note a un semitono basta poco; tra
+    /// note distanti un tono o piu' (per esempio Do e Re in Sol minore, con il
+    /// Do# fuori scala in mezzo) una voce che sta "in mezzo" e' ambigua: si
+    /// cambia nota solo quando la voce supera chiaramente la meta' strada (di
+    /// almeno 1/8 di semitono), cosi' la correzione non salta avanti e indietro.
+    pub fn hysteresis(current: i32, nearest: i32) -> f32 {
+        if (current - nearest).abs() >= 2 {
+            0.25
+        } else {
+            Self::HYSTERESIS
+        }
+    }
+
     pub fn reset(&mut self) {
         self.current = None;
     }
@@ -125,7 +138,7 @@ impl NoteSnapper {
         let nearest = nearest_note(note, notes)?;
         let keep_current = match self.current {
             Some(current) if current != nearest && notes[pitch_class(current)] => {
-                (note - current as f32).abs() < (note - nearest as f32).abs() + Self::HYSTERESIS
+                (note - current as f32).abs() < (note - nearest as f32).abs() + Self::hysteresis(current, nearest)
             }
             _ => false,
         };
@@ -147,7 +160,7 @@ impl NoteSnapper {
         };
         let keep_current = match self.current {
             Some(current) if current != nearest && notes[pitch_class(current)] => {
-                (note - current as f32).abs() < (note - nearest as f32).abs() + Self::HYSTERESIS
+                (note - current as f32).abs() < (note - nearest as f32).abs() + Self::hysteresis(current, nearest)
             }
             _ => false,
         };

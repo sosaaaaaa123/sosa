@@ -246,3 +246,24 @@ fn rough_voice_is_not_read_an_octave_below() {
     let wrong = read.iter().filter(|&&n| (n - 60.3).abs() > 1.0).count();
     assert_eq!(wrong, 0, "{wrong} analisi su {} lette lontano dalla nota cantata", read.len());
 }
+
+#[test]
+fn voice_between_two_scale_notes_does_not_warble() {
+    // Sol minore: Do (60) e Re (62) sono nella scala, Do# no. Una voce che
+    // ondeggia intorno al Do# (vibrato largo, voce incerta) non deve far saltare la correzione
+    // avanti e indietro di un tono (voce che gracchia).
+    use sosatune_dsp::scale::{scale_notes, ScaleKind};
+    let settings = CorrectionSettings { notes: scale_notes(7, ScaleKind::NaturalMinor), ..CorrectionSettings::default() };
+    let input = voice(2.0, |t| 61.0 + 0.3 * (2.0 * PI * 6.0 * t).sin());
+    let (_, reports) = run(&input, &settings);
+    let targets: Vec<f32> = reports.iter().filter(|(t, r)| *t > 0.1 && r.voiced).map(|(_, r)| r.target_note).collect();
+    let changes = targets.windows(2).filter(|w| (w[0] - w[1]).abs() > 0.5).count();
+    assert!(changes <= 1, "la correzione salta tra le note {changes} volte");
+
+    // Un vero passaggio da Do a Re deve invece arrivare subito.
+    let input = voice(1.0, |t| if t < 0.5 { 60.0 } else { 62.0 });
+    let (_, reports) = run(&input, &settings);
+    let arrived = reports.iter().find(|(t, r)| *t > 0.5 && r.voiced && (r.target_note - 62.0).abs() < 0.01).map(|(t, _)| *t);
+    let arrived = arrived.expect("il Re deve essere raggiunto");
+    assert!(arrived < 0.5 + 0.07, "il Re arriva dopo {:.0} ms", (arrived - 0.5) * 1000.0);
+}

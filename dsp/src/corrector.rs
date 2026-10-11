@@ -472,9 +472,23 @@ impl PitchCorrector {
             // negli autotune classici: i "gradini" sono l'effetto voluto.
             let fresh = !self.prev_analysis_voiced;
             let robotic = settings.retune_ms < 1.0;
-            let away_needed = if robotic { 0.0 } else { 0.025 };
             let proposal = self.snapper.propose(note, &settings.notes);
             let current = self.snapper.current();
+            // Se la voce sta a meta' strada tra due note della scala (per
+            // esempio un Do# in Sol minore, tra Do e Re) basta un niente per
+            // farla sembrare piu' vicina all'una o all'altra: cambiando nota
+            // ogni volta la correzione salterebbe avanti e indietro di un tono
+            // (voce che gracchia). Piu' la scelta e' incerta, piu' a lungo la
+            // voce deve restare dalla parte nuova prima di cambiare.
+            let away_needed = match (current, proposal) {
+                _ if robotic => 0.0,
+                (Some(c), Some(p)) if p != c => {
+                    let margin = (note - c as f32).abs() - (note - p as f32).abs();
+                    let decisive = ((margin - NoteSnapper::hysteresis(c, p)) / 0.6).clamp(0.0, 1.0);
+                    0.09 + (0.025 - 0.09) * decisive
+                }
+                _ => 0.025,
+            };
             let target = match (current, proposal) {
                 (Some(c), Some(p)) if p != c && !fresh => {
                     self.away_time += hop_seconds;
