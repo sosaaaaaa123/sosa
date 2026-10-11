@@ -29,11 +29,26 @@
 //! sopra i 40 ms.)
 
 use crate::fft::{Complex, Fft};
-use crate::psola::GrainPitch;
 use crate::MAX_CHANNELS;
 use std::f32::consts::PI;
 
 const TAU: f32 = 2.0 * PI;
+
+/// Cosa serve sapere per spostare l'intonazione in un certo punto della voce.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GrainPitch {
+    /// Periodo della voce in quel punto (campioni): serve a separare le
+    /// formanti dalle armoniche.
+    pub period: f32,
+    /// Di quanto moltiplicare la frequenza (1.0 = invariata, 2.0 = un'ottava sopra).
+    pub ratio: f32,
+    /// `true` se li' c'e' una nota cantata, `false` per consonanti, respiri e
+    /// rumori (lo spettro passa identico).
+    pub voiced: bool,
+    /// Spostamento delle formanti (il "timbro", la lunghezza della gola):
+    /// 1.0 = invariato, >1 voce piu' "piccola", <1 voce piu' "grande".
+    pub formant: f32,
+}
 
 /// Riporta un angolo in (-π, π].
 #[inline]
@@ -82,6 +97,8 @@ pub struct PhaseVocoder {
     target_env: Vec<f32>,
     peaks: Vec<usize>,
     frame_out: Vec<f32>,
+    /// Spostamento frazionario delle righe (vedi `process_frame`).
+    fractional: bool,
 }
 
 impl PhaseVocoder {
@@ -92,8 +109,14 @@ impl PhaseVocoder {
     const OVERLAP: usize = 8;
 
     pub fn new(channels: usize, sample_rate: f32) -> Self {
+        Self::with_window(channels, sample_rate, Self::WINDOW_S)
+    }
+
+    /// Come [`new`](Self::new) con una finestra di `seconds` (arrotondata
+    /// alla potenza di 2 superiore): piu' corta = meno latenza.
+    pub fn with_window(channels: usize, sample_rate: f32, seconds: f32) -> Self {
         let channels = channels.clamp(1, MAX_CHANNELS);
-        let n = ((sample_rate * Self::WINDOW_S).round() as usize).next_power_of_two().max(256);
+        let n = ((sample_rate * seconds).round() as usize).next_power_of_two().max(256);
         let half = n / 2;
         let hop = n / Self::OVERLAP;
         // Hann "periodica": sovrapposta ogni n/8 da' una somma costante.
@@ -132,6 +155,7 @@ impl PhaseVocoder {
             target_env: vec![0.0; half + 1],
             peaks: Vec::with_capacity(half),
             frame_out: vec![0.0; n],
+            fractional: true,
         }
     }
 
@@ -334,26 +358,37 @@ impl PhaseVocoder {
                     bin_omega
                 };
                 let true_bin = omega * n as f32 / TAU;
-                let shift = (true_bin * (ratio - 1.0)).round() as isize;
+                // Spostamento in righe (anche frazionario): ogni riga della zona
+                // viene distribuita tra le due righe di arrivo piu' vicine, cosi'
+                // il picco cade esattamente sulla frequenza nuova.
+                let shift = true_bin * (ratio - 1.0);
+                let shift_int = shift.floor();
+                let frac = if self.fractional { shift - shift_int } else { 0.0 };
+                let shift_int = if self.fractional { shift_int as isize } else { shift.round() as isize };
                 // La fase dell'armonica spostata gira alla velocita' della
                 // frequenza nuova: la rotazione accumula la differenza.
                 let rot = wrap(state.prev_rotation[kp] + hop * omega * (ratio - 1.0));
 
                 for k in lo..=hi {
                     state.rotation[k] = rot;
-                    let dest = k as isize + shift;
-                    if dest < 0 || dest as usize > half {
-                        continue;
-                    }
-                    let dest = dest as usize;
-                    let mut mag = self.magnitude[k];
-                    if need_env {
-                        let gain = (self.target_env[dest] - self.log_env[k]).clamp(-2.8, 2.8);
-                        mag *= gain.exp();
-                    }
                     let ph = self.phase[k] + rot;
-                    let add = Complex::new(mag * ph.cos(), mag * ph.sin());
-                    self.out_spectrum[dest] = self.out_spectrum[dest] + add;
+                    let (c, s) = (ph.cos(), ph.sin());
+                    for (offset, weight) in [(0isize, 1.0 - frac), (1, frac)] {
+                        if weight <= 0.0 {
+                            continue;
+                        }
+                        let dest = k as isize + shift_int + offset;
+                        if dest < 0 || dest as usize > half {
+                            continue;
+                        }
+                        let dest = dest as usize;
+                        let mut mag = self.magnitude[k] * weight;
+                        if need_env {
+                            let gain = (self.target_env[dest] - self.log_env[k]).clamp(-2.8, 2.8);
+                            mag *= gain.exp();
+                        }
+                        self.out_spectrum[dest] = self.out_spectrum[dest] + Complex::new(mag * c, mag * s);
+                    }
                 }
                 lo = hi + 1;
                 if lo > half {

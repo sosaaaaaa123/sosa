@@ -1612,8 +1612,8 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     txt(painter, g.p(958.0, 894.0), Align2::LEFT_CENTER, "Mode", font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec));
     let quality = params.quality.value();
     let modes = [
-        (QualityChoice::LowLatency, "Low Latency", g.r(958.0, 918.0, 1102.0, 968.0), "Latenza minima: per cantare in diretta con il plugin acceso."),
-        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: motore phase vocoder con timbro preservato, il suono più pulito e l'intonazione più precisa (latenza 43 ms, compensata dal DAW). Ideale per il mix."),
+        (QualityChoice::LowLatency, "Low Latency", g.r(958.0, 918.0, 1102.0, 968.0), "Latenza minima (21 ms): per cantare in diretta con il plugin acceso. Stesso motore phase vocoder, finestra più corta."),
+        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: finestra del phase vocoder più lunga, il suono più pulito e l'intonazione più precisa (latenza 43 ms, compensata dal DAW). Ideale per il mix."),
     ];
     for (choice, label, rect, help) in modes {
         let response = ui.interact(rect, Id::new(("modo", label)), Sense::click()).on_hover_text(help);
@@ -1831,7 +1831,7 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
         ("Humanize / Flex Tune", "note lunghe più libere / corregge solo vicino alla nota."),
         ("Detune", "accordatura del La4 (440 Hz standard)."),
-        ("Mode", "Low Latency per cantare in diretta, HQ (phase vocoder) per il mix."),
+        ("Mode", "Low Latency (21 ms) per cantare in diretta, HQ (43 ms) per il mix."),
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
         ("↶ ↷  ⚙  ⏻", "annulla e ripeti, altre impostazioni, accensione."),
     ];

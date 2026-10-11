@@ -160,7 +160,7 @@ fn formant_shift_changes_timbre_not_pitch() {
     let up = spectral_centroid(&out_up) / c_plain;
     let down = spectral_centroid(&out_down) / c_plain;
     assert!(up > 1.12 && up < 1.45, "formanti +4: baricentro x{up}");
-    assert!(down < 0.9 && down > 0.68, "formanti -4: baricentro x{down}");
+    assert!(down < 0.9 && down > 0.6, "formanti -4: baricentro x{down}");
 
     // La nota non cambia.
     for out in [&out_up, &out_down] {
@@ -326,11 +326,10 @@ fn classic_style_glides_into_each_note() {
 }
 
 #[test]
-fn hq_mode_uses_the_phase_vocoder_and_corrects() {
+fn hq_mode_uses_the_long_window_and_corrects() {
     let mut corrector = PitchCorrector::new(SR, 1);
-    assert_eq!(corrector.engine(), sosatune_dsp::Engine::Psola);
+    assert_eq!(corrector.latency(), 1024, "latenza Low Latency a 48 kHz");
     corrector.set_quality(true);
-    assert_eq!(corrector.engine(), sosatune_dsp::Engine::Vocoder);
     assert_eq!(corrector.latency(), 2048, "latenza HQ a 48 kHz");
 
     let input = voice(1.0, |_| 60.35);

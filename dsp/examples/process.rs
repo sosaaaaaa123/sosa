@@ -108,7 +108,6 @@ fn main() {
     let mut voice = VoiceType::AltoTenor;
     let mut pitch_csv: Option<String> = None;
     let mut hq = false;
-    let mut engine: Option<sosatune_dsp::Engine> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -130,9 +129,6 @@ fn main() {
                 "sensibilita" | "tracking" => settings.tracking = (number() / 100.0).clamp(0.0, 1.0),
                 "la" | "a4" => settings.reference_hz = number().clamp(400.0, 480.0),
                 "modo" | "mode" => hq = matches!(value.to_lowercase().as_str(), "hq" | "alta" | "high"),
-                "motore" | "engine" => {
-                    engine = Some(if value.to_lowercase().starts_with('v') { sosatune_dsp::Engine::Vocoder } else { sosatune_dsp::Engine::Psola })
-                }
                 "stile" | "style" => settings.classic = value.to_lowercase().starts_with("class"),
                 "pitch" => pitch_csv = Some(value.clone()),
                 _ => fail(&format!("opzione sconosciuta --{name}")),
@@ -155,9 +151,6 @@ fn main() {
 
     let mut corrector = PitchCorrector::new(sr, channels);
     corrector.set_quality(hq);
-    if let Some(engine) = engine {
-        corrector.set_engine(engine);
-    }
     corrector.set_voice(voice);
     let latency = corrector.latency();
     println!(

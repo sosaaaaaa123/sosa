@@ -1,8 +1,7 @@
 //! Il correttore: unisce rilevamento (YIN), scelta della nota (scale) e
-//! spostamento dell'intonazione (PSOLA). E' il "cervello" del plugin.
+//! spostamento dell'intonazione (phase vocoder). E' il "cervello" del plugin.
 
-use crate::psola::{GrainPitch, PsolaShifter};
-use crate::vocoder::PhaseVocoder;
+use crate::vocoder::{GrainPitch, PhaseVocoder};
 use crate::scale::{hz_to_note, NoteSnapper, VoiceType};
 use crate::yin::YinDetector;
 use crate::MAX_CHANNELS;
@@ -178,24 +177,19 @@ const HISTORY: usize = 64;
 /// la voce viene gia' trattata come nota (vedi [`lookup`]).
 const VOICED_EDGE_MS: f64 = 7.0;
 
-/// Il motore che sposta l'intonazione.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Engine {
-    /// TD-PSOLA: latenza minima.
-    Psola,
-    /// Phase vocoder a picchi bloccati con formanti preservate (vedi [`crate::vocoder`]).
-    Vocoder,
-}
-
 pub struct PitchCorrector {
     sample_rate: f32,
     channels: usize,
     voice: VoiceType,
 
     detector: YinDetector,
-    shifter: PsolaShifter,
-    vocoder: PhaseVocoder,
-    engine: Engine,
+    /// Il phase vocoder che sposta l'intonazione: finestra corta (Low
+    /// Latency) e lunga (HQ, e voci basse). Entrambi pronti: cambiare
+    /// modalita' durante la riproduzione non alloca memoria.
+    vocoder_fast: PhaseVocoder,
+    vocoder_hq: PhaseVocoder,
+    /// Quale dei due e' in uso.
+    use_hq_vocoder: bool,
 
     /// Ultimi campioni (mono) per il rilevatore.
     mono: Vec<f32>,
@@ -256,19 +250,22 @@ impl PitchCorrector {
     /// buco del rilevamento.
     const LEAP_CONFIRM_S: f32 = 0.015;
     const MIN_RUN_TO_HOLD_S: f32 = 0.015;
+    /// Finestre del phase vocoder (arrotondate alla potenza di 2 superiore:
+    /// 1024 e 2048 campioni a 44,1/48 kHz).
+    const FAST_WINDOW_S: f32 = 0.020;
+    const HQ_WINDOW_S: f32 = 0.040;
 
     /// Crea il correttore. Tutta la memoria viene allocata qui, mai durante
     /// l'elaborazione audio.
     pub fn new(sample_rate: f32, channels: usize) -> Self {
         let channels = channels.clamp(1, MAX_CHANNELS);
         let detector = YinDetector::new(sample_rate, VoiceType::LOWEST_SUPPORTED_HZ);
-        let shifter = PsolaShifter::new(channels, detector.capacity_max_period(), sample_rate);
-        let vocoder = PhaseVocoder::new(channels, sample_rate);
-        // Il buffer serve anche alla misura "ciclo per ciclo" dei grani, che
+        let vocoder_fast = PhaseVocoder::with_window(channels, sample_rate, Self::FAST_WINDOW_S);
+        let vocoder_hq = PhaseVocoder::with_window(channels, sample_rate, Self::HQ_WINDOW_S);
+        // Il buffer serve anche alla misura "ciclo per ciclo" dei frame, che
         // guarda fino a ~3 periodi indietro rispetto all'ultimo campione.
         let mono_len = (detector.max_frame_len()
             + 4 * detector.capacity_max_period()
-            + PsolaShifter::lookahead_capacity(sample_rate)
             + 1)
         .next_power_of_two();
         let frame = vec![0.0; detector.max_frame_len()];
@@ -279,9 +276,9 @@ impl PitchCorrector {
             channels,
             voice: VoiceType::AltoTenor,
             detector,
-            shifter,
-            vocoder,
-            engine: Engine::Psola,
+            vocoder_fast,
+            vocoder_hq,
+            use_hq_vocoder: false,
             mono: vec![0.0; mono_len],
             mono_mask: mono_len - 1,
             frame,
@@ -316,13 +313,14 @@ impl PitchCorrector {
         corrector
     }
 
-    /// Modalita' di qualita':
-    /// - `false` = **Low Latency**: TD-PSOLA, latenza minima (~31 ms per la
-    ///   voce alto/tenore), per cantare in diretta con il plugin acceso;
-    /// - `true` = **HQ**: phase vocoder a picchi bloccati con formanti
-    ///   preservate ([`crate::vocoder`]), latenza ~43 ms. Sulla voce di prova:
-    ///   niente click (5 contro 37), meno tratti ruvidi (2,8% contro 3,8%) e
-    ///   intonazione in uscita piu' precisa (mediana 1,5 contro 2,2 centesimi).
+    /// Modalita' di qualita' (in entrambe la voce passa nel phase vocoder,
+    /// vedi [`crate::vocoder`]):
+    /// - `false` = **Low Latency**: finestra di ~21 ms, latenza ~21 ms, per
+    ///   cantare in diretta con il plugin acceso (per le voci basse la
+    ///   finestra resta lunga, altrimenti le armoniche non si separano);
+    /// - `true` = **HQ**: finestra di ~43 ms, latenza ~43 ms. Sulla voce di
+    ///   prova: intonazione in uscita mediana 1,4 centesimi (contro 2,9),
+    ///   tratti ruvidi 2,6% (contro 3,6%).
     ///
     /// Cambia la latenza. Non alloca memoria.
     pub fn set_quality(&mut self, hq: bool) {
@@ -331,19 +329,12 @@ impl PitchCorrector {
         let analyses = |seconds: f32| ((seconds * per_second).round() as u32).max(1);
         self.leap_confirmations = analyses(Self::LEAP_CONFIRM_S);
         self.min_run_to_hold = analyses(Self::MIN_RUN_TO_HOLD_S);
-        self.shifter.set_lookahead(0);
-        self.engine = if hq { Engine::Vocoder } else { Engine::Psola };
+        self.choose_vocoder();
         self.reset();
     }
 
-    /// Sceglie il motore di pitch shifting. Cambia la latenza.
-    pub fn set_engine(&mut self, engine: Engine) {
-        self.engine = engine;
-        self.reset();
-    }
-
-    pub fn engine(&self) -> Engine {
-        self.engine
+    fn choose_vocoder(&mut self) {
+        self.use_hq_vocoder = self.hq || self.voice == VoiceType::LowMale;
     }
 
     pub fn is_hq(&self) -> bool {
@@ -355,9 +346,9 @@ impl PitchCorrector {
         self.voice = voice;
         self.detector.set_lowest_hz(voice.lowest_hz());
         let max_period = self.detector.max_period() as f32;
-        self.shifter.set_max_period(max_period);
         // Per le parti senza nota (consonanti, respiri) usiamo grani di ~5 ms.
         self.unvoiced_period = (self.sample_rate * 0.005).min(max_period);
+        self.choose_vocoder();
         self.reset();
     }
 
@@ -368,9 +359,10 @@ impl PitchCorrector {
     /// Ritardo introdotto dal plugin, in campioni. Il DAW lo compensa
     /// automaticamente (Plugin Delay Compensation).
     pub fn latency(&self) -> usize {
-        match self.engine {
-            Engine::Psola => self.shifter.latency(),
-            Engine::Vocoder => self.vocoder.latency(),
+        if self.use_hq_vocoder {
+            self.vocoder_hq.latency()
+        } else {
+            self.vocoder_fast.latency()
         }
     }
 
@@ -381,8 +373,8 @@ impl PitchCorrector {
 
     /// Azzera tutto lo stato (buffer, correzione in corso).
     pub fn reset(&mut self) {
-        self.shifter.reset();
-        self.vocoder.reset();
+        self.vocoder_fast.reset();
+        self.vocoder_hq.reset();
         self.mono.fill(0.0);
         self.countdown = self.hop;
         self.position = 0;
@@ -442,20 +434,20 @@ impl PitchCorrector {
                 return unvoiced;
             };
             // Attacchi bruschi (consonanti esplosive come "t", "p", "k" dopo un
-            // attimo di silenzio): il grano li conterrebbe in una delle due
-            // meta' e, spostato, li duplicherebbe o li anticiperebbe (un
-            // "gracchio" sull'attacco della parola). Quel grano passa intatto.
+            // attimo di silenzio): il frame li conterrebbe e,
+            // spostato, li sbaverebbe o li anticiperebbe (un
+            // "gracchio" sull'attacco della parola). Quel frame passa intatto.
             if g.voiced && is_transient(mono, mono_mask, newest, t, g.period) {
                 return GrainPitch { period: g.period, ratio: 1.0, voiced: false, formant };
             }
             if g.voiced {
-                // Quanto e' "nota" il suono proprio dove cade questo grano?
+                // Quanto e' "nota" il suono proprio dove cade questo frame?
                 // Le analisi durano ~20 ms e vengono tenute per 30 ms nei buchi:
                 // una consonante ("s", "t", "ch"), un respiro o la raucedine a
                 // fine parola possono quindi finire dentro un tratto "cantato".
                 // Spostati come se fossero voce, quei rumori diventano un ronzio
                 // metallico che gracchia. Qui si misura ciclo per ciclo: dove la
-                // periodicita' manca il grano passa intatto, nel mezzo la
+                // periodicita' manca il frame passa intatto, nel mezzo la
                 // correzione si attenua con dolcezza.
                 let Some((local, score)) = periodicity(mono, mono_mask, newest, t, g.period) else {
                     return GrainPitch { formant, ..g };
@@ -466,7 +458,7 @@ impl PitchCorrector {
                 }
                 g.ratio = g.ratio.powf(voicing);
                 // Misura "ciclo per ciclo": l'intonazione esatta proprio dove
-                // cade questo grano. Le analisi (ogni 5 ms, su ~20 ms di audio)
+                // cade questo frame. Le analisi (ogni 5 ms, su ~20 ms di audio)
                 // seguono bene le note tenute, ma nei passaggi veloci sono una
                 // media: senza questa misura la voce uscirebbe "storta" tra una
                 // nota e l'altra.
@@ -479,9 +471,10 @@ impl PitchCorrector {
             }
             GrainPitch { formant, ..g }
         };
-        match self.engine {
-            Engine::Psola => self.shifter.process(&input[..channels], &mut output[..channels], pitch_at),
-            Engine::Vocoder => self.vocoder.process(&input[..channels], &mut output[..channels], pitch_at),
+        if self.use_hq_vocoder {
+            self.vocoder_hq.process(&input[..channels], &mut output[..channels], pitch_at);
+        } else {
+            self.vocoder_fast.process(&input[..channels], &mut output[..channels], pitch_at);
         }
         frame[..channels].copy_from_slice(&output[..channels]);
 
@@ -845,7 +838,7 @@ fn is_transient(buf: &[f32], mask: usize, newest: u64, t: f64, period: f32) -> b
 }
 
 /// Sotto questa somiglianza tra un ciclo e il successivo il suono e' rumore
-/// (consonante, respiro): il grano non si sposta.
+/// (consonante, respiro): il frame non si sposta.
 const NOISE_SCORE: f32 = 0.4;
 /// Sopra questa e' voce piena: correzione intera.
 const VOICE_SCORE: f32 = 0.7;
@@ -1025,7 +1018,8 @@ mod tests {
         let soprano = c.latency();
         c.set_voice(VoiceType::LowMale);
         let low = c.latency();
-        assert!(soprano < alto && alto < low, "{soprano} {alto} {low}");
+        // Le voci basse usano la finestra lunga (armoniche fitte).
+        assert!(soprano == alto && alto < low, "{soprano} {alto} {low}");
         // Anche nel caso peggiore restiamo sotto i 50 ms.
         assert!(low as f32 / 48000.0 < 0.05);
     }

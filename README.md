@@ -20,7 +20,7 @@
 - **Sensibilità** del rilevamento, per voci pulite o con molta aria.
 - **Stili pronti**: Naturale, Pop moderno, Robotico, Leggero.
 - **Quantità** di correzione e **trasposizione** fino a ±12 semitoni.
-- Cambia la nota **senza cambiare il timbro** della voce (pitch shifting **PSOLA**, che conserva le formanti: niente "effetto scoiattolo").
+- Cambia la nota **senza cambiare il timbro** della voce (pitch shifting con un **phase vocoder** a picchi bloccati che conserva le formanti: niente "effetto scoiattolo", niente click).
 - Tre impostazioni di **voce** (soprano, alto/tenore, voce bassa): le voci acute hanno una latenza più bassa.
 - Interfaccia con **indicatore circolare** della nota cantata (scarto in centesimi), manopole, tastiera della scala e **grafico dell'intonazione** in tempo reale.
 - Mono e stereo, qualsiasi frequenza di campionamento, latenza comunicata al DAW (che la compensa da solo).
@@ -180,20 +180,20 @@ cargo test -p sosatune_dsp --release
 ## Come funziona
 
 ```text
-voce ──► YIN ──────────► scala ───────────► correttore ─────► PSOLA ──► voce corretta
-        "che nota è?"    "nota giusta       "di quanto e       sposta la nota
-        (periodo         più vicina"        con che velocità"  mantenendo il timbro
-        dell'onda)
+voce ──► YIN ──────────► scala ───────────► correttore ─────► phase vocoder ──► voce corretta
+        "che nota è?"    "nota giusta       "di quanto e       (STFT → picchi spostati
+        (rilevamento)    più vicina"        con che velocità"   → IFFT) sposta la nota
+                         (quantizzazione)   rapporto = bersaglio / nota cantata
 ```
 
 - **YIN** (`dsp/src/yin.rs`): confronta il segnale con se stesso spostato nel tempo; quando la differenza è minima, lo spostamento è il periodo dell'onda, cioè la nota. Calcolato con la FFT (`dsp/src/fft.rs`) per essere veloce, più un controllo contro gli errori d'ottava.
 - **Scale** (`dsp/src/scale.rs`): sceglie la nota ammessa più vicina, con un po' di isteresi per non "tremolare" quando sei a metà tra due note.
 - **Correttore** (`dsp/src/corrector.rs`): decide di quanto spostare la nota e con che velocità (un filtro che arriva al bersaglio in "velocità" millisecondi). Qui vivono anche Humanize (la velocità rallenta man mano che la nota dura), Flex-Tune (il peso della correzione cala con la distanza dalla nota) e il vibrato naturale (isolato con un filtro passa-banda centrato su 5,5 Hz, che non lo sfasa e permette quindi anche di toglierlo).
-- **PSOLA** (`dsp/src/psola.rs`): taglia la voce in "grani" di due periodi, centrati sugli impulsi delle corde vocali, e li rimette in fila più vicini (nota più acuta) o più lontani (più grave). Ogni grano conserva la risonanza della bocca, quindi il timbro non cambia. Per spostare le formanti, ogni grano viene letto un po' compresso o dilatato nel tempo.
+- **Phase vocoder** (`dsp/src/vocoder.rs`): ogni 5 ms (2,7 ms in Low Latency) prende una "fetta" di voce, la smussa con una finestra di Hann e la trasforma in frequenze (FFT). Trova le armoniche (i picchi), misura la loro frequenza esatta dalla rotazione della fase, e sposta ogni armonica con le righe vicine alla frequenza giusta (frequenza × rapporto, anche di frazioni di riga). La fase di ogni armonica continua a girare alla velocità della frequenza nuova e le righe vicine la seguono ("identity phase locking", Laroche e Dolson): niente suono metallico. Il timbro (inviluppo spettrale, misurato con il cepstrum) viene rimesso al suo posto, o spostato con il comando Formant. Poi FFT inversa e somma sovrapposta (overlap-add). Consonanti, respiri e attacchi passano identici. Finestra di ~21 ms in Low Latency (per le voci basse ~43 ms) e ~43 ms in HQ.
 
 ### Qualità misurata
 
-I test (`cargo test -p sosatune_dsp --release`, 48 in tutto) controllano anche la qualità del suono:
+I test (`cargo test -p sosatune_dsp --release`, 35 in tutto) controllano anche la qualità del suono:
 
 - correzione robotica di una melodia: in media **0,3 centesimi** dalla nota giusta; su voci reali circa **2 centesimi**;
 - le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni);
@@ -221,7 +221,7 @@ Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (tr
 ```text
 sosatune/
 ├── dsp/                 il motore audio (nessuna libreria esterna)
-│   ├── src/             yin, fft, scale, corrector, psola, compressor, oversampling, synth, wav
+│   ├── src/             yin, fft, scale, corrector, vocoder, synth, wav
 │   ├── examples/        demo.rs e process.rs (provare su file WAV)
 │   └── tests/           test di robustezza
 ├── plugin/              il plugin VST3/CLAP
@@ -244,7 +244,7 @@ sosatune/
 
 ## Prossimi passi
 
-- **Fase 2: editor grafico stile Melodyne.** Il plugin registra la traccia mentre il DAW la riproduce, mostra le note come blocchi su una griglia di pianoforte, e ti permette di trascinarle, correggerle una per una e disegnare l'intonazione. Il motore PSOLA è già pronto per questo: cambia solo da dove arriva la nota bersaglio.
+- **Fase 2: editor grafico stile Melodyne.** Il plugin registra la traccia mentre il DAW la riproduce, mostra le note come blocchi su una griglia di pianoforte, e ti permette di trascinarle, correggerle una per una e disegnare l'intonazione. Il motore è già pronto per questo: cambia solo da dove arriva la nota bersaglio.
 - **Formato AU** per Logic Pro e GarageBand, con [clap-wrapper](https://github.com/free-audio/clap-wrapper).
 - Note bersaglio via **MIDI** (suonare la melodia su una tastiera e far seguire la voce) e modalità a **bassa latenza** per il monitoraggio dal vivo.
 
