@@ -15,7 +15,8 @@
 //!        │    [corrector]  "di quanto devo spostarla, e con che velocita'?" → rapporto di pitch
 //!        │        │
 //!        ▼        ▼
-//!     [psola]   sposta l'intonazione mantenendo il timbro (le formanti) della voce
+//!  [vocoder] / [psola]   sposta l'intonazione mantenendo il timbro (le formanti):
+//!                        phase vocoder in HQ, PSOLA in Low Latency
 //!        │
 //!        ▼
 //!  voce corretta in uscita
@@ -29,10 +30,11 @@ pub mod fft;
 pub mod psola;
 pub mod scale;
 pub mod synth;
+pub mod vocoder;
 pub mod wav;
 pub mod yin;
 
-pub use corrector::{CorrectionSettings, PitchCorrector, PitchReport};
+pub use corrector::{CorrectionSettings, Engine, PitchCorrector, PitchReport};
 pub use scale::{ScaleKind, VoiceType};
 
 /// Numero massimo di canali gestiti (mono o stereo).

@@ -337,7 +337,8 @@ impl Default for SosaTuneParams {
                 .with_unit(" Hz")
                 .with_step_size(0.1)
                 .with_value_to_string(formatters::v2s_f32_rounded(1)),
-            quality: EnumParam::new("Mode", QualityChoice::LowLatency),
+            // HQ (phase vocoder) e' il suono migliore: e' la scelta iniziale.
+            quality: EnumParam::new("Mode", QualityChoice::Hq),
             style: EnumParam::new("Style", StyleChoice::Modern),
             custom: CustomNotes::default(),
             preset: Arc::new(AtomicUsize::new(0)),
@@ -383,6 +384,7 @@ impl SosaTuneParams {
             humanize: percent_param("Humanize", 0.24, 0.0),
             flex_tune: percent_param("Flex-Tune", 0.28, 0.0),
             autokey: Arc::new(AtomicBool::new(true)),
+            quality: EnumParam::new("Mode", QualityChoice::LowLatency),
             ..p
         }
     }
@@ -410,5 +412,63 @@ impl SosaTuneParams {
             Some(kind) => scale_notes(self.key.value().semitone(), kind),
             None => self.custom.mask(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ogni comando dell'interfaccia (cioe' ogni parametro) deve arrivare al
+    /// motore audio: cambiandolo, cambiano le impostazioni della correzione.
+    #[test]
+    fn every_control_reaches_the_engine() {
+        let base = SosaTuneParams::default().correction_settings();
+        let with = |p: SosaTuneParams| p.correction_settings();
+
+        let s = with(SosaTuneParams { retune_speed: retune_param(15.0), ..Default::default() });
+        assert_eq!(s.retune_ms, 15.0);
+        let s = with(SosaTuneParams { humanize: percent_param("Humanize", 0.24, 0.0), ..Default::default() });
+        assert!((s.humanize - 0.24).abs() < 1e-6);
+        let s = with(SosaTuneParams { flex_tune: percent_param("Flex-Tune", 0.28, 0.0), ..Default::default() });
+        assert!((s.flex_tune - 0.28).abs() < 1e-6);
+        let s = with(SosaTuneParams {
+            detune: FloatParam::new("Detune", 432.0, FloatRange::Linear { min: 410.0, max: 470.0 }),
+            ..Default::default()
+        });
+        assert_eq!(s.reference_hz, 432.0);
+        let s = with(SosaTuneParams { style: EnumParam::new("Style", StyleChoice::Classic), ..Default::default() });
+        assert!(s.classic && !base.classic);
+        let s = with(SosaTuneParams { amount: FloatParam::new("Quantità", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }), ..Default::default() });
+        assert_eq!(s.amount, 0.5);
+        let s = with(SosaTuneParams { transpose: IntParam::new("Trasposizione", 3, IntRange::Linear { min: -12, max: 12 }), ..Default::default() });
+        assert_eq!(s.transpose, 3.0);
+        let s = with(SosaTuneParams { vibrato: percent_param("Vibrato", -0.5, -1.0), ..Default::default() });
+        assert_eq!(s.vibrato, -0.5);
+        let s = with(SosaTuneParams {
+            formant: FloatParam::new("Formanti", 2.0, FloatRange::Linear { min: -12.0, max: 12.0 }),
+            ..Default::default()
+        });
+        assert_eq!(s.formant, 2.0);
+        let s = with(SosaTuneParams { tracking: percent_param("Sensibilità", 0.8, 0.0), ..Default::default() });
+        assert!((s.tracking - 0.8).abs() < 1e-6);
+
+        // Key & Scale: Sol minore = Sol La Sib Do Re Mib Fa.
+        let s = with(SosaTuneParams {
+            key: EnumParam::new("Tonalità", Key::G),
+            scale: EnumParam::new("Scala", ScaleChoice::NaturalMinor),
+            ..Default::default()
+        });
+        let expected: [bool; 12] = std::array::from_fn(|pc| [7, 9, 10, 0, 2, 3, 5].contains(&pc));
+        assert_eq!(s.notes, expected);
+        // Scala personalizzata: le note di Edit Notes.
+        let mut custom = CustomNotes::default();
+        custom.c_sharp = BoolParam::new("Nota Do#", false);
+        let s = with(SosaTuneParams { scale: EnumParam::new("Scala", ScaleChoice::Custom), custom, ..Default::default() });
+        assert!(!s.notes[1] && s.notes[0]);
+
+        // Vocal Range e Mode passano al motore nel plugin (set_voice / set_quality).
+        assert_eq!(VoiceChoice::Low.to_dsp(), VoiceType::LowMale);
+        assert_eq!(VoiceChoice::Soprano.to_dsp(), VoiceType::Soprano);
     }
 }

@@ -326,12 +326,12 @@ fn classic_style_glides_into_each_note() {
 }
 
 #[test]
-fn hq_mode_adds_five_ms_and_still_corrects() {
+fn hq_mode_uses_the_phase_vocoder_and_corrects() {
     let mut corrector = PitchCorrector::new(SR, 1);
-    let low = corrector.latency();
+    assert_eq!(corrector.engine(), sosatune_dsp::Engine::Psola);
     corrector.set_quality(true);
-    let hq = corrector.latency();
-    assert_eq!(hq - low, (SR * 0.005).round() as usize, "latenza HQ");
+    assert_eq!(corrector.engine(), sosatune_dsp::Engine::Vocoder);
+    assert_eq!(corrector.latency(), 2048, "latenza HQ a 48 kHz");
 
     let input = voice(1.0, |_| 60.35);
     let settings = CorrectionSettings { retune_ms: 0.0, ..Default::default() };
@@ -343,5 +343,34 @@ fn hq_mode_adds_five_ms_and_still_corrects() {
     }
     // L'uscita e' in ritardo della latenza: misuriamo la parte finale.
     let n = measured_note(&out, 0.5, 0.95);
-    assert!((n - 60.0).abs() < 0.08, "HQ: nota {n}");
+    assert!((n - 60.0).abs() < 0.05, "HQ: nota {n}");
+}
+
+#[test]
+fn hq_note_changes_have_no_clicks() {
+    // Melodia con passaggi tra le note (anche fuori scala): nell'uscita non ci
+    // devono essere "click", cioe' picchi di energia alle alte frequenze molto
+    // sopra il livello normale della voce.
+    let notes = [57.3, 59.8, 62.2, 60.1, 64.4, 62.0, 57.0];
+    let input = voice(3.5, |t| notes[((t / 0.5) as usize).min(notes.len() - 1)]);
+    let settings = CorrectionSettings { notes: sosatune_dsp::scale::scale_notes(9, sosatune_dsp::ScaleKind::Major), ..Default::default() };
+    for hq in [false, true] {
+        let mut corrector = PitchCorrector::new(SR, 1);
+        corrector.set_quality(hq);
+        let mut out = Vec::new();
+        for &x in &input {
+            let mut f = [x];
+            corrector.process_frame(&mut f, &settings);
+            out.push(f[0]);
+        }
+        let start = corrector.latency() + (0.2 * SR) as usize;
+        let diff: Vec<f32> = out[start..].windows(3).map(|w| w[0] - 2.0 * w[1] + w[2]).collect();
+        let block = (0.002 * SR) as usize;
+        let mut energies: Vec<f32> = diff.chunks(block).map(|c| c.iter().map(|v| v * v).sum::<f32>() / c.len() as f32).collect();
+        let max = energies.iter().cloned().fold(0.0f32, f32::max);
+        energies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = energies[energies.len() / 2];
+        let peak_db = 10.0 * (max / median).log10();
+        assert!(peak_db < 10.0, "hq={hq}: picco di {peak_db:.1} dB sopra la mediana");
+    }
 }

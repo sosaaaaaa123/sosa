@@ -1613,7 +1613,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     let quality = params.quality.value();
     let modes = [
         (QualityChoice::LowLatency, "Low Latency", g.r(958.0, 918.0, 1102.0, 968.0), "Latenza minima: per cantare in diretta con il plugin acceso."),
-        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: la voce viene analizzata 5 ms in anticipo, attacchi e passaggi più precisi (5 ms di latenza in più)."),
+        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: motore phase vocoder con timbro preservato, il suono più pulito e l'intonazione più precisa (latenza 43 ms, compensata dal DAW). Ideale per il mix."),
     ];
     for (choice, label, rect, help) in modes {
         let response = ui.interact(rect, Id::new(("modo", label)), Sense::click()).on_hover_text(help);
@@ -1831,7 +1831,7 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
         ("Humanize / Flex Tune", "note lunghe più libere / corregge solo vicino alla nota."),
         ("Detune", "accordatura del La4 (440 Hz standard)."),
-        ("Mode", "Low Latency per cantare in diretta, HQ per il mix (+5 ms)."),
+        ("Mode", "Low Latency per cantare in diretta, HQ (phase vocoder) per il mix."),
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
         ("↶ ↷  ⚙  ⏻", "annulla e ripeti, altre impostazioni, accensione."),
     ];

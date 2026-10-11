@@ -2,6 +2,7 @@
 //! spostamento dell'intonazione (PSOLA). E' il "cervello" del plugin.
 
 use crate::psola::{GrainPitch, PsolaShifter};
+use crate::vocoder::PhaseVocoder;
 use crate::scale::{hz_to_note, NoteSnapper, VoiceType};
 use crate::yin::YinDetector;
 use crate::MAX_CHANNELS;
@@ -177,6 +178,15 @@ const HISTORY: usize = 64;
 /// la voce viene gia' trattata come nota (vedi [`lookup`]).
 const VOICED_EDGE_MS: f64 = 7.0;
 
+/// Il motore che sposta l'intonazione.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Engine {
+    /// TD-PSOLA: latenza minima.
+    Psola,
+    /// Phase vocoder a picchi bloccati con formanti preservate (vedi [`crate::vocoder`]).
+    Vocoder,
+}
+
 pub struct PitchCorrector {
     sample_rate: f32,
     channels: usize,
@@ -184,6 +194,8 @@ pub struct PitchCorrector {
 
     detector: YinDetector,
     shifter: PsolaShifter,
+    vocoder: PhaseVocoder,
+    engine: Engine,
 
     /// Ultimi campioni (mono) per il rilevatore.
     mono: Vec<f32>,
@@ -192,7 +204,7 @@ pub struct PitchCorrector {
 
     /// Ogni quanti campioni rifare l'analisi (circa 5 ms).
     hop: usize,
-    /// Modalita' HQ (l'analisi vede piu' avanti, piu' latenza).
+    /// Modalita' HQ (motore phase vocoder).
     hq: bool,
     /// Analisi consecutive per confermare un salto / per "tenere" una nota
     /// (corrispondono sempre a ~15 ms, qualunque sia `hop`).
@@ -244,8 +256,6 @@ impl PitchCorrector {
     /// buco del rilevamento.
     const LEAP_CONFIRM_S: f32 = 0.015;
     const MIN_RUN_TO_HOLD_S: f32 = 0.015;
-    /// Quanto avanti vede l'analisi in modalita' HQ.
-    const HQ_LOOKAHEAD_S: f32 = 0.005;
 
     /// Crea il correttore. Tutta la memoria viene allocata qui, mai durante
     /// l'elaborazione audio.
@@ -253,6 +263,7 @@ impl PitchCorrector {
         let channels = channels.clamp(1, MAX_CHANNELS);
         let detector = YinDetector::new(sample_rate, VoiceType::LOWEST_SUPPORTED_HZ);
         let shifter = PsolaShifter::new(channels, detector.capacity_max_period(), sample_rate);
+        let vocoder = PhaseVocoder::new(channels, sample_rate);
         // Il buffer serve anche alla misura "ciclo per ciclo" dei grani, che
         // guarda fino a ~3 periodi indietro rispetto all'ultimo campione.
         let mono_len = (detector.max_frame_len()
@@ -269,6 +280,8 @@ impl PitchCorrector {
             voice: VoiceType::AltoTenor,
             detector,
             shifter,
+            vocoder,
+            engine: Engine::Psola,
             mono: vec![0.0; mono_len],
             mono_mask: mono_len - 1,
             frame,
@@ -303,11 +316,14 @@ impl PitchCorrector {
         corrector
     }
 
-    /// Modalita' di qualita': `false` = bassa latenza, `true` = HQ: la voce
-    /// viene analizzata 5 ms "in anticipo" rispetto al punto che si sta
-    /// elaborando, cosi' attacchi e passaggi tra le note sono letti meglio
-    /// (sulla voce di prova: intonazione fuori di oltre 15 centesimi il 5,5%
-    /// del tempo invece del 5,9%). Costa 5 ms di latenza in piu'.
+    /// Modalita' di qualita':
+    /// - `false` = **Low Latency**: TD-PSOLA, latenza minima (~31 ms per la
+    ///   voce alto/tenore), per cantare in diretta con il plugin acceso;
+    /// - `true` = **HQ**: phase vocoder a picchi bloccati con formanti
+    ///   preservate ([`crate::vocoder`]), latenza ~43 ms. Sulla voce di prova:
+    ///   niente click (5 contro 37), meno tratti ruvidi (2,8% contro 3,8%) e
+    ///   intonazione in uscita piu' precisa (mediana 1,5 contro 2,2 centesimi).
+    ///
     /// Cambia la latenza. Non alloca memoria.
     pub fn set_quality(&mut self, hq: bool) {
         self.hq = hq;
@@ -315,9 +331,19 @@ impl PitchCorrector {
         let analyses = |seconds: f32| ((seconds * per_second).round() as u32).max(1);
         self.leap_confirmations = analyses(Self::LEAP_CONFIRM_S);
         self.min_run_to_hold = analyses(Self::MIN_RUN_TO_HOLD_S);
-        let lookahead = if hq { (self.sample_rate * Self::HQ_LOOKAHEAD_S).round() as usize } else { 0 };
-        self.shifter.set_lookahead(lookahead);
+        self.shifter.set_lookahead(0);
+        self.engine = if hq { Engine::Vocoder } else { Engine::Psola };
         self.reset();
+    }
+
+    /// Sceglie il motore di pitch shifting. Cambia la latenza.
+    pub fn set_engine(&mut self, engine: Engine) {
+        self.engine = engine;
+        self.reset();
+    }
+
+    pub fn engine(&self) -> Engine {
+        self.engine
     }
 
     pub fn is_hq(&self) -> bool {
@@ -342,7 +368,10 @@ impl PitchCorrector {
     /// Ritardo introdotto dal plugin, in campioni. Il DAW lo compensa
     /// automaticamente (Plugin Delay Compensation).
     pub fn latency(&self) -> usize {
-        self.shifter.latency()
+        match self.engine {
+            Engine::Psola => self.shifter.latency(),
+            Engine::Vocoder => self.vocoder.latency(),
+        }
     }
 
     /// Intervallo di tempo tra due analisi, in secondi (per il grafico).
@@ -353,6 +382,7 @@ impl PitchCorrector {
     /// Azzera tutto lo stato (buffer, correzione in corso).
     pub fn reset(&mut self) {
         self.shifter.reset();
+        self.vocoder.reset();
         self.mono.fill(0.0);
         self.countdown = self.hop;
         self.position = 0;
@@ -407,7 +437,7 @@ impl PitchCorrector {
         let edge = VOICED_EDGE_MS * 0.001 * self.sample_rate as f64;
         let formant = 2f32.powf(settings.formant.clamp(-12.0, 12.0) / 12.0);
         let unvoiced = GrainPitch { period: self.unvoiced_period, ratio: 1.0, voiced: false, formant };
-        self.shifter.process(&input[..channels], &mut output[..channels], |t| {
+        let pitch_at = |t: f64| {
             let Some((mut g, lock)) = lookup(history, t, edge) else {
                 return unvoiced;
             };
@@ -448,7 +478,11 @@ impl PitchCorrector {
                 }
             }
             GrainPitch { formant, ..g }
-        });
+        };
+        match self.engine {
+            Engine::Psola => self.shifter.process(&input[..channels], &mut output[..channels], pitch_at),
+            Engine::Vocoder => self.vocoder.process(&input[..channels], &mut output[..channels], pitch_at),
+        }
         frame[..channels].copy_from_slice(&output[..channels]);
 
         self.position += 1;
