@@ -28,13 +28,13 @@ CloseApplications=yes
 Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
+; Si scelgono i formati da installare: VST3 gia' selezionato, CLAP no.
 [Types]
-Name: "full"; Description: "VST3 e CLAP"
-Name: "custom"; Description: "Personalizzata"; Flags: iscustom
+Name: "custom"; Description: "Scegli i formati"; Flags: iscustom
 
 [Components]
-Name: "vst3"; Description: "Sosa Tune VST3 (FL Studio, Ableton Live, Cubase, Studio One, Reaper, PatchWork...)"; Types: full custom
-Name: "clap"; Description: "Sosa Tune CLAP (Bitwig, Reaper...)"; Types: full custom
+Name: "vst3"; Description: "Sosa Tune VST3 (FL Studio, Ableton Live, Cubase, Studio One, Reaper, PatchWork...)"; Types: custom
+Name: "clap"; Description: "Sosa Tune CLAP (Bitwig, Reaper...)"
 
 [Files]
 Source: "..\..\target\bundled\SosaTune.vst3\*"; DestDir: "{commoncf64}\VST3\SosaTune.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -44,5 +44,5 @@ Source: "..\..\target\bundled\SosaTune.clap"; DestDir: "{commoncf64}\CLAP"; Comp
 Type: filesandordirs; Name: "{commoncf64}\VST3\SosaTune.vst3"
 
 [Messages]
-it.WelcomeLabel2=Verra' installato Sosa Tune, correzione dell'intonazione della voce in tempo reale.%n%nVST3 in C:\Programmi\File comuni\VST3%nCLAP in C:\Programmi\File comuni\CLAP%n%nChiudi il tuo DAW prima di continuare.
+it.WelcomeLabel2=Sosa Tune, correzione dell'intonazione della voce in tempo reale.%n%nNella prossima schermata scegli quali formati installare:%nVST3 (C:\Programmi\File comuni\VST3) per la maggior parte dei DAW%nCLAP (C:\Programmi\File comuni\CLAP) per Bitwig e Reaper%n%nChiudi il tuo DAW prima di continuare.
 it.FinishedLabel=Installazione completata. Apri il DAW e fai ripetere la ricerca dei plugin: Sosa Tune compare tra gli effetti VST3 (e CLAP). Per il mix scegli HQ, per cantare in diretta Low Latency.

@@ -184,7 +184,10 @@ jobs:
         run: |
           set +e
           {
-            sudo installer -pkg SosaTune-Installer-macOS.pkg -target / 2>&1
+            echo "## scelte predefinite"
+            installer -pkg SosaTune-Installer-macOS.pkg -target / -showChoiceChangesXML 2>&1 | grep -A2 -E "choiceIdentifier" | grep -E "<string>|<integer>" | paste - - - - 2>/dev/null | head
+            echo "## installazione di prova con tutti e tre i formati"
+            sudo installer -pkg SosaTune-Installer-macOS.pkg -target / -applyChoiceChangesXML installer/macos/choices-all.xml 2>&1
             echo "exit code: $?"
             ls -la /Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS /Library/Audio/Plug-Ins/CLAP/SosaTune.clap/Contents/MacOS
             cmp /Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS/SosaTune target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune && echo "VST3 identico a quello collaudato"

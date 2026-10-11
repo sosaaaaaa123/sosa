@@ -3,7 +3,7 @@
     <title>Sosa Tune</title>
     <welcome file="welcome.html" mime-type="text/html"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
-    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <options customize="always" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
     <choices-outline>
         <line choice="vst3"/>
@@ -13,10 +13,10 @@
     <choice id="vst3" title="Sosa Tune VST3" description="Per Pro Tools (tramite Blue Cat PatchWork), FL Studio, Ableton Live, Cubase, Studio One, Reaper e gli altri DAW VST3." start_selected="true">
         <pkg-ref id="com.vladislav.sosatune.vst3"/>
     </choice>
-    <choice id="clap" title="Sosa Tune CLAP" description="Per Bitwig, Reaper e gli altri DAW che usano il formato CLAP." start_selected="true">
+    <choice id="clap" title="Sosa Tune CLAP" description="Per Bitwig, Reaper e gli altri DAW che usano il formato CLAP." start_selected="false">
         <pkg-ref id="com.vladislav.sosatune.clap"/>
     </choice>
-    <choice id="au" title="Sosa Tune Audio Unit" description="Per Logic Pro, GarageBand, MainStage e gli altri programmi Apple (formato Audio Unit)." start_selected="true">
+    <choice id="au" title="Sosa Tune Audio Unit" description="Per Logic Pro, GarageBand, MainStage e gli altri programmi Apple (formato Audio Unit)." start_selected="false">
         <pkg-ref id="com.vladislav.sosatune.component"/>
     </choice>
     <pkg-ref id="com.vladislav.sosatune.component" version="@VERSION@" onConclusion="none">SosaTune-component.pkg</pkg-ref>
