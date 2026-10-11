@@ -148,45 +148,39 @@ impl PitchDisplay {
     }
 }
 
-/// Riconosce la tonalita' dal tempo cantato su ciascuna nota (metodo di
-/// Krumhansl-Schmuckler: confronto con il "profilo" tipico di ogni tonalita'
-/// maggiore e minore). Restituisce (tonica 0..11, minore?, affidabilita' 0..1),
-/// oppure `None` se c'e' troppo poco cantato (meno di 3 secondi).
+/// Riconosce la tonalita' dal tempo cantato su ciascuna nota.
+///
+/// Una voce spesso canta poco la tonica (in Sol minore magari quasi solo Re,
+/// Mib e Do), quindi non basta guardare la nota piu' cantata: si sceglie la
+/// scala (maggiore o minore naturale) che contiene piu' tempo cantato, e tra
+/// scale con le stesse note (relative, es. Sol minore / Sib maggiore) quella
+/// la cui tonica e quinta sono piu' presenti.
+/// Restituisce (tonica 0..11, minore?, affidabilita' 0..1), oppure `None` se
+/// c'e' troppo poco cantato (meno di 3 secondi).
 pub fn detect_key(profile: &[f32; 12]) -> Option<(usize, bool, f32)> {
-    const MAJOR: [f32; 12] = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-    const MINOR: [f32; 12] = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+    const MAJOR: [usize; 7] = [0, 2, 4, 5, 7, 9, 11];
+    const MINOR: [usize; 7] = [0, 2, 3, 5, 7, 8, 10];
     let total: f32 = profile.iter().sum();
     if total < 3.0 {
         return None;
     }
-    let correlation = |template: &[f32; 12], tonic: usize| {
-        let mean_p = total / 12.0;
-        let mean_t = template.iter().sum::<f32>() / 12.0;
-        let (mut num, mut sp, mut st) = (0.0f32, 0.0f32, 0.0f32);
-        for i in 0..12 {
-            let p = profile[(i + tonic) % 12] - mean_p;
-            let t = template[i] - mean_t;
-            num += p * t;
-            sp += p * p;
-            st += t * t;
-        }
-        num / (sp * st).sqrt().max(1e-9)
-    };
+    let share = |pc: usize| profile[pc % 12] / total;
     let mut best = (0usize, false, f32::MIN);
     let mut second = f32::MIN;
     for tonic in 0..12 {
-        for (minor, template) in [(false, &MAJOR), (true, &MINOR)] {
-            let c = correlation(template, tonic);
-            if c > best.2 {
+        for (minor, scale) in [(false, &MAJOR), (true, &MINOR)] {
+            let fit: f32 = scale.iter().map(|&i| share(tonic + i)).sum();
+            let score = fit + 0.15 * (share(tonic) + 0.5 * share(tonic + 7));
+            if score > best.2 {
                 second = best.2;
-                best = (tonic, minor, c);
-            } else if c > second {
-                second = c;
+                best = (tonic, minor, score);
+            } else if score > second {
+                second = score;
             }
         }
     }
-    // Affidabile se il migliore stacca bene il secondo.
-    let confidence = ((best.2 - second) / 0.15).clamp(0.0, 1.0);
+    // Affidabile se la migliore stacca bene la seconda.
+    let confidence = ((best.2 - second) / 0.04).clamp(0.0, 1.0);
     Some((best.0, best.1, confidence))
 }
 
@@ -196,11 +190,15 @@ mod tests {
 
     #[test]
     fn detects_the_key_of_a_real_vocal() {
-        // Tempo cantato per nota misurato su una voce vera in Re minore
-        // (con le note "scivolate" su Do# e Re#).
+        // Tempo cantato per nota misurato su una voce vera di un brano in Sol
+        // minore: la voce sta quasi sempre su Re, Mib e Do, la tonica Sol
+        // quasi mai.
         let profile = [11.0, 7.0, 42.0, 15.0, 3.0, 8.0, 0.0, 1.0, 0.0, 3.0, 5.0, 4.0];
         let (tonic, minor, _) = detect_key(&profile).expect("abbastanza cantato");
-        assert_eq!((tonic, minor), (2, true), "Re minore");
+        assert_eq!((tonic, minor), (7, true), "Sol minore");
+        // Una scala maggiore cantata tutta (Do maggiore, tonica piu' presente).
+        let c_major = [20.0, 0.0, 10.0, 0.0, 12.0, 8.0, 0.0, 15.0, 0.0, 8.0, 0.0, 6.0];
+        assert_eq!(detect_key(&c_major).map(|k| (k.0, k.1)), Some((0, false)), "Do maggiore");
         assert!(detect_key(&[0.1; 12]).is_none(), "troppo poco cantato");
     }
 

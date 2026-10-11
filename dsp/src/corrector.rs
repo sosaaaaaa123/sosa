@@ -204,13 +204,12 @@ pub struct PitchCorrector {
     /// La nota bersaglio attuale e da quanto tempo (secondi) la si sta cantando.
     current_target: Option<i32>,
     note_age: f32,
-    /// Velocita' con cui si muove l'intonazione (semitoni al secondo, lisciata).
-    slope: f32,
-    /// Da quanto la voce sta fuori dalla nota bersaglio (s) e da quanto ci sta
-    /// ferma fuori (s): servono a distinguere vibrato e scivolate da un vero
-    /// cambio di nota.
+    /// Da quanto (s) la voce sta piu' vicina a un'altra nota che a quella
+    /// bersaglio: serve a distinguere vibrato e oscillazioni da un vero cambio.
     away_time: f32,
-    settled_time: f32,
+    /// L'analisi precedente ha trovato una nota cantata? (Se no, la prossima
+    /// nota si sceglie da capo.)
+    prev_analysis_voiced: bool,
     /// Vibrato della voce in ingresso e di quella gia' corretta.
     vibrato_in: VibratoFilter,
     vibrato_out: VibratoFilter,
@@ -261,9 +260,8 @@ impl PitchCorrector {
             leap_count: 0,
             current_target: None,
             note_age: 0.0,
-            slope: 0.0,
             away_time: 0.0,
-            settled_time: 0.0,
+            prev_analysis_voiced: false,
             vibrato_in: VibratoFilter::new(sample_rate / hop as f32),
             vibrato_out: VibratoFilter::new(sample_rate / hop as f32),
         };
@@ -315,9 +313,8 @@ impl PitchCorrector {
         self.leap_count = 0;
         self.current_target = None;
         self.note_age = 0.0;
-        self.slope = 0.0;
         self.away_time = 0.0;
-        self.settled_time = 0.0;
+        self.prev_analysis_voiced = false;
         self.vibrato_in.reset_to(0.0);
         self.vibrato_out.reset_to(0.0);
     }
@@ -410,34 +407,28 @@ impl PitchCorrector {
         if estimate.voiced && !suspicious_leap {
             let note = detected_note;
             let hop_seconds = self.hop as f32 / self.sample_rate;
-            let raw_slope = if self.was_voiced { (note - self.last_note) / hop_seconds } else { 0.0 };
-            self.slope = if self.was_voiced { 0.5 * self.slope + 0.5 * raw_slope } else { 0.0 };
             self.last_note = note;
 
-            // Quale nota? La voce non cambia nota ogni volta che esce un attimo
-            // dalla sua: nel vibrato largo e nelle scivolate passerebbe per le
-            // note vicine, e la correzione "rimbalzerebbe" tra due note (effetto
-            // chorus, "gratta"). Si cambia nota quando la voce:
-            //  - si ferma sulla nuova nota (anche solo 20 ms), oppure
-            //  - ci resta per piu' di mezza oscillazione di vibrato (60 ms), oppure
-            //  - e' chiaramente su un'altra nota (oltre 1,5 semitoni) e non sta scivolando.
-            // Intanto la voce resta agganciata alla nota attuale: niente note
-            // intermedie, un solo passaggio pulito quando arriva sulla nuova.
-            // Nello stile robotico (velocita' 0) i "gradini" sono l'effetto voluto:
-            // la nota cambia subito, come negli autotune classici.
+            // Quale nota? Due regole contro i difetti tipici della correzione:
+            //  - dopo una pausa, anche brevissima (una consonante come la "t"),
+            //    la nota si sceglie da capo: si riparte da quella cantata ora,
+            //    non da quella di prima della pausa;
+            //  - durante la nota, si passa a quella vicina solo se la voce ci
+            //    resta per almeno 25 ms (o salta chiaramente lontano): cosi'
+            //    vibrato e piccole oscillazioni non fanno "rimbalzare" la
+            //    correzione tra due note (effetto chorus, voce che gratta).
+            // Nello stile robotico (velocita' 0) la nota cambia subito, come
+            // negli autotune classici: i "gradini" sono l'effetto voluto.
+            let fresh = !self.prev_analysis_voiced;
             let robotic = settings.retune_ms < 1.0;
-            let (settle_needed, away_needed) = if robotic { (0.0, 0.0) } else { (0.020, 0.060) };
+            let away_needed = if robotic { 0.0 } else { 0.025 };
             let proposal = self.snapper.propose(note, &settings.notes);
             let current = self.snapper.current();
             let target = match (current, proposal) {
-                (Some(c), Some(p)) if p != c && self.was_voiced => {
+                (Some(c), Some(p)) if p != c && !fresh => {
                     self.away_time += hop_seconds;
-                    let still = self.slope.abs() < 8.0;
-                    self.settled_time = if still { self.settled_time + hop_seconds } else { 0.0 };
-                    let clearly_other = (note - c as f32).abs() >= 1.5 && self.slope.abs() < 20.0;
-                    if self.settled_time >= settle_needed || self.away_time >= away_needed || clearly_other {
+                    if self.away_time >= away_needed || (note - c as f32).abs() >= 1.5 {
                         self.away_time = 0.0;
-                        self.settled_time = 0.0;
                         self.snapper.set(Some(p));
                         Some(p)
                     } else {
@@ -446,16 +437,16 @@ impl PitchCorrector {
                 }
                 _ => {
                     self.away_time = 0.0;
-                    self.settled_time = 0.0;
                     self.snapper.set(proposal);
                     proposal
                 }
             };
+            self.prev_analysis_voiced = true;
 
             // Da quanto si sta cantando questa nota? (serve a Humanize e al vibrato)
             let reference = target.map_or(note, |t| t as f32);
-            // Inizio di una nota dopo una pausa (o una consonante).
-            let starting = !self.was_voiced;
+            // Inizio di una nota dopo una pausa (o una consonante, anche breve).
+            let starting = !self.was_voiced || fresh;
             if target != self.current_target || !self.was_voiced {
                 self.current_target = target;
                 self.note_age = 0.0;
@@ -523,6 +514,7 @@ impl PitchCorrector {
         } else if self.was_voiced && (self.hold_left > 0 || suspicious_leap) {
             // Buco momentaneo (o salto sospetto): manteniamo l'ultima correzione.
             self.hold_left = self.hold_left.saturating_sub(self.hop);
+            self.prev_analysis_voiced = false;
             period = self.last_period;
             ratio = self.last_ratio;
             voiced = true;
@@ -531,6 +523,7 @@ impl PitchCorrector {
         } else {
             self.was_voiced = false;
             self.snapper.reset();
+            self.prev_analysis_voiced = false;
             self.current_target = None;
             self.correction = 0.0;
             period = self.unvoiced_period;

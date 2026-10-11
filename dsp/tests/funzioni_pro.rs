@@ -188,3 +188,32 @@ fn tracking_recognises_breathy_voices() {
     assert!(relaxed > strict + 0.3, "{strict} -> {relaxed}");
     assert!(relaxed > 0.7);
 }
+
+/// Dopo una micro-pausa (una consonante come la "t" di "te") la nuova nota
+/// si aggancia subito: non si riparte dalla nota cantata prima della pausa.
+#[test]
+fn note_after_a_short_gap_starts_on_the_new_note() {
+    use sosatune_dsp::synth::steady_vowel;
+    use sosatune_dsp::{CorrectionSettings, PitchCorrector};
+    let sr = 48000.0;
+    let mut audio = steady_vowel(220.0, sr, (0.3 * sr) as usize); // La3 (57)
+    audio.extend(std::iter::repeat(0.0).take((0.012 * sr) as usize)); // "t"
+    audio.extend(steady_vowel(233.08, sr, (0.3 * sr) as usize)); // La#3 (58), un semitono sopra
+    let mut corrector = PitchCorrector::new(sr, 1);
+    let settings = CorrectionSettings::default();
+    let mut targets = Vec::new();
+    let mut gap_seen = false;
+    for &x in &audio {
+        let mut f = [x];
+        if let Some(r) = corrector.process_frame(&mut f, &settings) {
+            if !r.voiced {
+                gap_seen = true;
+            } else if gap_seen {
+                targets.push(r.target_note);
+            }
+        }
+    }
+    assert!(gap_seen, "la pausa deve essere riconosciuta");
+    let first_on_new_note = targets.iter().position(|&t| (t - 58.0).abs() < 0.01);
+    assert_eq!(first_on_new_note, Some(0), "bersagli dopo la pausa: {:?}", &targets[..targets.len().min(6)]);
+}
