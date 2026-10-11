@@ -229,6 +229,32 @@ impl YinDetector {
     }
 }
 
+impl YinDetector {
+    /// Dopo [`detect`](Self::detect): c'e' un buon avvallamento anche vicino
+    /// a `period` (entro ±6%)? Se si', restituisce quella stima. Serve al
+    /// correttore per scartare gli errori d'ottava verso il basso: con una
+    /// voce rauca i cicli si alternano (uno forte, uno debole) e il doppio del
+    /// periodo puo' sembrare "piu' periodico" del periodo vero, ma anche il
+    /// periodo vero resta un avvallamento netto sotto la soglia.
+    pub fn dip_near(&self, period: f32) -> Option<PitchEstimate> {
+        let tau_min = self.tau_min.max(2);
+        let lo = ((period * 0.94).floor() as usize).max(tau_min);
+        let hi = ((period * 1.06).ceil() as usize).min(self.tau_max.saturating_sub(1));
+        if lo + 2 > hi {
+            return None;
+        }
+        let tau = (lo..=hi).min_by(|&a, &b| self.cmndf[a].total_cmp(&self.cmndf[b]))?;
+        // Deve essere un vero minimo locale, non il bordo della ricerca.
+        if tau <= lo || tau >= hi || self.cmndf[tau] >= self.threshold {
+            return None;
+        }
+        let (s0, s1, s2) = (self.cmndf[tau - 1], self.cmndf[tau], self.cmndf[tau + 1]);
+        let denom = s0 - 2.0 * s1 + s2;
+        let shift = if denom.abs() > 1e-9 { (0.5 * (s0 - s2) / denom).clamp(-0.5, 0.5) } else { 0.0 };
+        Some(PitchEstimate { period: tau as f32 + shift, clarity: (1.0 - s1).clamp(0.0, 1.0), voiced: true })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

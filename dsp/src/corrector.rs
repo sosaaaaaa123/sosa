@@ -152,9 +152,11 @@ struct Analysis {
     ratio: f32,
     voiced: bool,
     valid: bool,
+    /// `true` se e' un "buco" tenuto (nessuna nota letta, si ripete l'ultima).
+    held: bool,
     /// Quanto la correzione deve "inchiodare" la voce alla nota anche tra
     /// un'analisi e l'altra (0 = segue la voce, 1 = robotico): vedi
-    /// [`local_period`].
+    /// [`periodicity`].
     lock: f32,
 }
 
@@ -195,6 +197,8 @@ pub struct PitchCorrector {
     /// correzione precedente invece di toglierla di colpo.
     hold_left: usize,
     hold_samples: usize,
+    /// Quante analisi cantate di fila (senza buchi tenuti in mezzo).
+    voiced_run: u32,
     last_period: f32,
     last_ratio: f32,
     unvoiced_period: f32,
@@ -221,6 +225,9 @@ impl PitchCorrector {
     /// Per quante analisi consecutive (circa 5 ms l'una) un salto deve durare
     /// per essere considerato vero.
     const LEAP_CONFIRMATIONS: u32 = 3;
+    /// Analisi cantate di fila (circa 5 ms l'una) necessarie per "tenere" la
+    /// nota durante un buco del rilevamento.
+    const MIN_RUN_TO_HOLD: u32 = 3;
 
     /// Crea il correttore. Tutta la memoria viene allocata qui, mai durante
     /// l'elaborazione audio.
@@ -253,6 +260,7 @@ impl PitchCorrector {
             was_voiced: false,
             hold_left: 0,
             hold_samples: (sample_rate * 0.03) as usize,
+            voiced_run: 0,
             last_period: 0.0,
             last_ratio: 1.0,
             unvoiced_period: 0.0,
@@ -307,6 +315,7 @@ impl PitchCorrector {
         self.correction = 0.0;
         self.was_voiced = false;
         self.hold_left = 0;
+        self.voiced_run = 0;
         self.last_period = self.unvoiced_period;
         self.last_ratio = 1.0;
         self.last_note = 0.0;
@@ -355,15 +364,39 @@ impl PitchCorrector {
             let Some((mut g, lock)) = lookup(history, t, edge) else {
                 return unvoiced;
             };
-            // Misura "ciclo per ciclo": l'intonazione esatta proprio dove cade
-            // questo grano. Le analisi (ogni 5 ms, su ~20 ms di audio) seguono
-            // bene le note tenute, ma nei passaggi veloci sono una media: senza
-            // questa misura la voce uscirebbe "storta" tra una nota e l'altra.
-            if g.voiced && lock > 0.0 {
-                if let Some(local) = local_period(mono, mono_mask, newest, t, g.period) {
+            // Attacchi bruschi (consonanti esplosive come "t", "p", "k" dopo un
+            // attimo di silenzio): il grano li conterrebbe in una delle due
+            // meta' e, spostato, li duplicherebbe o li anticiperebbe (un
+            // "gracchio" sull'attacco della parola). Quel grano passa intatto.
+            if g.voiced && is_transient(mono, mono_mask, newest, t, g.period) {
+                return GrainPitch { period: g.period, ratio: 1.0, voiced: false, formant };
+            }
+            if g.voiced {
+                // Quanto e' "nota" il suono proprio dove cade questo grano?
+                // Le analisi durano ~20 ms e vengono tenute per 30 ms nei buchi:
+                // una consonante ("s", "t", "ch"), un respiro o la raucedine a
+                // fine parola possono quindi finire dentro un tratto "cantato".
+                // Spostati come se fossero voce, quei rumori diventano un ronzio
+                // metallico che gracchia. Qui si misura ciclo per ciclo: dove la
+                // periodicita' manca il grano passa intatto, nel mezzo la
+                // correzione si attenua con dolcezza.
+                let Some((local, score)) = periodicity(mono, mono_mask, newest, t, g.period) else {
+                    return GrainPitch { formant, ..g };
+                };
+                let voicing = smoothstep(NOISE_SCORE, VOICE_SCORE, score);
+                if voicing <= 0.0 {
+                    return GrainPitch { period: g.period, ratio: 1.0, voiced: false, formant };
+                }
+                g.ratio = g.ratio.powf(voicing);
+                // Misura "ciclo per ciclo": l'intonazione esatta proprio dove
+                // cade questo grano. Le analisi (ogni 5 ms, su ~20 ms di audio)
+                // seguono bene le note tenute, ma nei passaggi veloci sono una
+                // media: senza questa misura la voce uscirebbe "storta" tra una
+                // nota e l'altra.
+                if lock > 0.0 && score >= 0.8 {
                     // Frequenza voluta = quella dell'analisi x rapporto; quella
                     // vera qui e' sr/local: il rapporto si corregge di conseguenza.
-                    g.ratio *= (local / g.period).powf(lock);
+                    g.ratio *= (local / g.period).powf(lock * voicing);
                     g.period = local;
                 }
             }
@@ -383,7 +416,25 @@ impl PitchCorrector {
             *x = self.mono[(start as usize + i) & self.mono_mask];
         }
         self.detector.set_threshold(0.08 + 0.22 * settings.tracking.clamp(0.0, 1.0));
-        let estimate = self.detector.detect(&self.frame[..len]);
+        let mut estimate = self.detector.detect(&self.frame[..len]);
+
+        // Errore d'ottava verso il basso: a meta' di una nota, con la voce un
+        // po' rauca, il rilevatore puo' leggere il doppio (o il triplo) del
+        // periodo. Se la nota appena letta e' un'ottava (o un'ottava e una
+        // quinta) sotto quella di prima e il periodo "giusto" e' ancora un
+        // buon avvallamento, teniamo quello: altrimenti i grani prenderebbero
+        // due cicli alla volta e la voce "gracchierebbe" (un ringhio sotto la nota).
+        if estimate.voiced && self.was_voiced {
+            let drop = self.last_note - hz_to_note(self.sample_rate / estimate.period.max(1.0));
+            for (k, semitones) in [(2.0f32, 12.0f32), (3.0, 19.02)] {
+                if (drop - semitones).abs() < 1.0 {
+                    if let Some(better) = self.detector.dip_near(estimate.period / k) {
+                        estimate = better;
+                    }
+                    break;
+                }
+            }
+        }
 
         let window = self.detector.window_len() as f64;
         let report;
@@ -504,6 +555,7 @@ impl PitchCorrector {
             voiced = true;
             self.was_voiced = true;
             self.hold_left = self.hold_samples;
+            self.voiced_run = self.voiced_run.saturating_add(1);
             self.last_period = period;
             report = PitchReport {
                 voiced: true,
@@ -511,7 +563,11 @@ impl PitchCorrector {
                 output_note: note + shift,
                 target_note: target.map_or(f32::NAN, |t| t as f32 + settings.transpose),
             };
-        } else if self.was_voiced && (self.hold_left > 0 || suspicious_leap) {
+        } else if self.was_voiced && (self.hold_left > 0 || suspicious_leap) && self.voiced_run >= Self::MIN_RUN_TO_HOLD {
+            // (Una nota letta per una o due analisi soltanto e' quasi sempre
+            // un "lampo" del rilevatore su una consonante: non la si tiene,
+            // altrimenti il suo periodo, magari sbagliato di un'ottava,
+            // resterebbe per 30 ms.)
             // Buco momentaneo (o salto sospetto): manteniamo l'ultima correzione.
             self.hold_left = self.hold_left.saturating_sub(self.hop);
             self.prev_analysis_voiced = false;
@@ -522,6 +578,7 @@ impl PitchCorrector {
             report = PitchReport::SILENT;
         } else {
             self.was_voiced = false;
+            self.voiced_run = 0;
             self.snapper.reset();
             self.prev_analysis_voiced = false;
             self.current_target = None;
@@ -534,9 +591,91 @@ impl PitchCorrector {
         }
 
         self.last_ratio = ratio;
-        self.history[self.history_head] = Analysis { center, period, ratio, voiced, valid: true, lock };
+        let held = voiced && report.input_note.is_nan();
+        self.history[self.history_head] = Analysis { center, period, ratio, voiced, valid: true, held, lock };
         self.history_head = (self.history_head + 1) % HISTORY;
+        if voiced && !held {
+            self.drop_isolated_blip();
+        }
         report
+    }
+}
+
+impl PitchCorrector {
+    /// "Lampi" del rilevatore: a cavallo di una consonante o all'attacco di
+    /// una parola capita che una o due analisi leggano la nota un'ottava (o
+    /// piu') sopra o sotto, isolate tra due pause. Con quel periodo sbagliato
+    /// i grani prenderebbero mezzo ciclo o due cicli alla volta: un "gracchio"
+    /// di pochi millisecondi proprio sull'attacco. Lo shifter lavora in
+    /// ritardo (la latenza), quindi quando arriva un'analisi buona possiamo
+    /// ancora correggere quelle appena passate: un tratto cantato di al massimo
+    /// 10 ms, lontano piu' di 7 semitoni dalla nota che segue e preceduto da
+    /// una pausa (o dalla stessa nota che segue), diventa "non nota" e passa
+    /// intatto.
+    fn drop_isolated_blip(&mut self) {
+        const JUMP: f32 = 1.498; // 7 semitoni
+        let max_gap = 0.04 * self.sample_rate as f64;
+        let index = |back: usize| (self.history_head + 2 * HISTORY - 1 - back) % HISTORY;
+        let new = self.history[index(0)];
+        let far = |a: f32, b: f32| a > b * JUMP || b > a * JUMP;
+
+        // L'ultima analisi cantata "vera" prima di questa, non troppo lontana.
+        let mut back = 1;
+        while back < HISTORY {
+            let a = self.history[index(back)];
+            if !a.valid || new.center - a.center > max_gap {
+                return;
+            }
+            if a.voiced && !a.held {
+                break;
+            }
+            back += 1;
+        }
+        if back >= HISTORY || !far(self.history[index(back)].period, new.period) {
+            return;
+        }
+        // Il tratto a cui appartiene: analisi vere di periodo simile (con
+        // eventuali buchi tenuti in mezzo), al massimo due.
+        let blip_period = self.history[index(back)].period;
+        let first = back;
+        let mut count = 0;
+        let mut end = back;
+        while end < HISTORY {
+            let a = self.history[index(end)];
+            if !a.valid || !a.voiced {
+                break;
+            }
+            if !a.held {
+                if far(a.period, blip_period) {
+                    // Prima del lampo c'era un'altra nota: va bene solo se e'
+                    // la stessa che segue (A - lampo - A).
+                    if far(a.period, new.period) {
+                        return;
+                    }
+                    break;
+                }
+                count += 1;
+                if count > 2 {
+                    return;
+                }
+            }
+            end += 1;
+        }
+        for back in first..end {
+            let a = &mut self.history[index(back)];
+            a.voiced = false;
+            a.ratio = 1.0;
+            a.lock = 0.0;
+        }
+        // Anche i buchi tenuti tra il lampo e questa analisi avevano il suo periodo.
+        for back in 1..first {
+            let a = &mut self.history[index(back)];
+            if a.held {
+                a.voiced = false;
+                a.ratio = 1.0;
+                a.lock = 0.0;
+            }
+        }
     }
 }
 
@@ -583,14 +722,35 @@ fn lookup(history: &[Analysis; HISTORY], t: f64, edge: f64) -> Option<(GrainPitc
     }
 }
 
+/// `true` se attorno al punto `t` c'e' un attacco (o una chiusura) brusca:
+/// l'energia nel periodo dopo `t` e' oltre 8 volte (9 dB) quella del periodo
+/// prima, o viceversa. Non alloca memoria.
+fn is_transient(buf: &[f32], mask: usize, newest: u64, t: f64, period: f32) -> bool {
+    let p = period.round().max(16.0) as i64;
+    let c = t.round() as i64;
+    if c - p < 0 || c + p > newest as i64 || (newest as i64 - (c - p)) as usize >= buf.len() {
+        return false;
+    }
+    let energy = |from: i64| -> f32 { (from..from + p).map(|i| buf[i as usize & mask].powi(2)).sum() };
+    let before = energy(c - p) + 1e-9;
+    let after = energy(c) + 1e-9;
+    after > 8.0 * before || before > 8.0 * after
+}
+
+/// Sotto questa somiglianza tra un ciclo e il successivo il suono e' rumore
+/// (consonante, respiro): il grano non si sposta.
+const NOISE_SCORE: f32 = 0.4;
+/// Sopra questa e' voce piena: correzione intera.
+const VOICE_SCORE: f32 = 0.7;
+
 /// Il periodo esatto della voce attorno al punto `t` del segnale, partendo
-/// da una stima `p0` (dalle analisi): confronta un tratto di ~1,5 periodi con
-/// lo stesso tratto spostato di un periodo, centrati su `t`, e cerca lo
-/// spostamento che li fa coincidere meglio (entro ±3 semitoni da `p0`).
-/// Restituisce `None` se non c'e' una periodicita' chiara (consonanti,
-/// rumori) o se mancano i campioni: in quel caso vale la stima delle analisi.
-/// Non alloca memoria.
-fn local_period(buf: &[f32], mask: usize, newest: u64, t: f64, p0: f32) -> Option<f32> {
+/// da una stima `p0` (dalle analisi), e quanto il suono li' e' periodico:
+/// confronta un tratto di ~1,5 periodi con lo stesso tratto spostato di un
+/// periodo, centrati su `t`, e cerca lo spostamento che li fa coincidere
+/// meglio (entro ±3 semitoni da `p0`). Restituisce (periodo, somiglianza da
+/// -1 a 1); se il picco cade sul bordo della ricerca il periodo resta `p0`.
+/// `None` se mancano i campioni. Non alloca memoria.
+fn periodicity(buf: &[f32], mask: usize, newest: u64, t: f64, p0: f32) -> Option<(f32, f32)> {
     if !(16.0..=4096.0).contains(&p0) {
         return None;
     }
@@ -643,13 +803,13 @@ fn local_period(buf: &[f32], mask: usize, newest: u64, t: f64, p0: f32) -> Optio
         }
     }
     // Serve un picco vero, non il bordo dell'intervallo di ricerca.
-    if fine_score < 0.8 || fine <= lo || fine >= hi {
-        return None;
+    if fine <= lo || fine >= hi {
+        return Some((p0, fine_score));
     }
     let (minus, plus) = (score(fine - 1, 1), score(fine + 1, 1));
     let den = minus - 2.0 * fine_score + plus;
     let offset = if den < 0.0 { (0.5 * (minus - plus) / den).clamp(-0.5, 0.5) } else { 0.0 };
-    Some(fine as f32 + offset)
+    Some((fine as f32 + offset, fine_score))
 }
 
 #[cfg(test)]

@@ -217,3 +217,32 @@ fn note_after_a_short_gap_starts_on_the_new_note() {
     let first_on_new_note = targets.iter().position(|&t| (t - 58.0).abs() < 0.01);
     assert_eq!(first_on_new_note, Some(0), "bersagli dopo la pausa: {:?}", &targets[..targets.len().min(6)]);
 }
+
+/// Voce rauca: un ciclo forte e uno debole, alternati (diplofonia, tipica
+/// della voce "graffiata" a fine frase). Il doppio del periodo sembra allora
+/// piu' periodico del periodo vero e il rilevatore tendeva a leggere la nota
+/// un'ottava sotto: i grani prendevano due cicli alla volta e l'uscita
+/// "gracchiava". La nota (iniziata pulita) deve restare quella cantata.
+#[test]
+fn rough_voice_is_not_read_an_octave_below() {
+    let hz = note_to_hz(60.3);
+    let clean = voice(1.2, |_| 60.3);
+    let rough: Vec<f32> = clean
+        .iter()
+        .enumerate()
+        .map(|(i, &x)| {
+            let cycle = (i as f32 / SR * hz).floor() as i64;
+            if i as f32 / SR < 0.4 || cycle % 2 == 0 { x } else { x * 0.6 }
+        })
+        .collect();
+    let settings = CorrectionSettings { retune_ms: 10.0, ..CorrectionSettings::default() };
+    let (_, reports) = run(&rough, &settings);
+    let read: Vec<f32> = reports
+        .iter()
+        .filter(|(t, r)| *t > 0.1 && r.voiced)
+        .map(|(_, r)| r.input_note)
+        .collect();
+    assert!(read.len() > 150, "nota riconosciuta troppo poco: {}", read.len());
+    let wrong = read.iter().filter(|&&n| (n - 60.3).abs() > 1.0).count();
+    assert_eq!(wrong, 0, "{wrong} analisi su {} lette lontano dalla nota cantata", read.len());
+}
