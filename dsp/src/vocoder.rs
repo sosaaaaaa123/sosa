@@ -35,7 +35,7 @@
 
 use crate::fft::{Complex, Fft};
 use crate::MAX_CHANNELS;
-use std::f32::consts::PI;
+use std::f32::consts::{LN_10, PI};
 
 const TAU: f32 = 2.0 * PI;
 
@@ -84,6 +84,8 @@ struct ChannelState {
     /// le formanti (Throat), e da quanti frame non lo si aggiorna.
     formant_env: Vec<f32>,
     formant_age: usize,
+    /// Brillantezza (vedi `spectral_tilt`) delle ultime note, lisciata.
+    formant_tilt: f32,
 }
 
 pub struct PhaseVocoder {
@@ -136,6 +138,11 @@ pub struct PhaseVocoder {
     formant_hold: usize,
     /// Throat: righe (da, a) su cui si misura il livello medio dell'inviluppo.
     formant_level_bins: (usize, usize),
+    /// Throat nei frame senza nota: fino a quanti frame dall'ultima nota e'
+    /// pieno e dopo quanti e' sparito (vedi `FORMANT_BRIDGE_S`).
+    formant_bridge: (f32, f32),
+    /// Righe 200 Hz, 4 kHz e 16 kHz (per `spectral_tilt`).
+    tilt_bins: (usize, usize, usize),
     peaks: Vec<usize>,
     peak_bin: Vec<f32>,
     frame_out: Vec<f32>,
@@ -203,6 +210,21 @@ impl PhaseVocoder {
     /// Throat: in un buco senza nota piu' corto di cosi' l'inviluppo lisciato
     /// resta valido (la voce riconosciuta a tratti non lo fa ripartire ogni volta).
     const FORMANT_HOLD_S: f32 = 0.050;
+    /// Throat nei frame che passano senza nota: consonanti, attacchi e i
+    /// punti in cui la nota si perde per un attimo in mezzo al canto (sulla
+    /// voce di prova ~100 frame isolati con la voce forte). Prima li' il timbro
+    /// tornava quello originale per 10-15 ms e poi di nuovo spostato: con
+    /// Throat lontano da 100 un "battito" del timbro. Ora quei frame ricevono
+    /// lo stesso spostamento (solo il timbro: la nota passa intatta come
+    /// prima), pieno per 16 ms e poi a sfumare fino a sparire a 64 ms: le
+    /// consonanti lunghe, i respiri e le pause restano come sono.
+    const FORMANT_BRIDGE_S: f32 = 0.016;
+    const FORMANT_RELEASE_S: f32 = 0.064;
+    /// ...ma solo se il frame e' ancora la stessa voce: se ha molti piu'
+    /// acuti della nota di prima (una "s", una "f", un "ch" che comincia:
+    /// sulla voce di prova +9 dB gia' dal primo frame, contro ~+1 dB dei buchi
+    /// in mezzo alla nota) resta intatto come prima. Pieno fino a +3 dB, zero da +8 dB.
+    const FORMANT_BRIGHTER_DB: (f32, f32) = (3.0, 8.0);
 
     pub fn new(channels: usize, sample_rate: f32) -> Self {
         Self::with_windows(channels, sample_rate, Self::MIN_WINDOW_S, Self::MAX_WINDOW_S)
@@ -230,6 +252,7 @@ impl PhaseVocoder {
                 theta: 0.0,
                 formant_env: vec![0.0; half + 1],
                 formant_age: usize::MAX,
+                formant_tilt: 0.0,
             })
             .collect();
         let follow = |seconds: f32| 1.0 - (-(hop as f32) / (seconds * sample_rate)).exp();
@@ -284,6 +307,15 @@ impl PhaseVocoder {
             formant_level_bins: (
                 ((200.0 / bin_hz) as usize).clamp(1, half - 1),
                 ((4000.0 / bin_hz) as usize).clamp(2, half),
+            ),
+            formant_bridge: (
+                Self::FORMANT_BRIDGE_S * sample_rate / hop as f32,
+                Self::FORMANT_RELEASE_S * sample_rate / hop as f32,
+            ),
+            tilt_bins: (
+                ((200.0 / bin_hz) as usize).clamp(1, half - 2),
+                ((4000.0 / bin_hz) as usize).clamp(2, half - 1),
+                ((16000.0 / bin_hz) as usize).clamp(3, half),
             ),
             peaks: Vec::with_capacity(half),
             peak_bin: Vec::with_capacity(half),
@@ -362,6 +394,7 @@ impl PhaseVocoder {
                         b.energy = a.energy;
                         b.formant_env.copy_from_slice(&a.formant_env);
                         b.formant_age = a.formant_age;
+                        b.formant_tilt = a.formant_tilt;
                         self.add_frame(1, center, len);
                     } else {
                         self.process_frame(ch, center, len, pitch);
@@ -524,18 +557,28 @@ impl PhaseVocoder {
         // negli attacchi e nelle code delle note il guadagno sbaglierebbe.
         let (lo, hi) = (self.formant_level_bins.0, self.formant_level_bins.1);
         let level = self.log_env[lo..hi].iter().sum::<f32>() / (hi - lo) as f32;
+        let tilt = self.spectral_tilt();
         let state = &mut self.states[ch];
         if state.formant_age > self.formant_hold {
             for k in 0..=half {
                 state.formant_env[k] = self.log_env[k] - level;
             }
+            state.formant_tilt = tilt;
         } else {
             for k in 0..=half {
                 state.formant_env[k] += self.formant_follow[k] * (self.log_env[k] - level - state.formant_env[k]);
             }
+            state.formant_tilt += self.formant_follow[0] * (tilt - state.formant_tilt);
         }
         state.formant_age = 0;
-        let env = &state.formant_env;
+        self.formant_gain_from_env(ch, formant, 1.0);
+    }
+
+    /// Throat: guadagno per ogni riga dall'inviluppo lisciato del canale
+    /// (`amount` = quanto dello spostamento, da 0 a 1).
+    fn formant_gain_from_env(&mut self, ch: usize, formant: f32, amount: f32) {
+        let half = self.half;
+        let env = &self.states[ch].formant_env;
         for k in 0..=half {
             let src = k as f32 / formant;
             let i = src.floor() as usize;
@@ -549,7 +592,30 @@ impl PhaseVocoder {
             if gain > 0.0 {
                 gain = Self::FORMANT_MAX_BOOST * (gain / Self::FORMANT_MAX_BOOST).tanh();
             }
-            self.formant_gain[k] = gain;
+            self.formant_gain[k] = gain * amount;
+        }
+    }
+
+    /// Quanto e' brillante il frame: energia tra 4 e 16 kHz rispetto a
+    /// quella tra 200 Hz e 4 kHz (logaritmo naturale del rapporto).
+    fn spectral_tilt(&self) -> f32 {
+        let (lo, mid, hi) = self.tilt_bins;
+        let low: f32 = self.magnitude[lo..mid].iter().map(|m| m * m).sum();
+        let high: f32 = self.magnitude[mid..hi].iter().map(|m| m * m).sum();
+        ((high + 1e-12) / (low + 1e-12)).ln()
+    }
+
+    /// Throat in un frame che passa senza nota (vedi `FORMANT_BRIDGE_S`):
+    /// quanto dello spostamento applicare, dai frame passati dall'ultima nota.
+    fn formant_bridge(&self, age: usize) -> f32 {
+        let (full, gone) = self.formant_bridge;
+        let t = age as f32;
+        if t <= full {
+            1.0
+        } else if t >= gone {
+            0.0
+        } else {
+            0.5 + 0.5 * (PI * (t - full) / (gone - full)).cos()
         }
     }
 
@@ -605,6 +671,31 @@ impl PhaseVocoder {
             self.out_spectrum.copy_from_slice(&self.spectrum);
             self.states[ch].rotation.fill(0.0);
             self.states[ch].theta = 0.0;
+            // Throat: subito dopo una nota il timbro resta spostato (la nota
+            // e le fasi no: e' solo un filtro), poi sfuma (`FORMANT_BRIDGE_S`).
+            let mut amount = self.formant_bridge(self.states[ch].formant_age);
+            if (formant - 1.0).abs() > 1e-5 && amount > 0.0 {
+                // Solo se e' ancora la voce di prima (la nota persa per un
+                // attimo), non una "s" o una "f" che comincia: quelle hanno
+                // molti piu' acuti della vocale e restano intatte.
+                let brighter = (self.spectral_tilt() - self.states[ch].formant_tilt) * 10.0 / LN_10;
+                let x = ((Self::FORMANT_BRIGHTER_DB.1 - brighter)
+                    / (Self::FORMANT_BRIGHTER_DB.1 - Self::FORMANT_BRIGHTER_DB.0))
+                    .clamp(0.0, 1.0);
+                amount *= x * x * (3.0 - 2.0 * x);
+                if amount > 0.0 {
+                    self.formant_gain_from_env(ch, formant, amount);
+                    for k in 0..=half {
+                        let g = self.formant_gain[k].clamp(-2.8, 2.8).exp();
+                        let c = self.out_spectrum[k];
+                        self.out_spectrum[k] = Complex::new(c.re * g, c.im * g);
+                        if k > 0 && k < half {
+                            let c = self.out_spectrum[n - k];
+                            self.out_spectrum[n - k] = Complex::new(c.re * g, c.im * g);
+                        }
+                    }
+                }
+            }
         } else {
             // 2) Inviluppo spettrale (formanti).
             let need_env = (ratio - 1.0).abs() > 1e-5 || (formant - 1.0).abs() > 1e-5;
@@ -864,6 +955,78 @@ mod tests {
                 .collect();
             let tremble = mean(&steps);
             assert!(tremble < 0.5, "{semitones:+}: il guadagno trema di {tremble:.2} dB a frame");
+        }
+    }
+
+    #[test]
+    fn throat_does_not_blink_when_the_note_drops_for_a_moment() {
+        // Una vocale tenuta in cui la nota "si perde" per un frame ogni tanto
+        // (succede in mezzo al canto) e poi una lunga consonante. Il timbro
+        // spostato da Throat deve restare fermo nei buchi brevi e sparire
+        // in quelli lunghi.
+        let sr = 48000.0;
+        let len = 48000;
+        let input = crate::synth::steady_vowel(150.0, sr, len);
+        let formant = 2f32.powf(4.0 / 12.0);
+        let voiced = GrainPitch { period: sr / 150.0, ratio: 1.0, voiced: true, formant };
+        let gap = GrainPitch { voiced: false, ..voiced };
+        // `every`: un frame senza nota ogni tanti; dal frame `until` in poi solo consonante.
+        let render = |every: usize, until: usize| {
+            let mut pv = PhaseVocoder::new(1, sr);
+            let latency = pv.latency();
+            let mut frame = 0usize;
+            let mut out = Vec::with_capacity(len);
+            for &x in &input {
+                let mut o = [0.0];
+                pv.process(&[x], &mut o, |_| {
+                    frame += 1;
+                    if frame >= until || (every > 0 && frame % every == 3) {
+                        gap
+                    } else {
+                        voiced
+                    }
+                });
+                out.push(o[0]);
+            }
+            (out, latency, pv.hop)
+        };
+        let (steady, latency, hop) = render(0, usize::MAX);
+        let (blinking, ..) = render(7, usize::MAX);
+        let energy = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| (x - y).powi(2)).sum::<f32>();
+        let span = 12000 + latency..len;
+        let effect = energy(&steady[span.clone()], &input[span.start - latency..len - latency]);
+        let blink = energy(&blinking[span.clone()], &steady[span.clone()]);
+        assert!(blink < 0.01 * effect, "il timbro lampeggia: {:.4} dell'effetto", blink / effect);
+
+        // Dopo 64 ms senza nota la voce passa di nuovo identica.
+        let until = 24000 / hop;
+        let (consonant, ..) = render(0, until);
+        let from = until * hop + 4000 + 2 * latency;
+        for i in from..len {
+            assert!((consonant[i] - input[i - latency]).abs() < 1e-3, "campione {i} non intatto");
+        }
+        // Subito dopo la nota invece il timbro spostato c'e' ancora (il
+        // secondo frame senza nota esce a until*hop + latenza/2 + hop).
+        let near = until * hop + latency / 2 + hop - 100;
+        let moved = energy(&consonant[near..near + 200], &input[near - latency..near + 200 - latency]);
+        let kept = energy(&consonant[near..near + 200], &steady[near..near + 200]);
+        assert!(kept < 0.05 * moved, "Throat si spegne di colpo dopo la nota");
+
+        // Una "s" subito dopo la vocale invece passa intatta, anche nei primi ms.
+        let switch = 24000;
+        let hiss = crate::synth::noise(len, 0.2, 3);
+        let sibilant: Vec<f32> = (0..len)
+            .map(|i| if i < switch { input[i] } else { hiss[i] - 2.0 * hiss[i - 1] + hiss[i - 2] })
+            .collect();
+        let mut pv = PhaseVocoder::new(1, sr);
+        let mut out = Vec::with_capacity(len);
+        for &x in &sibilant {
+            let mut o = [0.0];
+            pv.process(&[x], &mut o, |t| if t >= switch as f64 { gap } else { voiced });
+            out.push(o[0]);
+        }
+        for i in switch + 400..switch + 4000 {
+            assert!((out[i + latency] - sibilant[i]).abs() < 1e-3, "la \"s\" cambia al campione {i}");
         }
     }
 
