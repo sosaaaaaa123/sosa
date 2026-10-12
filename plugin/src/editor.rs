@@ -750,7 +750,7 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
         if response.hovered() || open {
             painter.rect_filled(hit.shrink(g.d(4.0)), CornerRadius::same(g.d(10.0) as u8), Color32::from_white_alpha(6));
         }
-        txt(painter, g.p(x, 113.0), Align2::LEFT_CENTER, label, font(21.0, Weight::Regular), TEXT_DIM);
+        text_tracked(painter, g.p(x, 113.0), Align2::LEFT_CENTER, label, font(21.0, Weight::Regular), TEXT_DIM, -0.07);
         txt(painter, g.p(x, 149.0), Align2::LEFT_CENTER, value, font(25.0, Weight::Medium), TEXT);
         chevron(painter, g, chevron_x, 134.0);
         if response.clicked() {
@@ -775,8 +775,8 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     let name_response = ui
         .interact(name_hit, Id::new("preset-nome"), Sense::click())
         .on_hover_text(format!("{}\n(* = modificato. Clic per la lista dei preset.)", preset.help));
-    txt(painter, g.p(889.0, 118.0), Align2::LEFT_CENTER, name, font(26.0, Weight::Medium), TEXT);
-    txt(painter, g.p(889.0, 153.0), Align2::LEFT_CENTER, presets::BANK, font(24.5, Weight::Regular), Color32::from_rgb(0x9a, 0xab, 0xc4));
+    text_tracked(painter, g.p(889.0, 118.0), Align2::LEFT_CENTER, name, font(25.5, Weight::Medium), TEXT, -0.08);
+    text_tracked(painter, g.p(889.0, 153.0), Align2::LEFT_CENTER, presets::BANK, font(24.5, Weight::Regular), Color32::from_rgb(0x9a, 0xab, 0xc4), -0.06);
 
     // Modalita': Low Latency / HQ.
     let quality = params.quality.value();
@@ -797,7 +797,7 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
             let edge = if response.hovered() { Color32::from_rgb(0x34, 0x44, 0x58) } else { Color32::from_rgb(0x1d, 0x28, 0x38) };
             painter.rect(rect, radius, Color32::from_rgb(0x02, 0x09, 0x13), Stroke::new(g.d(1.5), edge), StrokeKind::Inside);
         }
-        txt(painter, rect.center(), Align2::CENTER_CENTER, label, font(21.0, Weight::Regular), TEXT);
+        text_tracked(painter, rect.center(), Align2::CENTER_CENTER, label, font(19.0, Weight::Regular), TEXT, -0.05);
         if response.clicked() && !selected {
             set_param(setter, &params.quality, choice);
         }
@@ -1593,12 +1593,12 @@ fn knob_with_box<P: Param>(
     style: ArcStyle,
     help: &str,
 ) {
-    txt(painter, g.p(label.1, 879.0), Align2::LEFT_CENTER, label.0, font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec));
+    text_tracked(painter, g.p(label.1, 879.0), Align2::LEFT_CENTER, label.0, font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec), -0.08);
     let rect = g.r(value_box.0, 909.0, value_box.1, 976.0);
     painter.rect(rect, CornerRadius::same(g.d(9.0) as u8), BOX_BG, Stroke::new(g.d(1.4), BOX_EDGE), StrokeKind::Inside);
     // Il numero sta al centro della parte del riquadro non coperta dalla manopola.
     let text_x = text_at.unwrap_or(0.5 * (knob.0 + 34.0 + value_box.1));
-    text_tracked(painter, g.p(text_x + 2.0, 943.0), Align2::CENTER_CENTER, text, font(30.0, Weight::Medium), TEXT, -0.07);
+    text_tracked(painter, g.p(text_x + 2.0, 943.0), Align2::CENTER_CENTER, text, font(28.0, Weight::Medium), TEXT, -0.07);
     let center = g.p(knob.0, knob.1);
     knob_visual(painter, g, center, g.d(34.0), param.unmodulated_normalized_value(), style);
     let hit = g.r(knob.0 - 46.0, 860.0, value_box.1, 985.0);
@@ -1617,8 +1617,8 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     }
 
     // Detune.
-    txt(painter, g.p(74.0, 899.0), Align2::LEFT_CENTER, "Detune", font(21.0, Weight::Regular), Color32::from_rgb(0xc8, 0xd0, 0xdc));
-    txt(painter, g.p(74.0, 940.0), Align2::LEFT_CENTER, format!("{:.1} Hz", params.detune.value()), font(30.0, Weight::Medium), TEXT);
+    text_tracked(painter, g.p(74.0, 899.0), Align2::LEFT_CENTER, "Detune", font(21.0, Weight::Regular), Color32::from_rgb(0xc8, 0xd0, 0xdc), -0.06);
+    text_tracked(painter, g.p(74.0, 940.0), Align2::LEFT_CENTER, format!("{:.1} Hz", params.detune.value()), font(30.0, Weight::Medium), TEXT, -0.07);
     knob_visual(painter, g, g.p(243.0, 928.0), g.d(32.0), params.detune.unmodulated_normalized_value(), ArcStyle::None);
     drag_param(
         ui,
@@ -1720,7 +1720,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
                 rounded_stroke(painter, pill, [r; 4], Stroke::new(g.d(1.2), Color32::from_rgb(0x4a, 0x5c, 0x74)));
             }
         }
-        txt(painter, g.p(1308.0, y), Align2::LEFT_CENTER, label, font(23.0, Weight::Regular), TEXT);
+        text_tracked(painter, g.p(1309.0, y), Align2::LEFT_CENTER, label, font(20.5, Weight::Regular), TEXT, -0.07);
         if response.clicked() && !on {
             set_param(setter, &params.style, choice);
         }
