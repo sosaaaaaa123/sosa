@@ -263,6 +263,18 @@ impl Plugin for SosaTune {
         }
         let side = aux.inputs.first_mut().map(|b| b.as_slice_immutable());
         let side_channels = side.as_ref().map_or(0, |s| s.len());
+        // Alcuni DAW, senza nessun sidechain scelto, ci mandano una copia
+        // dell'ingresso: non e' una base, va ignorata (altrimenti AutoKey
+        // leggerebbe la voce come se fosse la base).
+        let side = side.filter(|s| {
+            side_channels > 0
+                && listening
+                && !(0..num_samples).all(|i| {
+                    let main: f32 = (0..num_inputs).map(|ch| channels[ch][i]).sum::<f32>() / num_inputs as f32;
+                    let x: f32 = s.iter().map(|c| c[i]).sum::<f32>() / side_channels as f32;
+                    (main - x).abs() < 1e-6
+                })
+        });
         for analyzer in [&mut self.chroma_main, &mut self.chroma_side].into_iter().flatten() {
             analyzer.set_reference(settings.reference_hz);
         }
