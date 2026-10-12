@@ -2337,7 +2337,7 @@ fn help_page(painter: &Painter, g: Geo) {
         painter.text(g.p(390.0, y), Align2::LEFT_CENTER, *text, font(20.0, Weight::Regular), TEXT);
     }
     txt(painter,
-        g.p(110.0, 662.0),
+        g.p(110.0, 668.0),
         Align2::LEFT_CENTER,
         "Manopole: trascina (Maiusc = fine), doppio clic = predefinito, clic sul numero per scriverlo. Angolo in basso a destra = misura.",
         font(17.0, Weight::Regular),
