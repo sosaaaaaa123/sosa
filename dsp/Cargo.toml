@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Vladislav"]
 license = "GPL-3.0-or-later"
-description = "Motore audio di SosaTune: rilevamento del pitch (YIN), scale, correzione e pitch shifting PSOLA"
+description = "Motore audio di Sosa Tune: rilevamento del pitch (YIN), scale, correzione, phase vocoder (HQ) e pitch shifting a latenza zero"
 
 # Nessuna dipendenza esterna: solo la libreria standard di Rust.
 [dependencies]

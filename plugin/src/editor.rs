@@ -724,7 +724,7 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     // Vocal Range e Key & Scale: menu a tendina.
     let fields = [
         (Menu::Voice, 441.0, 632.0, "Vocal Range", voice_label(params.voice.value()).to_owned(), g.r(415.0, 92.0, 664.0, 182.0),
-            "Il tipo di voce: decide la nota più grave riconosciuta (e la latenza)."),
+            "Il tipo di voce: decide la nota più grave riconosciuta. Per le voci maschili scegli Alto/Tenor o Low Male."),
         (Menu::KeyScale, 706.0, 878.0, "Key & Scale", key_scale_label(params), g.r(680.0, 92.0, 905.0, 182.0),
             "Tonalità e scala: la voce viene portata sulle note di questa scala."),
     ];
@@ -1634,8 +1634,8 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     txt(painter, g.p(958.0, 894.0), Align2::LEFT_CENTER, "Mode", font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec));
     let quality = params.quality.value();
     let modes = [
-        (QualityChoice::LowLatency, "Low Latency", g.r(958.0, 918.0, 1102.0, 968.0), "Latenza minima (21 ms): per cantare in diretta con il plugin acceso. Stesso motore phase vocoder, finestra più corta."),
-        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: finestra del phase vocoder più lunga, il suono più pulito e l'intonazione più precisa (latenza 43 ms, compensata dal DAW). Ideale per il mix."),
+        (QualityChoice::LowLatency, "Low Latency", g.r(958.0, 918.0, 1102.0, 968.0), "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Qualità da monitoraggio: per il mix passa a HQ."),
+        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: phase vocoder con finestra adattata alla voce e timbro (formanti) preservato, il suono più pulito e l'intonazione più precisa. Latenza 64 ms, compensata dal DAW: ideale per il mix."),
     ];
     for (choice, label, rect, help) in modes {
         let response = ui.interact(rect, Id::new(("modo", label)), Sense::click()).on_hover_text(help);
@@ -1853,7 +1853,7 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
         ("Humanize / Flex Tune", "note lunghe più libere / corregge solo vicino alla nota."),
         ("Detune", "accordatura del La4 (440 Hz standard)."),
-        ("Mode", "Low Latency (21 ms) per cantare in diretta, HQ (43 ms) per il mix."),
+        ("Mode", "Low Latency (0 ms) per registrare in diretta, HQ (64 ms) per il mix."),
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
         ("↶ ↷  ⚙  ⏻", "annulla e ripeti, altre impostazioni, accensione."),
     ];
@@ -1877,7 +1877,7 @@ fn settings_page(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, di
         ("Amount", format!("{:.0}%", params.amount.value() * 100.0), params.amount.unmodulated_normalized_value(), "Quanta correzione applicare: 100% = completa."),
         ("Transpose", format!("{:+} st", params.transpose.value()), params.transpose.unmodulated_normalized_value(), "Sposta tutta la voce di un certo numero di semitoni."),
         ("Vibrato", format!("{:+.0}%", params.vibrato.value() * 100.0), params.vibrato.unmodulated_normalized_value(), "Vibrato naturale: a sinistra lo riduce, a destra lo aggiunge."),
-        ("Formant", format!("{:+.1} st", params.formant.value()), params.formant.unmodulated_normalized_value(), "Il timbro della voce, senza cambiare la nota: a destra più piccola e chiara, a sinistra più grande e scura."),
+        ("Formant", format!("{:+.1} st", params.formant.value()), params.formant.unmodulated_normalized_value(), "Il timbro della voce, senza cambiare la nota (in modalità HQ): a destra più piccola e chiara, a sinistra più grande e scura."),
         ("Sensitivity", format!("{:.0}%", params.tracking.value() * 100.0), params.tracking.unmodulated_normalized_value(), "Quanto il plugin è disposto a riconoscere una nota: alzala per voci con molta aria."),
     ];
     for (i, (label, text, value, help)) in knobs.iter().enumerate() {
@@ -1914,7 +1914,7 @@ fn settings_page(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, di
     txt(painter, 
         g.p(110.0, 610.0),
         Align2::LEFT_CENTER,
-        "Il DAW compensa la latenza da solo. Tutti i comandi sono automatizzabili dal DAW.",
+        "Low Latency non ha ritardo; la latenza di HQ la compensa il DAW. Tutti i comandi sono automatizzabili.",
         font(19.0, Weight::Regular),
         TEXT_FAINT,
     );

@@ -86,9 +86,18 @@ impl YinDetector {
 
     /// Cambia la nota piu' grave riconosciuta (senza allocare memoria).
     pub fn set_lowest_hz(&mut self, lowest_hz: f32) {
+        self.set_range(lowest_hz, lowest_hz);
+    }
+
+    /// Come [`set_lowest_hz`](Self::set_lowest_hz), ma con la finestra di
+    /// confronto lunga un periodo di `window_hz` (>= `lowest_hz`): si
+    /// riconoscono note fino a `lowest_hz` con frame piu' corti, cioe'
+    /// un'analisi piu' pronta nei passaggi veloci.
+    pub fn set_range(&mut self, lowest_hz: f32, window_hz: f32) {
         let tau_max = (self.sample_rate / lowest_hz).ceil() as usize;
         self.tau_max = tau_max.clamp(4, self.capacity_tau_max);
-        self.window = self.tau_max;
+        let window = (self.sample_rate / window_hz.max(lowest_hz)).ceil() as usize;
+        self.window = window.clamp(4, self.tau_max);
         self.tau_min = ((self.sample_rate / HIGHEST_HZ).floor() as usize).max(2);
     }
 

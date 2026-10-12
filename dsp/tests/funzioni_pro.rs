@@ -32,6 +32,20 @@ fn run(input: &[f32], settings: &CorrectionSettings) -> (Vec<f32>, Vec<(f32, Pit
     (out, reports)
 }
 
+/// Come [`run`], in modalita' HQ (phase vocoder).
+fn run_hq(input: &[f32], settings: &CorrectionSettings) -> Vec<f32> {
+    let mut corrector = PitchCorrector::new(SR, 1);
+    corrector.set_quality(true);
+    input
+        .iter()
+        .map(|&x| {
+            let mut f = [x];
+            corrector.process_frame(&mut f, settings);
+            f[0]
+        })
+        .collect()
+}
+
 fn outputs_between(reports: &[(f32, PitchReport)], from: f32, to: f32) -> Vec<f32> {
     reports
         .iter()
@@ -84,6 +98,27 @@ fn flex_tune_leaves_expressive_notes_alone() {
     assert!((final_output(60.4, 1.0) - 60.4).abs() < 0.03);
     // 4 centesimi crescente: corretta anche con Flex-Tune al massimo.
     assert!((final_output(60.04, 1.0) - 60.0).abs() < 0.02);
+    // In mezzo l'effetto e' proporzionale alla manopola: al 25% la nota
+    // lontana e' corretta per circa tre quarti, al 50% per circa meta'.
+    let at25 = final_output(60.4, 0.25) - 60.0;
+    let at50 = final_output(60.4, 0.5) - 60.0;
+    assert!((at25 - 0.1).abs() < 0.03, "flex 25%: resta {at25}");
+    assert!((at50 - 0.2).abs() < 0.03, "flex 50%: resta {at50}");
+}
+
+#[test]
+fn humanize_grows_gradually() {
+    // Il movimento lasciato sulla nota tenuta cresce con la manopola, senza
+    // che un valore basso tolga subito la correzione.
+    let input = voice(2.5, |t| 60.0 + 0.3 * (2.0 * PI * 0.6 * t).sin());
+    let movement = |h: f32| {
+        let settings = CorrectionSettings { retune_ms: 0.0, humanize: h, ..Default::default() };
+        let (_, r) = run(&input, &settings);
+        std_dev(&outputs_between(&r, 1.0, 2.4))
+    };
+    let (m25, m50, m100) = (movement(0.25), movement(0.5), movement(1.0));
+    assert!(m25 < 0.25 * m100, "humanize 25%: {m25} (100%: {m100})");
+    assert!(m25 < m50 && m50 < m100, "{m25} {m50} {m100}");
 }
 
 #[test]
@@ -152,15 +187,16 @@ fn spectral_centroid(signal: &[f32]) -> f32 {
 fn formant_shift_changes_timbre_not_pitch() {
     let input = voice(1.5, |_| 57.0);
     let plain = CorrectionSettings { amount: 0.0, ..Default::default() };
-    let (out_plain, _) = run(&input, &plain);
-    let (out_up, _) = run(&input, &CorrectionSettings { formant: 4.0, ..plain });
-    let (out_down, _) = run(&input, &CorrectionSettings { formant: -4.0, ..plain });
+    // Il comando Formant agisce in HQ (in Low Latency le formanti seguono la nota).
+    let out_plain = run_hq(&input, &plain);
+    let out_up = run_hq(&input, &CorrectionSettings { formant: 4.0, ..plain });
+    let out_down = run_hq(&input, &CorrectionSettings { formant: -4.0, ..plain });
 
     let c_plain = spectral_centroid(&out_plain);
     let up = spectral_centroid(&out_up) / c_plain;
     let down = spectral_centroid(&out_down) / c_plain;
     assert!(up > 1.12 && up < 1.45, "formanti +4: baricentro x{up}");
-    assert!(down < 0.9 && down > 0.6, "formanti -4: baricentro x{down}");
+    assert!(down < 0.9 && down > 0.7, "formanti -4: baricentro x{down}");
 
     // La nota non cambia.
     for out in [&out_up, &out_down] {
@@ -315,8 +351,10 @@ fn classic_style_glides_into_each_note() {
     let classic = CorrectionSettings { classic: true, ..modern };
     let first = |s: &CorrectionSettings| {
         let (_, reports) = run(&input, s);
+        // L'inizio della nota: appena finito l'attacco (prime analisi, ~35 ms).
+        let start = outputs_between(&reports, 0.034, 0.042);
         let outs: Vec<f32> = reports.iter().filter(|(_, r)| r.voiced).map(|(_, r)| r.output_note).collect();
-        (outs[0], outs[outs.len() - 1])
+        (mean(&start), outs[outs.len() - 1])
     };
     let (m_start, m_end) = first(&modern);
     let (c_start, c_end) = first(&classic);
@@ -328,9 +366,9 @@ fn classic_style_glides_into_each_note() {
 #[test]
 fn hq_mode_uses_the_long_window_and_corrects() {
     let mut corrector = PitchCorrector::new(SR, 1);
-    assert_eq!(corrector.latency(), 1024, "latenza Low Latency a 48 kHz");
+    assert_eq!(corrector.latency(), 0, "Low Latency: latenza zero");
     corrector.set_quality(true);
-    assert_eq!(corrector.latency(), 2048, "latenza HQ a 48 kHz");
+    assert_eq!(corrector.latency(), 3072, "latenza HQ a 48 kHz (64 ms)");
 
     let input = voice(1.0, |_| 60.35);
     let settings = CorrectionSettings { retune_ms: 0.0, ..Default::default() };

@@ -1,9 +1,10 @@
 //! Il correttore: unisce rilevamento (YIN), scelta della nota (scale) e
 //! spostamento dell'intonazione (phase vocoder). E' il "cervello" del plugin.
 
-use crate::vocoder::{GrainPitch, PhaseVocoder};
 use crate::scale::{hz_to_note, NoteSnapper, VoiceType};
+use crate::vocoder::{GrainPitch, PhaseVocoder};
 use crate::yin::YinDetector;
+use crate::zerolat::DelayShifter;
 use crate::MAX_CHANNELS;
 
 /// Le impostazioni scelte dall'utente (vengono dai parametri del plugin).
@@ -72,13 +73,18 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 /// Peso della correzione con Flex-Tune, in base a quanto la voce e' lontana
 /// dalla nota (`distance` in semitoni, da 0 a 0.5).
 fn flex_weight(distance: f32, flex: f32) -> f32 {
+    let flex = flex.clamp(0.0, 1.0);
     if flex <= 0.0 {
         return 1.0;
     }
-    // Distanza oltre la quale la nota resta com'e': 48 centesimi con Flex-Tune
-    // al 25%, 37 al 50%, 25 al 75%, 12 al 100%.
-    let outer = 0.5 - 0.38 * flex.min(1.0).powf(1.5);
-    1.0 - smoothstep(outer * 0.65, outer, distance)
+    // Vicino alla nota la correzione resta piena; lontano dalla nota cala in
+    // proporzione alla manopola: al 25% le note lontane sono corrette al 75%,
+    // al 50% a meta', al 100% non vengono toccate. (Prima bastava un 25% per
+    // lasciare quasi tutto com'era.) La zona "vicina" si restringe da 30 a
+    // 15 centesimi alzando la manopola.
+    let outer = 0.45 - 0.2 * flex;
+    let local = 1.0 - smoothstep(outer * 0.5, outer, distance);
+    1.0 - flex * (1.0 - local)
 }
 
 /// Filtro passa-banda del secondo ordine centrato sulla velocita' tipica del
@@ -183,13 +189,12 @@ pub struct PitchCorrector {
     voice: VoiceType,
 
     detector: YinDetector,
-    /// Il phase vocoder che sposta l'intonazione: finestra corta (Low
-    /// Latency) e lunga (HQ, e voci basse). Entrambi pronti: cambiare
-    /// modalita' durante la riproduzione non alloca memoria.
-    vocoder_fast: PhaseVocoder,
-    vocoder_hq: PhaseVocoder,
-    /// Quale dei due e' in uso.
-    use_hq_vocoder: bool,
+    /// HQ: phase vocoder con finestra che segue la voce (vedi [`crate::vocoder`]).
+    vocoder: PhaseVocoder,
+    /// Low Latency: testina a latenza zero (vedi [`crate::zerolat`]).
+    /// Entrambi pronti: cambiare modalita' durante la riproduzione non
+    /// alloca memoria.
+    zero: DelayShifter,
 
     /// Ultimi campioni (mono) per il rilevatore.
     mono: Vec<f32>,
@@ -250,18 +255,14 @@ impl PitchCorrector {
     /// buco del rilevamento.
     const LEAP_CONFIRM_S: f32 = 0.015;
     const MIN_RUN_TO_HOLD_S: f32 = 0.015;
-    /// Finestre del phase vocoder (arrotondate alla potenza di 2 superiore:
-    /// 1024 e 2048 campioni a 44,1/48 kHz).
-    const FAST_WINDOW_S: f32 = 0.020;
-    const HQ_WINDOW_S: f32 = 0.040;
 
     /// Crea il correttore. Tutta la memoria viene allocata qui, mai durante
     /// l'elaborazione audio.
     pub fn new(sample_rate: f32, channels: usize) -> Self {
         let channels = channels.clamp(1, MAX_CHANNELS);
         let detector = YinDetector::new(sample_rate, VoiceType::LOWEST_SUPPORTED_HZ);
-        let vocoder_fast = PhaseVocoder::with_window(channels, sample_rate, Self::FAST_WINDOW_S);
-        let vocoder_hq = PhaseVocoder::with_window(channels, sample_rate, Self::HQ_WINDOW_S);
+        let vocoder = PhaseVocoder::new(channels, sample_rate);
+        let zero = DelayShifter::new(channels, sample_rate, detector.capacity_max_period());
         // Il buffer serve anche alla misura "ciclo per ciclo" dei frame, che
         // guarda fino a ~3 periodi indietro rispetto all'ultimo campione.
         let mono_len = (detector.max_frame_len()
@@ -276,9 +277,8 @@ impl PitchCorrector {
             channels,
             voice: VoiceType::AltoTenor,
             detector,
-            vocoder_fast,
-            vocoder_hq,
-            use_hq_vocoder: false,
+            vocoder,
+            zero,
             mono: vec![0.0; mono_len],
             mono_mask: mono_len - 1,
             frame,
@@ -313,14 +313,12 @@ impl PitchCorrector {
         corrector
     }
 
-    /// Modalita' di qualita' (in entrambe la voce passa nel phase vocoder,
-    /// vedi [`crate::vocoder`]):
-    /// - `false` = **Low Latency**: finestra di ~21 ms, latenza ~21 ms, per
-    ///   cantare in diretta con il plugin acceso (per le voci basse la
-    ///   finestra resta lunga, altrimenti le armoniche non si separano);
-    /// - `true` = **HQ**: finestra di ~43 ms, latenza ~43 ms. Sulla voce di
-    ///   prova: intonazione in uscita mediana 1,4 centesimi (contro 2,9),
-    ///   tratti ruvidi 2,6% (contro 3,6%).
+    /// Modalita' di qualita':
+    /// - `false` = **Low Latency**: latenza zero (vedi [`crate::zerolat`]),
+    ///   per registrare con il plugin acceso senza ritardi;
+    /// - `true` = **HQ**: phase vocoder con finestra che segue la voce (lunga
+    ///   per le voci maschili, corta per quelle femminili), solo le armoniche
+    ///   vengono spostate, timbro preservato. Latenza 64 ms, compensata dal DAW.
     ///
     /// Cambia la latenza. Non alloca memoria.
     pub fn set_quality(&mut self, hq: bool) {
@@ -329,26 +327,20 @@ impl PitchCorrector {
         let analyses = |seconds: f32| ((seconds * per_second).round() as u32).max(1);
         self.leap_confirmations = analyses(Self::LEAP_CONFIRM_S);
         self.min_run_to_hold = analyses(Self::MIN_RUN_TO_HOLD_S);
-        self.choose_vocoder();
         self.reset();
-    }
-
-    fn choose_vocoder(&mut self) {
-        self.use_hq_vocoder = self.hq || self.voice == VoiceType::LowMale;
     }
 
     pub fn is_hq(&self) -> bool {
         self.hq
     }
 
-    /// Cambia il tipo di voce. Cambia anche la latenza (vedi [`latency`](Self::latency)).
+    /// Cambia il tipo di voce (la nota piu' grave riconosciuta).
     pub fn set_voice(&mut self, voice: VoiceType) {
         self.voice = voice;
-        self.detector.set_lowest_hz(voice.lowest_hz());
+        self.detector.set_range(voice.lowest_hz(), voice.window_hz());
         let max_period = self.detector.max_period() as f32;
         // Per le parti senza nota (consonanti, respiri) usiamo grani di ~5 ms.
         self.unvoiced_period = (self.sample_rate * 0.005).min(max_period);
-        self.choose_vocoder();
         self.reset();
     }
 
@@ -359,10 +351,10 @@ impl PitchCorrector {
     /// Ritardo introdotto dal plugin, in campioni. Il DAW lo compensa
     /// automaticamente (Plugin Delay Compensation).
     pub fn latency(&self) -> usize {
-        if self.use_hq_vocoder {
-            self.vocoder_hq.latency()
+        if self.hq {
+            self.vocoder.latency()
         } else {
-            self.vocoder_fast.latency()
+            self.zero.latency()
         }
     }
 
@@ -373,8 +365,8 @@ impl PitchCorrector {
 
     /// Azzera tutto lo stato (buffer, correzione in corso).
     pub fn reset(&mut self) {
-        self.vocoder_fast.reset();
-        self.vocoder_hq.reset();
+        self.vocoder.reset();
+        self.zero.reset();
         self.mono.fill(0.0);
         self.countdown = self.hop;
         self.position = 0;
@@ -429,7 +421,12 @@ impl PitchCorrector {
         let edge = VOICED_EDGE_MS * 0.001 * self.sample_rate as f64;
         let formant = 2f32.powf(settings.formant.clamp(-12.0, 12.0) / 12.0);
         let unvoiced = GrainPitch { period: self.unvoiced_period, ratio: 1.0, voiced: false, formant };
-        let pitch_at = |t: f64| {
+        // Centro dell'analisi piu' recente (per la latenza zero).
+        let latest = &self.history[(self.history_head + HISTORY - 1) % HISTORY];
+        let latest_center = if latest.valid { latest.center } else { f64::NEG_INFINITY };
+        let latest_period = latest.period;
+        // `t`: dove leggere le analisi; `here`: dove misurare la voce ciclo per ciclo.
+        let pitch_between = |t: f64, here: f64| {
             let Some((mut g, lock)) = lookup(history, t, edge) else {
                 return unvoiced;
             };
@@ -437,7 +434,7 @@ impl PitchCorrector {
             // attimo di silenzio): il frame li conterrebbe e,
             // spostato, li sbaverebbe o li anticiperebbe (un
             // "gracchio" sull'attacco della parola). Quel frame passa intatto.
-            if g.voiced && is_transient(mono, mono_mask, newest, t, g.period) {
+            if g.voiced && is_transient(mono, mono_mask, newest, here, g.period) {
                 return GrainPitch { period: g.period, ratio: 1.0, voiced: false, formant };
             }
             if g.voiced {
@@ -449,7 +446,7 @@ impl PitchCorrector {
                 // metallico che gracchia. Qui si misura ciclo per ciclo: dove la
                 // periodicita' manca il frame passa intatto, nel mezzo la
                 // correzione si attenua con dolcezza.
-                let Some((local, score)) = periodicity(mono, mono_mask, newest, t, g.period) else {
+                let Some((local, score)) = periodicity(mono, mono_mask, newest, here, g.period) else {
                     return GrainPitch { formant, ..g };
                 };
                 let voicing = smoothstep(NOISE_SCORE, VOICE_SCORE, score);
@@ -471,10 +468,35 @@ impl PitchCorrector {
             }
             GrainPitch { formant, ..g }
         };
-        if self.use_hq_vocoder {
-            self.vocoder_hq.process(&input[..channels], &mut output[..channels], pitch_at);
+        if self.hq {
+            self.vocoder.process(&input[..channels], &mut output[..channels], |t| pitch_between(t, t));
         } else {
-            self.vocoder_fast.process(&input[..channels], &mut output[..channels], pitch_at);
+            // Latenza zero: l'audio non aspetta l'analisi del punto esatto.
+            // Si usa l'ultima analisi disponibile, e la misura ciclo per ciclo
+            // sui cicli appena arrivati la aggiorna (la voce intanto puo'
+            // essersi mossa, per esempio con il vibrato).
+            let here = newest as f64 - 1.4 * latest_period as f64 - 3.0;
+            self.zero.process(&input[..channels], &mut output[..channels], |_| {
+                let mut g = pitch_between(latest_center, here);
+                if g.voiced {
+                    // Tendenza: di quanto si e' mossa la voce nell'ultimo ciclo,
+                    // proiettata fino a ora (sulla voce di prova: intonazione in
+                    // uscita mediana 3,0 centesimi invece di 4,8).
+                    let p = g.period;
+                    if let (Some((a, sa)), Some((b, sb))) = (
+                        periodicity(mono, mono_mask, newest, here - p as f64, p),
+                        periodicity(mono, mono_mask, newest, here, p),
+                    ) {
+                        if sa >= 0.85 && sb >= 0.85 {
+                            let slope = 12.0 * (a / b).log2() / p; // semitoni per campione
+                            let ahead = (newest as f64 - here) as f32;
+                            let drift = (slope * ahead).clamp(-0.5, 0.5);
+                            g.ratio *= 2f32.powf(-drift / 12.0);
+                        }
+                    }
+                }
+                g
+            });
         }
         frame[..channels].copy_from_slice(&output[..channels]);
 
@@ -548,9 +570,15 @@ impl PitchCorrector {
             // Nello stile robotico (velocita' 0) la nota cambia subito, come
             // negli autotune classici: i "gradini" sono l'effetto voluto.
             let fresh = !self.prev_analysis_voiced;
+            // Nei primi 30 ms di una nota le letture sono ancora disturbate
+            // dall'attacco: la nota si sceglie di nuovo a ogni analisi (la
+            // piu' vicina, senza isteresi) e la correzione resta "da inizio
+            // nota". Cosi' una prima lettura storta non resta incollata.
+            let young_runs = ((0.03 / hop_seconds).ceil() as u32).max(1);
+            let young = !fresh && self.voiced_run < young_runs;
             let robotic = settings.retune_ms < 1.0;
             let classic = settings.classic;
-            let proposal = if classic {
+            let proposal = if classic || young {
                 self.snapper.propose_plain(note, &settings.notes)
             } else {
                 self.snapper.propose(note, &settings.notes)
@@ -572,7 +600,7 @@ impl PitchCorrector {
                 _ => 0.025,
             };
             let target = match (current, proposal) {
-                (Some(c), Some(p)) if p != c && !fresh => {
+                (Some(c), Some(p)) if p != c && !fresh && !young => {
                     self.away_time += hop_seconds;
                     if self.away_time >= away_needed || (note - c as f32).abs() >= 1.5 {
                         self.away_time = 0.0;
@@ -593,7 +621,7 @@ impl PitchCorrector {
             // Da quanto si sta cantando questa nota? (serve a Humanize e al vibrato)
             let reference = target.map_or(note, |t| t as f32);
             // Inizio di una nota dopo una pausa (o una consonante, anche breve).
-            let starting = !self.was_voiced || fresh;
+            let starting = !self.was_voiced || fresh || young;
             if target != self.current_target || !self.was_voiced {
                 self.current_target = target;
                 self.note_age = 0.0;
@@ -622,12 +650,18 @@ impl PitchCorrector {
                 self.correction = desired * (1.0 - keep_natural);
             }
 
-            // Humanize: sulle note tenute (oltre ~0,15 s) la velocita' rallenta.
+            // Humanize: sulle note tenute (oltre ~0,15 s) la velocita' rallenta,
+            // in proporzione al quadrato della manopola: al 25% appena (+12 ms),
+            // al 50% +50 ms, al 100% +200 ms. (Prima arrivava a +400 ms in modo
+            // lineare: anche un 20% toglieva quasi tutta la correzione.)
             let sustain = smoothstep(0.15, 0.6, self.note_age);
-            let retune_ms = settings.retune_ms + settings.humanize.clamp(0.0, 1.0) * 400.0 * sustain;
+            let humanize = settings.humanize.clamp(0.0, 1.0);
+            let retune_ms = settings.retune_ms + humanize * humanize * 200.0 * sustain;
             // Correzione veloce = voce "inchiodata" alla nota anche nei passaggi
             // rapidi (misura ciclo per ciclo); correzione lenta = la voce resta libera.
-            lock = weight * (1.0 - retune_ms / 80.0).clamp(0.0, 1.0);
+            // Humanize allenta l'aggancio solo un po' (il centro della nota resta preciso).
+            let lock_ms = settings.retune_ms + 0.5 * (retune_ms - settings.retune_ms);
+            lock = weight * (1.0 - lock_ms / 80.0).clamp(0.0, 1.0);
             if retune_ms < 1.0 {
                 self.correction = desired;
             } else {
@@ -1011,18 +1045,18 @@ mod tests {
     }
 
     #[test]
-    fn latency_depends_on_voice_type() {
+    fn latency_low_is_zero_and_hq_is_fixed() {
         let mut c = PitchCorrector::new(48000.0, 1);
-        let alto = c.latency();
-        c.set_voice(VoiceType::Soprano);
-        let soprano = c.latency();
-        c.set_voice(VoiceType::LowMale);
-        let low = c.latency();
-        // Le voci basse usano la finestra lunga (armoniche fitte).
-        assert!(soprano == alto && alto < low, "{soprano} {alto} {low}");
-        // Anche nel caso peggiore restiamo sotto i 50 ms.
-        assert!(low as f32 / 48000.0 < 0.05);
+        for voice in [VoiceType::Soprano, VoiceType::AltoTenor, VoiceType::LowMale] {
+            c.set_voice(voice);
+            c.set_quality(false);
+            assert_eq!(c.latency(), 0, "Low Latency: nessun ritardo");
+            c.set_quality(true);
+            // HQ: 64 ms (la finestra piu' lunga del phase vocoder), uguale per tutte le voci.
+            assert_eq!(c.latency(), 3072);
+        }
     }
+
 
     /// Una voce che scivola velocemente (3 oscillazioni al secondo di ±2,5
     /// semitoni) con correzione istantanea deve uscire "a scalini" sulle note
@@ -1043,7 +1077,10 @@ mod tests {
             retune_ms: 0.0,
             ..Default::default()
         };
+        // Glissati velocissimi (47 semitoni al secondo): si misura in HQ,
+        // dove ogni pezzo di voce usa l'analisi del punto esatto.
         let mut corrector = PitchCorrector::new(sr, 1);
+        corrector.set_quality(true);
         let out = process_mono(&mut corrector, &input, &settings);
 
         // Misuriamo l'intonazione in uscita su finestre corte.
@@ -1061,7 +1098,9 @@ mod tests {
             }
         }
         let share = on_note as f32 / total as f32;
-        assert!(share > 0.85, "solo il {:.0}% delle finestre e' su una nota della scala", share * 100.0);
+        // (Con le note riconosciute fino a 75 Hz, per le voci maschili basse,
+        // su questi glissati estremi si scende da ~88% a ~83%.)
+        assert!(share > 0.8, "solo il {:.0}% delle finestre e' su una nota della scala", share * 100.0);
     }
 
     /// Un vero salto d'ottava deve essere seguito (dopo pochi millisecondi).

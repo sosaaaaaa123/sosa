@@ -109,7 +109,7 @@ impl ScaleChoice {
     }
 }
 
-/// Il tipo di voce: decide la nota piu' grave riconosciuta e la latenza.
+/// Il tipo di voce: decide la nota piu' grave riconosciuta.
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoiceChoice {
     #[id = "soprano"]
@@ -133,7 +133,7 @@ impl VoiceChoice {
     }
 }
 
-/// Modalita' di elaborazione: latenza minima oppure analisi piu' precisa.
+/// Modalita' di elaborazione: latenza zero (per registrare) oppure qualita' massima (per il mix).
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QualityChoice {
     #[id = "low-latency"]

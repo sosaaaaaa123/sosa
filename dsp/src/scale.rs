@@ -200,6 +200,18 @@ impl VoiceType {
     pub fn lowest_hz(self) -> f32 {
         match self {
             VoiceType::Soprano => 150.0,
+            // Fino al Re2: anche baritoni e tenori che scendono in basso.
+            VoiceType::AltoTenor => 75.0,
+            VoiceType::LowMale => 60.0,
+        }
+    }
+
+    /// La finestra di analisi e' lunga un periodo di questa frequenza (vedi
+    /// [`crate::yin::YinDetector::set_range`]): per Alto/Tenore le note
+    /// arrivano fino a 75 Hz, ma con frame corti come se il limite fosse 90.
+    pub fn window_hz(self) -> f32 {
+        match self {
+            VoiceType::Soprano => 150.0,
             VoiceType::AltoTenor => 90.0,
             VoiceType::LowMale => 60.0,
         }

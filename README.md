@@ -1,8 +1,8 @@
-# SosaTune
+# Sosa Tune
 
-**Correzione dell'intonazione in tempo reale per la voce**, stile Auto-Tune, scritta in Rust con [nih-plug](https://github.com/robbert-vdh/nih-plug). Funziona come plugin **VST3** e **CLAP** su macOS (e, con gli stessi passaggi, su Windows e Linux).
+**Correzione dell'intonazione in tempo reale per la voce**, stile Auto-Tune, scritta in Rust con [nih-plug](https://github.com/robbert-vdh/nih-plug). Funziona come plugin **VST3**, **CLAP** e **AU** (Logic Pro, GarageBand) su macOS, e VST3/CLAP su Windows. Per installarlo su un altro computer ci sono gli installer pronti: `SosaTune-Installer.pkg` per Mac e `SosaTune-Setup.exe` per Windows, in cui scegli tu quali formati installare.
 
-![L'interfaccia di SosaTune](docs/interfaccia.png)
+![L'interfaccia di Sosa Tune](docs/interfaccia.png)
 
 ![Esempio: melodia stonata e corretta](docs/grafico_demo.png)
 
@@ -18,18 +18,24 @@
 - **Vibrato naturale**: lo riduce o lo aggiunge, anche sopra la correzione robotica.
 - **Formanti**: cambia il timbro (la "lunghezza della gola") senza cambiare la nota.
 - **Sensibilità** del rilevamento, per voci pulite o con molta aria.
-- **Stili pronti**: Naturale, Pop moderno, Robotico, Leggero.
+- **Preset pronti** (Factory): Default, Natural Vocal, Pop Polish, Hard Tune, Trap Lead, R&B Smooth, Soft Touch, Classic Robot, Retro Glide.
 - **Quantità** di correzione e **trasposizione** fino a ±12 semitoni.
-- Cambia la nota **senza cambiare il timbro** della voce (pitch shifting con un **phase vocoder** a picchi bloccati che conserva le formanti: niente "effetto scoiattolo", niente click).
-- Tre impostazioni di **voce** (soprano, alto/tenore, voce bassa): le voci acute hanno una latenza più bassa.
-- Interfaccia con **indicatore circolare** della nota cantata (scarto in centesimi), manopole, tastiera della scala e **grafico dell'intonazione** in tempo reale.
+- Cambia la nota **senza cambiare il timbro** della voce (in HQ: **phase vocoder** a picchi bloccati con finestra adattata alla voce e formanti preservate dal "true envelope": niente "effetto scoiattolo", niente click).
+- Due **modalità**: **Low Latency** a latenza zero per registrare con il plugin acceso, **HQ** per il mix.
+- Tre impostazioni di **voce** (soprano, alto/tenore, voce bassa): decidono la nota più grave riconosciuta.
+- Interfaccia con la nota cantata, l'indicatore dello scarto in centesimi, manopole, tastiera della scala e **AutoKey** (la tonalità si imposta da sola ascoltando la voce).
 - Mono e stereo, qualsiasi frequenza di campionamento, latenza comunicata al DAW (che la compensa da solo).
 
-| Voce | Nota più grave | Latenza |
+| Modalità | Latenza | Quando usarla |
 |---|---|---|
-| Soprano / voce acuta | 150 Hz (circa Re3) | ~18 ms |
-| Alto / Tenore | 90 Hz (circa Fa#2) | ~31 ms |
-| Voce bassa | 60 Hz (circa Si1) | ~46 ms |
+| **Low Latency** | **0 ms** | Mentre registri: nessun ritardo in cuffia. Qualità da monitoraggio (le formanti seguono la nota, il comando Formant non agisce) |
+| **HQ** | 64 ms (compensata dal DAW) | Per il mix: il suono più pulito, timbro preservato, intonazione più precisa |
+
+| Voce | Nota più grave riconosciuta |
+|---|---|
+| Soprano / voce acuta | 150 Hz (circa Re3) |
+| Alto / Tenore | 75 Hz (circa Re2) |
+| Voce bassa | 60 Hz (circa Si1) |
 
 ---
 
@@ -85,11 +91,11 @@ cp -R target/bundled/SosaTune.clap ~/Library/Audio/Plug-Ins/CLAP/
 
 ### 6. Aprilo nel DAW
 
-Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e inserisci **SosaTune** come effetto sulla traccia della voce. Lo trovi tra gli effetti di "Vladislav".
+Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e inserisci **Sosa Tune** come effetto sulla traccia della voce. Lo trovi tra gli effetti di "Vladislav".
 
 - **Ableton Live, FL Studio, Cubase, Studio One, Reaper**: usa il VST3.
 - **Bitwig, Reaper**: puoi usare anche il CLAP.
-- **Logic Pro e GarageBand** accettano solo il formato AU, che nih-plug non crea direttamente: si può aggiungere con un "wrapper" (vedi *Prossimi passi*).
+- **Logic Pro e GarageBand**: usa l'AU (`SosaTune.component`, nel pacchetto `.pkg` scegli "Audio Unit"). È creato con [clap-wrapper](https://github.com/free-audio/clap-wrapper) e superato `auval`.
 
 ---
 
@@ -97,57 +103,36 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 
 1. Imposta la **Tonalità** e la **Scala** della canzone (per esempio La minore → Tonalità A, Scala Minore naturale). Se non le conosci, lascia **Cromatica**: ogni nota viene portata al semitono più vicino.
 2. Scegli il tipo di **Voce**.
-3. Parti da uno **Stile** e poi rifinisci:
-   - **Naturale**: velocità 80 ms e Humanize, si sente intonato ma non "corretto";
-   - **Pop moderno**: velocità 20 ms, intonazione precisa e brillante;
-   - **Robotico**: velocità 0 ms, l'effetto Auto-Tune estremo;
-   - **Leggero**: sistema solo le stonature e lascia l'espressione (Flex-Tune alto).
-4. I controlli, uno per uno:
+3. Parti da un **preset** e poi rifinisci, per esempio:
+   - **Natural Vocal**: velocità 80 ms e Humanize, si sente intonato ma non "corretto";
+   - **Pop Polish**: velocità 15 ms, intonazione precisa e brillante;
+   - **Hard Tune**: velocità 0 ms, l'effetto Auto-Tune estremo;
+   - **Soft Touch**: sistema solo le stonature e lascia l'espressione (Flex-Tune alto).
+4. **Mentre registri** metti **Mode → Low Latency** (nessun ritardo in cuffia); **per il mix** torna su **HQ**.
+5. I controlli, uno per uno:
 
 | Controllo | Cosa fa | Da dove partire |
 |---|---|---|
 | Velocità | Quanto in fretta la voce va sulla nota. 0 ms = robotico, 20-80 ms = musicale, 100-400 ms = naturale | 20-80 ms |
 | Quantità | Quanta correzione. Sotto il 100% resta un po' dell'intonazione originale | 100% |
-| Humanize | Note lunghe corrette più dolcemente, note brevi come prima | 20-40% |
-| Flex-Tune | Corregge solo vicino alla nota: 25% lascia stare oltre ~48 centesimi, 100% oltre ~12 | 0% (pop), 50% (espressivo) |
+| Humanize | Note lunghe corrette più dolcemente, note brevi come prima. Proporzionale: al 25% le note tenute rallentano di ~12 ms, al 50% di 50 ms, al 100% di 200 ms | 20-50% |
+| Flex-Tune | Corregge piena vicino alla nota e meno quando la voce è lontana. Proporzionale: al 25% le note lontane sono corrette al 75%, al 50% a metà, al 100% restano libere | 0% (pop), 25-50% (espressivo) |
 | Vibrato | Negativo lo riduce, positivo lo aggiunge (anche con il robotico) | 0% |
-| Formanti | Il timbro: + voce più piccola e chiara, − più grande e scura. La nota non cambia | 0 st |
+| Formanti | Il timbro: + voce più piccola e chiara, − più grande e scura. La nota non cambia (solo in HQ) | 0 st |
 | Sensibilità | Alzala per voci con molta aria o sussurrate, abbassala se senti salti strani | 30% |
 | Trasponi | Sposta tutta la voce di semitoni, mantenendo il timbro | 0 st |
 | Bypass | Il pulsante di bypass del DAW: la voce passa senza correzione ma con lo stesso ritardo, cosi' resta a tempo | spento |
 
-5. Sulla **tastiera** clicca un tasto per escludere o includere una nota (la scala diventa "Personalizzata").
-
-### Compressore a valvola
-
-Dopo la correzione c'è un compressore ottico a valvola, ispirato al comportamento dei grandi compressori ottici da studio (la famiglia del CL 1B). Si accende con il pulsante **ACCESO/SPENTO** nella fascia "Compressore a valvola" (parte spento, per non cambiare il suono dei progetti esistenti).
-
-| Controllo | Cosa fa | Da dove partire (voce) |
-|---|---|---|
-| Modalità | **Ottica**: attacco e rilascio automatici, che seguono la voce; **Manuale**: tempi esatti dalle manopole; **Ottica + manuale**: entrambi | Ottica |
-| Soglia | Oltre questo livello la voce viene compressa | 3-8 dB di riduzione sull'indicatore |
-| Rapporto | 2:1 delicato, 3-4:1 voce pop, 10:1 molto controllato | 3:1 |
-| Attacco / Rilascio | Solo nelle modalità manuali | 10 ms / 300 ms |
-| Valvola | Calore di valvola e trasformatori: fino a ~30% colore discreto, oltre saturazione evidente | 20-40% |
-| Mix | Compressione parallela (originale + compresso) | 100%, oppure 50-70% per un suono più naturale |
-| Uscita | Recupera il volume tolto dalla compressione | quanto indica l'indicatore |
-
-Come lavora:
-- **Cella ottica**: reagisce più in fretta ai picchi forti, rilascia in due fasi (veloce, poi lenta) e ha "memoria": dopo frasi lunghe e compresse il rilascio rallenta (da ~1 s fino a ~4,5 s per tornare a riposo), sulle frasi brevi recupera subito. È quello che rende musicali i compressori ottici.
-- **Ginocchio morbido** di 8 dB: entra in compressione gradualmente.
-- **Valvola**: curva asimmetrica, cioè soprattutto armoniche pari (calde). Al 30%, con un picco a −6 dBFS, la seconda armonica è a −49 dB (0,4%); al 100% a −14 dB.
-- **Trasformatore**: le frequenze basse saturano un po' di più, per dare corpo.
-- **Sovracampionamento 4×** con filtri a fase lineare da 110 dB: niente aliasing (misurato sotto −90 dB anche con una nota a 7 kHz e la valvola al massimo).
-- **Stereo collegato**: stessa compressione sui due lati, l'immagine stereo non si sposta.
-- **Latenza fissa** di 52 campioni (1,1 ms a 48 kHz), anche da spento: il DAW la compensa e accenderlo o spegnerlo non sposta mai la voce. Acceso e spento si passano con una dissolvenza di 10 ms, senza clic.
+6. Sulla **tastiera** clicca un tasto per escludere o includere una nota (la scala diventa "Personalizzata").
 
 ### L'interfaccia
 
-- **Indicatore circolare** (a sinistra): la nota che stai cantando e di quanti **centesimi** sei calante (−) o crescente (+); diventa verde entro ±10 centesimi. Sotto, la nota verso cui viene corretta.
-- **Manopole**: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. Passandoci sopra col mouse compare la spiegazione.
-- **Selettori** di tonalità, scala e voce: clicca le frecce (o il centro per passare alla scelta successiva).
-- **Stili** in alto a destra: si illuminano quando le manopole corrispondono a quello stile.
-- **Grafico** in basso: la voce originale in grigio, quella di SosaTune in oro.
+- **Vocal Range** e **Key & Scale** (in alto): menu a tendina per tipo di voce, tonalità e scala. **AutoKey Listen**: accendilo e fai suonare la voce, la tonalità si imposta da sola.
+- **Nota al centro**: la nota che stai cantando; l'indicatore dice di quanti **centesimi** sei calante (−) o crescente (+).
+- **Manopole** Retune Speed, Humanize, Flex Tune e Detune: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. Passandoci sopra col mouse compare la spiegazione.
+- **Mode**: Low Latency (0 ms, per registrare) o HQ (per il mix). **Modern / Classic**: note già intonate oppure ogni nota che scivola sulla nota giusta.
+- **Edit Notes** (in basso): clic su una nota per includerla o escluderla dalla scala.
+- **⚙**: Amount, Transpose, Vibrato, Formant, Sensitivity e la latenza attuale. **↶ ↷**: annulla e ripeti.
 
 ---
 
@@ -189,21 +174,22 @@ voce ──► YIN ──────────► scala ───────
 - **YIN** (`dsp/src/yin.rs`): confronta il segnale con se stesso spostato nel tempo; quando la differenza è minima, lo spostamento è il periodo dell'onda, cioè la nota. Calcolato con la FFT (`dsp/src/fft.rs`) per essere veloce, più un controllo contro gli errori d'ottava.
 - **Scale** (`dsp/src/scale.rs`): sceglie la nota ammessa più vicina, con un po' di isteresi per non "tremolare" quando sei a metà tra due note.
 - **Correttore** (`dsp/src/corrector.rs`): decide di quanto spostare la nota e con che velocità (un filtro che arriva al bersaglio in "velocità" millisecondi). Qui vivono anche Humanize (la velocità rallenta man mano che la nota dura), Flex-Tune (il peso della correzione cala con la distanza dalla nota) e il vibrato naturale (isolato con un filtro passa-banda centrato su 5,5 Hz, che non lo sfasa e permette quindi anche di toglierlo).
-- **Phase vocoder** (`dsp/src/vocoder.rs`): ogni 5 ms (2,7 ms in Low Latency) prende una "fetta" di voce, la smussa con una finestra di Hann e la trasforma in frequenze (FFT). Trova le armoniche (i picchi), misura la loro frequenza esatta dalla rotazione della fase, e sposta ogni armonica con le righe vicine alla frequenza giusta (frequenza × rapporto, anche di frazioni di riga). La fase di ogni armonica continua a girare alla velocità della frequenza nuova e le righe vicine la seguono ("identity phase locking", Laroche e Dolson): niente suono metallico. Il timbro (inviluppo spettrale, misurato con il cepstrum) viene rimesso al suo posto, o spostato con il comando Formant. Poi FFT inversa e somma sovrapposta (overlap-add). Consonanti, respiri e attacchi passano identici. Finestra di ~21 ms in Low Latency (per le voci basse ~43 ms) e ~43 ms in HQ.
+- **Phase vocoder** (modalità HQ, `dsp/src/vocoder.rs`): ogni 5 ms prende una "fetta" di voce, la smussa con una finestra di Hann lunga **6 periodi della voce** (da 32 ms per le voci acute a 64 ms per i bassi: le armoniche fitte delle voci maschili restano separate) e la trasforma in frequenze (FFT). Trova le armoniche (i picchi), misura la loro frequenza esatta dalla rotazione della fase, e sposta ogni armonica con le righe vicine alla frequenza giusta (frequenza × rapporto, anche di frazioni di riga). La fase di ogni armonica continua a girare alla velocità della frequenza nuova e le righe vicine la seguono ("identity phase locking", Laroche e Dolson): niente suono metallico. Il timbro (inviluppo spettrale) è misurato con il **true envelope**: un cepstrum lisciato e ripetuto finché passa sulle cime delle armoniche, prolungato in piano sotto la fondamentale; viene rimesso al suo posto, o spostato con il comando Formant. Poi FFT inversa e somma sovrapposta (overlap-add). Consonanti, "s", respiri e attacchi passano identici (niente ronzio metallico sulle sibilanti).
+- **Latenza zero** (modalità Low Latency, `dsp/src/zerolat.rs`): la voce viene letta da una "testina" che scorre sul segnale appena arrivato un po' più veloce (nota più acuta) o più lenta (più grave). Quando arriva al presente o resta troppo indietro salta di un ciclo esatto della voce, nel punto in cui la forma d'onda combacia, con una dissolvenza: il ritardo resta di pochi millesimi e il DAW riceve latenza zero. Le consonanti passano identiche.
 
 ### Qualità misurata
 
-I test (`cargo test -p sosatune_dsp --release`, 35 in tutto) controllano anche la qualità del suono:
+I test (`cargo test -p sosatune_dsp --release`, 38 in tutto) controllano anche la qualità del suono:
 
 - correzione robotica di una melodia: in media **0,3 centesimi** dalla nota giusta; su voci reali circa **2 centesimi**;
 - le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni);
 - l'**armonicità** della voce (quanto è "pulita", senza ruvidità) in uscita è pari a quella in ingresso, sia su voci sintetiche sia reali;
 - vibrato naturale: rimesso con la profondità originale, oppure ridotto del 60-99%;
-- compressore: curva entro 0,8 dB dal valore teorico in tutte e tre le modalità, indicatore fedele alla compressione reale (entro 0,5 dB), tempi di attacco e rilascio, rilascio ottico dipendente dalla frase, "Ottica + manuale" che unisce le due celle, guadagno fermo sulle voci basse (armoniche aggiunte sotto −60 dB a 90 Hz), armoniche della valvola, aliasing sotto −90 dB, trasparenza (−90 dB) da spento o senza compressione, nessun clic all'accensione, stessa curva da 44,1 a 192 kHz in mono e stereo.
+- Humanize e Flex-Tune proporzionali alla manopola; Low Latency a latenza zero, HQ con latenza fissa; nessun clic ai cambi di nota in entrambe le modalità.
 
 Limiti noti: le trasposizioni estreme (un'ottava) e le voci molto acute (sopra ~600 Hz) cambiano un po' il timbro, come in ogni pitch shifter di questo tipo.
 
-Il motore non alloca memoria e non usa lock durante l'elaborazione: è sicuro per il tempo reale. Correzione e compressore insieme usano qualche percento di un core.
+Il motore non alloca memoria e non usa lock durante l'elaborazione: è sicuro per il tempo reale. La correzione usa qualche percento di un core.
 
 ### Compatibilità controllata
 
@@ -212,7 +198,8 @@ A ogni modifica il plugin viene messo alla prova automaticamente su un Mac, con 
 - **Validatore ufficiale Steinberg VST3**: 537 prove, 0 errori (canali mono, stereo, mono → stereo, frequenze da 22 a 384 kHz, bypass, salvataggio e ripristino);
 - **pluginval** al livello più severo (10): apertura, parametri, automazione, salvataggio, chiamate da più thread, blocchi audio di ogni dimensione;
 - **clap-validator**: 34 prove, 0 errori (formato CLAP);
-- **prove dell'interfaccia** (`cargo test -p sosatune --release`): clic e trascinamenti simulati sui comandi veri del compressore (levetta, modalità, tutte le manopole) e bypass del DAW.
+- **prove dell'interfaccia** (`cargo test -p sosatune --release`): clic e trascinamenti simulati su tutti i comandi dell'interfaccia e bypass del DAW;
+- **auval** di Apple per la versione AU.
 
 Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (traccia vocale mono in Pro Tools/PatchWork, Logic, Cubase...).
 
@@ -221,7 +208,7 @@ Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (tr
 ```text
 sosatune/
 ├── dsp/                 il motore audio (nessuna libreria esterna)
-│   ├── src/             yin, fft, scale, corrector, vocoder, synth, wav
+│   ├── src/             yin, fft, scale, corrector, vocoder (HQ), zerolat (Low Latency), synth, wav
 │   ├── examples/        demo.rs e process.rs (provare su file WAV)
 │   └── tests/           test di robustezza
 ├── plugin/              il plugin VST3/CLAP
@@ -237,7 +224,7 @@ sosatune/
 - **Errore durante la compilazione**: copia tutto il testo dell'errore e mandamelo, lo sistemiamo.
 - **`cargo: command not found`**: chiudi e riapri il Terminale dopo aver installato Rust.
 - **Il DAW non vede il plugin**: controlla che i file siano nelle cartelle `~/Library/Audio/Plug-Ins/VST3` e `CLAP` e fai ripetere la scansione dei plugin.
-- **FL Studio lo segna come "error" nel Plugin Manager**: se succede anche ad altri plugin (FabFilter, Soundtoys...), è la verifica di FL che non funziona su quel Mac. In *Options → Manage plugins* togli la spunta a **Verify plugins**, attiva **Rescan plugins with errors** e premi **Find installed plugins**: SosaTune comparirà nell'elenco degli effetti del Mixer.
+- **FL Studio lo segna come "error" nel Plugin Manager**: se succede anche ad altri plugin (FabFilter, Soundtoys...), è la verifica di FL che non funziona su quel Mac. In *Options → Manage plugins* togli la spunta a **Verify plugins**, attiva **Rescan plugins with errors** e premi **Find installed plugins**: Sosa Tune comparirà nell'elenco degli effetti del Mixer.
 - **macOS blocca il plugin** (succede solo se lo copi da un altro computer): `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SosaTune.vst3`
 - **Pro Tools con Blue Cat PatchWork dà errore**: installa SosaTune.vst3 in `/Library/Audio/Plug-Ins/VST3` (la cartella di sistema), poi in PatchWork apri il menu dei plugin e scegli *Refresh/Rescan*. Se l'errore resta, fai una foto del messaggio: dice esattamente cosa non va.
 - **Compilarlo senza installare nulla**: se carichi il progetto su GitHub, il file `.github/workflows/build-macos.yml` lo compila da solo; lo zip pronto lo trovi nella scheda *Actions*.
@@ -245,11 +232,10 @@ sosatune/
 ## Prossimi passi
 
 - **Fase 2: editor grafico stile Melodyne.** Il plugin registra la traccia mentre il DAW la riproduce, mostra le note come blocchi su una griglia di pianoforte, e ti permette di trascinarle, correggerle una per una e disegnare l'intonazione. Il motore è già pronto per questo: cambia solo da dove arriva la nota bersaglio.
-- **Formato AU** per Logic Pro e GarageBand, con [clap-wrapper](https://github.com/free-audio/clap-wrapper).
-- Note bersaglio via **MIDI** (suonare la melodia su una tastiera e far seguire la voce) e modalità a **bassa latenza** per il monitoraggio dal vivo.
+- Note bersaglio via **MIDI** (suonare la melodia su una tastiera e far seguire la voce).
 
 ## Licenza
 
 GPL-3.0-or-later (richiesta dal formato VST3 di nih-plug). La copia di nih-plug in `vendor/` è di Robbert van der Helm, licenza ISC.
 
-Il carattere dell'interfaccia è **Sora** (© The Sora Project Authors), con licenza SIL Open Font License 1.1: il testo completo è in `plugin/assets/Sora-OFL.txt`.
+I caratteri dell'interfaccia sono **Inter** (© The Inter Project Authors) e **Poppins** (© The Poppins Project Authors), con licenza SIL Open Font License 1.1: i testi completi sono in `plugin/assets/Inter-OFL.txt` e `plugin/assets/Poppins-OFL.txt`.

@@ -1,4 +1,4 @@
-//! # Il motore audio di SosaTune
+//! # Il motore audio di Sosa Tune
 //!
 //! Questa libreria contiene tutta l'elaborazione del suono, separata dal plugin.
 //! Il percorso del segnale, campione per campione, e' questo:
@@ -15,7 +15,8 @@
 //!        │    [corrector]  "di quanto devo spostarla, e con che velocita'?" → rapporto di pitch
 //!        │        │
 //!        ▼        ▼
-//!     [vocoder] phase vocoder: sposta l'intonazione mantenendo il timbro (le formanti)
+//!     [vocoder] HQ: phase vocoder, sposta l'intonazione mantenendo il timbro (le formanti)
+//!     [zerolat] Low Latency: testina a latenza zero per registrare
 //!        │
 //!        ▼
 //!  voce corretta in uscita
@@ -31,6 +32,7 @@ pub mod synth;
 pub mod vocoder;
 pub mod wav;
 pub mod yin;
+pub mod zerolat;
 
 pub use corrector::{CorrectionSettings, PitchCorrector, PitchReport};
 pub use scale::{ScaleKind, VoiceType};
