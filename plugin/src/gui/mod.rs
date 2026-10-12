@@ -8,6 +8,9 @@
 //! 2. l'interfaccia si ridisegna a ogni battito della finestra (~66 volte al
 //!    secondo, a intervalli regolari) invece che a ogni fotogramma dello
 //!    schermo (fino a 120 sui MacBook Pro).
+//!
+//! In piu' la finestra si puo' ridimensionare dall'interfaccia (vedi
+//! `set_requested_size`): la grandezza fisica tiene conto dei display Retina.
 #![allow(clippy::type_complexity)]
 
 use crossbeam::atomic::AtomicCell;
@@ -113,7 +116,14 @@ impl EguiState {
     }
 
     /// Set the new size that will be used to resize the window if the host allows.
-    fn set_requested_size(&self, new_size: (u32, u32)) {
+    /// (Sosa Tune: usata dai pulsanti "Window size" e dall'angolo per ridimensionare.)
+    pub(crate) fn set_requested_size(&self, new_size: (u32, u32)) {
         self.requested_size.store(Some(new_size));
+    }
+
+    /// La dimensione chiesta e non ancora applicata (per le prove).
+    #[cfg(test)]
+    pub(crate) fn requested_size(&self) -> Option<(u32, u32)> {
+        self.requested_size.load()
     }
 }

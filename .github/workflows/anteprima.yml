@@ -45,7 +45,7 @@ jobs:
           OUT="$RUNNER_TEMP/anteprima-branch"
           mkdir -p "$OUT"
           cp anteprima-log.txt "$OUT/" || true
-          if [ -f anteprima.png ]; then cp anteprima.png "$OUT/"; fi
+          cp anteprima*.png "$OUT/" 2>/dev/null || true
           cd "$OUT"
           git init -q -b anteprima
           git add .

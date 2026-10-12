@@ -5,14 +5,18 @@ use sosatune_dsp::scale::{scale_notes, ScaleKind, VoiceType};
 use sosatune_dsp::CorrectionSettings;
 use nih_plug::prelude::*;
 use crate::gui::EguiState;
+use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
-/// Dimensione iniziale della finestra del plugin (pixel).
-/// La grafica e' disegnata sulle proporzioni dell'immagine di riferimento
-/// (1448 x 1086, cioe' 4:3).
+/// Dimensione iniziale della finestra del plugin (pixel, al 100%).
+/// La grafica e' disegnata sulle misure dell'immagine di riferimento
+/// (1448 pixel di larghezza); sotto il pannello resta lo stesso bordo dei
+/// lati (prima era il doppio). La finestra si puo' ingrandire o
+/// rimpicciolire mantenendo queste proporzioni.
 pub const EDITOR_WIDTH: u32 = 960;
-pub const EDITOR_HEIGHT: u32 = 720;
+pub const EDITOR_HEIGHT: u32 = 694;
 
 /// La tonalita' (la nota "di casa" della scala).
 ///
@@ -188,20 +192,28 @@ pub struct CustomNotes {
 
 impl Default for CustomNotes {
     fn default() -> Self {
-        let note = |name: &str| BoolParam::new(format!("Nota {name}"), true);
+        Self::with_defaults(&HashMap::new())
+    }
+}
+
+impl CustomNotes {
+    fn with_defaults(saved: &HashMap<String, f32>) -> Self {
+        let note = |name: &str, id: &str| {
+            BoolParam::new(format!("Nota {name}"), saved.get(&format!("note-{id}")).is_none_or(|&v| v >= 0.5))
+        };
         Self {
-            c: note("Do"),
-            c_sharp: note("Do#"),
-            d: note("Re"),
-            d_sharp: note("Re#"),
-            e: note("Mi"),
-            f: note("Fa"),
-            f_sharp: note("Fa#"),
-            g: note("Sol"),
-            g_sharp: note("Sol#"),
-            a: note("La"),
-            a_sharp: note("La#"),
-            b: note("Si"),
+            c: note("Do", "c"),
+            c_sharp: note("Do#", "cs"),
+            d: note("Re", "d"),
+            d_sharp: note("Re#", "ds"),
+            e: note("Mi", "e"),
+            f: note("Fa", "f"),
+            f_sharp: note("Fa#", "fs"),
+            g: note("Sol", "g"),
+            g_sharp: note("Sol#", "gs"),
+            a: note("La", "a"),
+            a_sharp: note("La#", "as"),
+            b: note("Si", "b"),
         }
     }
 }
@@ -232,11 +244,18 @@ impl CustomNotes {
 
 #[derive(Params)]
 pub struct SosaTuneParams {
-    /// Dimensione della finestra, salvata insieme al progetto. (La chiave e'
-    /// cambiata quando la finestra e' diventata piu' alta: i progetti vecchi
+    /// Dimensione della finestra, salvata insieme al progetto. (La chiave
+    /// cambia quando cambiano le proporzioni della finestra: i progetti vecchi
     /// non devono riaprirla con la misura precedente.)
-    #[persist = "editor-state-4"]
+    #[persist = "editor-state-5"]
     pub editor_state: Arc<EguiState>,
+
+    /// Confronto A/B: quale delle due impostazioni e' attiva (0 = A, 1 = B)...
+    #[persist = "ab-slot"]
+    pub ab_slot: Arc<AtomicUsize>,
+    /// ...e i valori (normalizzati) dell'altra, per id del parametro.
+    #[persist = "ab-other"]
+    pub ab_other: Arc<RwLock<Vec<(String, f32)>>>,
 
     /// L'ultimo preset caricato (indice in `presets::FACTORY`).
     #[persist = "preset"]
@@ -312,37 +331,58 @@ pub struct SosaTuneParams {
 
 impl Default for SosaTuneParams {
     fn default() -> Self {
+        Self::with_defaults(&crate::defaults::load())
+    }
+}
+
+impl SosaTuneParams {
+    /// I parametri, con i valori iniziali presi da `saved` ("Save As
+    /// Default": id del parametro -> valore) dove ci sono.
+    pub(crate) fn with_defaults(saved: &HashMap<String, f32>) -> Self {
+        let d = |id: &str, fallback: f32| saved.get(id).copied().filter(|v| v.is_finite()).unwrap_or(fallback);
+        fn pick<T: Enum>(saved: &HashMap<String, f32>, id: &str, fallback: T) -> T {
+            match saved.get(id) {
+                Some(&v) if v.is_finite() && v >= 0.0 && (v as usize) < T::variants().len() => T::from_index(v as usize),
+                _ => fallback,
+            }
+        }
         Self {
             editor_state: EguiState::from_size(EDITOR_WIDTH, EDITOR_HEIGHT),
-            key: EnumParam::new("Tonalità", Key::C),
-            scale: EnumParam::new("Scala", ScaleChoice::Chromatic),
-            voice: EnumParam::new("Voce", VoiceChoice::AltoTenor),
-            retune_speed: retune_param(20.0),
-            amount: FloatParam::new("Quantità", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+            key: EnumParam::new("Tonalità", pick(saved, "key", Key::C)),
+            scale: EnumParam::new("Scala", pick(saved, "scale", ScaleChoice::Chromatic)),
+            voice: EnumParam::new("Voce", pick(saved, "voice", VoiceChoice::AltoTenor)),
+            retune_speed: retune_param(d("retune", 20.0).clamp(0.0, 400.0)),
+            amount: FloatParam::new("Quantità", d("amount", 1.0).clamp(0.0, 1.0), FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit("%")
                 .with_value_to_string(formatters::v2s_f32_percentage(0))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
-            transpose: IntParam::new("Trasposizione", 0, IntRange::Linear { min: -12, max: 12 })
-                .with_unit(" st"),
+            transpose: IntParam::new(
+                "Trasposizione",
+                d("transpose", 0.0).round().clamp(-12.0, 12.0) as i32,
+                IntRange::Linear { min: -12, max: 12 },
+            )
+            .with_unit(" st"),
             bypass: BoolParam::new("Bypass", false).make_bypass(),
-            humanize: percent_param("Humanize", 0.0, 0.0),
-            flex_tune: percent_param("Flex-Tune", 0.0, 0.0),
-            vibrato: percent_param("Vibrato", 0.0, -1.0),
-            formant: FloatParam::new("Formanti", 0.0, FloatRange::Linear { min: -12.0, max: 12.0 })
+            humanize: percent_param("Humanize", d("humanize", 0.0).clamp(0.0, 1.0), 0.0),
+            flex_tune: percent_param("Flex-Tune", d("flex-tune", 0.0).clamp(0.0, 1.0), 0.0),
+            vibrato: percent_param("Vibrato", d("vibrato", 0.0).clamp(-1.0, 1.0), -1.0),
+            formant: FloatParam::new("Formanti", d("formant", 0.0).clamp(-12.0, 12.0), FloatRange::Linear { min: -12.0, max: 12.0 })
                 .with_unit(" st")
                 .with_step_size(0.1)
                 .with_value_to_string(formatters::v2s_f32_rounded(1)),
-            tracking: percent_param("Sensibilità", 0.3, 0.0),
-            detune: FloatParam::new("Detune", 440.0, FloatRange::Linear { min: 410.0, max: 470.0 })
+            tracking: percent_param("Sensibilità", d("tracking", 0.3).clamp(0.0, 1.0), 0.0),
+            detune: FloatParam::new("Detune", d("detune", 440.0).clamp(410.0, 470.0), FloatRange::Linear { min: 410.0, max: 470.0 })
                 .with_unit(" Hz")
                 .with_step_size(0.1)
                 .with_value_to_string(formatters::v2s_f32_rounded(1)),
             // HQ (phase vocoder) e' il suono migliore: e' la scelta iniziale.
-            quality: EnumParam::new("Mode", QualityChoice::Hq),
-            style: EnumParam::new("Style", StyleChoice::Modern),
-            custom: CustomNotes::default(),
+            quality: EnumParam::new("Mode", pick(saved, "quality", QualityChoice::Hq)),
+            style: EnumParam::new("Style", pick(saved, "style", StyleChoice::Modern)),
+            custom: CustomNotes::with_defaults(saved),
             preset: Arc::new(AtomicUsize::new(0)),
             autokey: Arc::new(AtomicBool::new(false)),
+            ab_slot: Arc::new(AtomicUsize::new(0)),
+            ab_other: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }
@@ -466,6 +506,33 @@ mod tests {
         custom.c_sharp = BoolParam::new("Nota Do#", false);
         let s = with(SosaTuneParams { scale: EnumParam::new("Scala", ScaleChoice::Custom), custom, ..Default::default() });
         assert!(!s.notes[1] && s.notes[0]);
+
+        // "Save As Default": i valori salvati diventano quelli iniziali.
+        let saved: HashMap<String, f32> = [
+            ("retune", 35.0),
+            ("key", 7.0),
+            ("scale", 2.0),
+            ("vibrato", -0.25),
+            ("note-cs", 0.0),
+            ("quality", 0.0),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect();
+        let p = SosaTuneParams::with_defaults(&saved);
+        assert_eq!(p.retune_speed.value(), 35.0);
+        assert_eq!(p.retune_speed.default_plain_value(), 35.0, "il doppio clic torna al valore salvato");
+        assert_eq!(p.key.value(), Key::G);
+        assert_eq!(p.scale.value(), ScaleChoice::from_index(2));
+        assert_eq!(p.vibrato.value(), -0.25);
+        assert!(!p.custom.c_sharp.value() && p.custom.c.value());
+        assert_eq!(p.quality.value(), QualityChoice::LowLatency);
+        // Valori fuori misura o di un'altra versione: ignorati senza danni.
+        let junk: HashMap<String, f32> =
+            [("key", 99.0), ("retune", f32::NAN), ("sconosciuto", 1.0)].into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+        let p = SosaTuneParams::with_defaults(&junk);
+        assert_eq!(p.key.value(), Key::C);
+        assert_eq!(p.retune_speed.value(), 20.0);
 
         // Vocal Range e Mode passano al motore nel plugin (set_voice / set_quality).
         assert_eq!(VoiceChoice::Low.to_dsp(), VoiceType::LowMale);

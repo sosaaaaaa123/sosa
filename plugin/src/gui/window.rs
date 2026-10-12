@@ -110,8 +110,13 @@ where
                 if let Some(new_size) = egui_state.requested_size.swap(None) {
                     // Ask the plugin host to resize to self.size()
                     if context.request_resize() {
-                        // Resize the content of egui window
-                        queue.resize(PhySize::new(new_size.0, new_size.1));
+                        // Resize the content of egui window. `PhySize` e' in pixel
+                        // fisici: su un display Retina sono il doppio di quelli logici.
+                        let ppp = egui_ctx.pixels_per_point().max(0.25);
+                        queue.resize(PhySize::new(
+                            (new_size.0 as f32 * ppp).round() as u32,
+                            (new_size.1 as f32 * ppp).round() as u32,
+                        ));
                         egui_ctx.send_viewport_cmd(ViewportCommand::InnerSize(Vec2::new(
                             new_size.0 as f32,
                             new_size.1 as f32,

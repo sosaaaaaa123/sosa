@@ -26,12 +26,40 @@ pub struct PreviewImage {
     pub rgba: Vec<u8>,
 }
 
+/// Cosa mostrare nell'anteprima.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum View {
+    /// L'interfaccia come si apre.
+    Main,
+    /// Il pannello impostazioni (ingranaggio).
+    Settings,
+    /// La lista dei preset aperta (con un preset dal nome lungo).
+    Presets,
+    /// La guida rapida (?).
+    Help,
+}
+
 /// Disegna l'interfaccia. `scale` = 2 per un'immagine nitida come sugli
 /// schermi Retina.
 pub fn render(scale: f32) -> PreviewImage {
+    render_view(scale, View::Main)
+}
+
+/// Disegna l'interfaccia con un pannello o un menu aperto.
+pub fn render_view(scale: f32, view: View) -> PreviewImage {
     let params = SosaTuneParams::preview();
+    if view == View::Presets {
+        // "Natural Vocal": il nome lungo va su due righe.
+        params.preset.store(1, std::sync::atomic::Ordering::Relaxed);
+    }
     let display = PitchDisplay::default();
     sing_into(&params, &display);
+    let opener = match view {
+        View::Main => None,
+        View::Settings => Some(crate::editor::layout::settings()),
+        View::Presets => Some(crate::editor::layout::preset_list()),
+        View::Help => Some(crate::editor::layout::help()),
+    };
 
     let ctx = egui::Context::default();
     let mut gui = Headless::new(&ctx);
@@ -46,9 +74,23 @@ pub fn render(scale: f32) -> PreviewImage {
     // l'indicatore si posa sulla voce con dolcezza.
     let started = std::time::Instant::now();
     for frame in 0..40 {
+        // Un clic sul tasto che apre il pannello o il menu.
+        let events = match (opener, frame) {
+            (Some(pos), 2) => vec![egui::Event::PointerMoved(pos)],
+            (Some(pos), 3 | 4) => vec![egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: frame == 3,
+                modifiers: egui::Modifiers::default(),
+            }],
+            // Il puntatore esce dalla finestra (niente evidenziazione).
+            (Some(_), 5) => vec![egui::Event::PointerGone],
+            _ => Vec::new(),
+        };
         let mut input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
             time: Some(frame as f64 / 30.0),
+            events,
             ..Default::default()
         };
         input.viewports.insert(
@@ -368,6 +410,7 @@ mod tests {
             (layout::humanize(), params.humanize.as_ptr(), params.humanize.unmodulated_normalized_value()),
             (layout::flex(), params.flex_tune.as_ptr(), params.flex_tune.unmodulated_normalized_value()),
             (layout::detune(), params.detune.as_ptr(), params.detune.unmodulated_normalized_value()),
+            (layout::vibrato(), params.vibrato.as_ptr(), params.vibrato.unmodulated_normalized_value()),
             (layout::formant(), params.formant.as_ptr(), params.formant.unmodulated_normalized_value()),
         ];
         for (i, &(pos, ptr, start)) in knobs.iter().enumerate() {
@@ -490,6 +533,156 @@ mod tests {
         let changes = run(&params, frames);
         // Nulla da annullare: nessun parametro cambia.
         assert!(changes.is_empty(), "{changes:?}");
+    }
+
+    /// Clic su un numero, poi si scrive `text` e si preme Invio.
+    fn type_value(pos: egui::Pos2, text: &str) -> Vec<Vec<egui::Event>> {
+        let mut frames = click(pos);
+        frames.push(vec![egui::Event::Text(text.to_owned())]);
+        frames.push(vec![egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }]);
+        frames.push(vec![]);
+        frames
+    }
+
+    #[test]
+    fn numbers_can_be_typed() {
+        let params = SosaTuneParams::preview();
+        let changes = run(&params, type_value(layout::retune_value(), "42"));
+        let expected = params.retune_speed.preview_normalized(42.0);
+        assert_eq!(last_value(&changes, params.retune_speed.as_ptr()), Some(expected), "Retune: {changes:?}");
+        assert!(changes.iter().all(|(p, _)| *p == params.retune_speed.as_ptr()), "{changes:?}");
+
+        // Le percentuali si scrivono da 0 a 100; la virgola va bene.
+        let changes = run(&params, type_value(layout::humanize_value(), "50,0"));
+        let expected = params.humanize.preview_normalized(0.5);
+        assert_eq!(last_value(&changes, params.humanize.as_ptr()), Some(expected), "Humanize: {changes:?}");
+
+        // Fuori scala: va al massimo.
+        let changes = run(&params, type_value(layout::detune_value(), "999"));
+        assert_eq!(last_value(&changes, params.detune.as_ptr()), Some(1.0), "Detune: {changes:?}");
+
+        // Testo senza numeri: non cambia niente.
+        let changes = run(&params, type_value(layout::retune_value(), "abc"));
+        assert!(changes.is_empty(), "{changes:?}");
+
+        // Anche nel pannello impostazioni (Transpose, numero intero con segno).
+        let mut frames = click(layout::settings());
+        frames.extend(type_value(layout::settings_value(1), "+3"));
+        let changes = run(&params, frames);
+        let expected = params.transpose.preview_normalized(3);
+        assert_eq!(last_value(&changes, params.transpose.as_ptr()), Some(expected), "Transpose: {changes:?}");
+    }
+
+    #[test]
+    fn ab_switches_and_copies_settings() {
+        let params = SosaTuneParams::preview();
+        // La prima volta B e' una copia di A: nessun parametro cambia.
+        let changes = run(&params, click(layout::ab_b()));
+        assert!(changes.is_empty(), "{changes:?}");
+        assert_eq!(params.ab_slot.load(Ordering::Relaxed), 1);
+        let saved = params.ab_other.read().clone();
+        let retune_now = params.retune_speed.unmodulated_normalized_value();
+        assert!(saved.iter().any(|(id, v)| id == "retune" && *v == retune_now), "{saved:?}");
+        assert!(!saved.iter().any(|(id, _)| id == "bypass"), "il bypass non fa parte di A/B");
+
+        // L'altra impostazione ha Retune 100 ms: tornando su A si carica.
+        let other = params.retune_speed.preview_normalized(100.0);
+        *params.ab_other.write() = vec![("retune".to_owned(), other)];
+        let changes = run(&params, click(layout::ab_a()));
+        assert_eq!(last_value(&changes, params.retune_speed.as_ptr()), Some(other), "{changes:?}");
+        assert_eq!(params.ab_slot.load(Ordering::Relaxed), 0);
+        // ...e quella lasciata (B) e' stata messa da parte.
+        assert!(params.ab_other.read().len() > 10);
+
+        // Copy: l'impostazione attiva va sull'altra.
+        *params.ab_other.write() = vec![("retune".to_owned(), other)];
+        let changes = run(&params, click(layout::ab_copy()));
+        assert!(changes.is_empty(), "{changes:?}");
+        let copied = params.ab_other.read().clone();
+        assert!(copied.iter().any(|(id, v)| id == "retune" && *v == retune_now), "{copied:?}");
+    }
+
+    #[test]
+    fn save_as_default_from_the_preset_menu() {
+        let dir = std::env::temp_dir().join(format!("sosatune-gui-default-{}", std::process::id()));
+        crate::defaults::TEST_DIR.with(|d| *d.borrow_mut() = Some(dir.clone()));
+
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::preset_list());
+        frames.extend(click(layout::preset_item(FACTORY.len())));
+        let changes = run(&params, frames);
+        assert!(changes.is_empty(), "salvare non cambia i parametri: {changes:?}");
+        let saved = crate::defaults::load();
+        assert_eq!(saved.get("retune"), Some(&15.0), "{saved:?}");
+        assert_eq!(saved.get("key"), Some(&9.0), "La = 9: {saved:?}");
+        assert!(!saved.contains_key("bypass"));
+        // Una nuova istanza parte da qui.
+        let fresh = SosaTuneParams::default();
+        assert_eq!(fresh.retune_speed.value(), 15.0);
+        assert_eq!(fresh.key.value(), Key::A);
+        assert_eq!(fresh.scale.value(), ScaleChoice::Major);
+
+        // Reset Default: le nuove istanze tornano ai valori di fabbrica.
+        let mut frames = click(layout::preset_list());
+        frames.extend(click(layout::preset_item(FACTORY.len() + 1)));
+        run(&params, frames);
+        assert!(crate::defaults::load().is_empty());
+        assert_eq!(SosaTuneParams::default().retune_speed.value(), 20.0);
+
+        // Anche dal pannello impostazioni.
+        let mut frames = click(layout::settings());
+        frames.extend(click(layout::save_default_button()));
+        run(&params, frames);
+        assert_eq!(crate::defaults::load().get("retune"), Some(&15.0));
+
+        crate::defaults::TEST_DIR.with(|d| *d.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn vocal_range_auto_listens_with_low_male() {
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::voice_field());
+        frames.extend(click(layout::voice_item(3)));
+        let changes = run(&params, frames);
+        let low = params.voice.preview_normalized(VoiceChoice::Low);
+        assert_eq!(last_value(&changes, params.voice.as_ptr()), Some(low), "{changes:?}");
+    }
+
+    #[test]
+    fn window_can_be_resized() {
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::settings());
+        frames.extend(click(layout::zoom_button(4)));
+        run(&params, frames);
+        assert_eq!(params.editor_state.requested_size(), Some((EDITOR_WIDTH * 2, EDITOR_HEIGHT * 2)));
+
+        // Trascinando l'angolo in basso a destra.
+        let params = SosaTuneParams::preview();
+        let start = layout::resize_grip();
+        let mut frames = vec![vec![egui::Event::PointerMoved(start)], vec![press(start, true)]];
+        for i in 1..=10 {
+            frames.push(vec![egui::Event::PointerMoved(start + egui::vec2(24.0 * i as f32, 18.0 * i as f32))]);
+        }
+        frames.push(vec![press(start + egui::vec2(240.0, 180.0), false)]);
+        run(&params, frames);
+        let (w, h) = params.editor_state.requested_size().expect("nessun ridimensionamento chiesto");
+        assert!(w > EDITOR_WIDTH + 200 && w < EDITOR_WIDTH + 260, "{w}x{h}");
+        // Sempre nelle stesse proporzioni.
+        let ratio = w as f32 / h as f32;
+        assert!((ratio - EDITOR_WIDTH as f32 / EDITOR_HEIGHT as f32).abs() < 0.01, "{w}x{h}");
+    }
+
+    #[test]
+    fn long_preset_names_fit_in_the_header() {
+        assert_eq!(crate::editor::split_name("Natural Vocal*"), ("Natural", "Vocal*"));
+        assert_eq!(crate::editor::split_name("Default"), ("Default", ""));
     }
 
     #[test]

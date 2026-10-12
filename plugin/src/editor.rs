@@ -6,21 +6,26 @@
 //! esattamente dove sta nell'immagine, ed e' facile ritoccarlo.
 //!
 //! ```text
-//! ┌──────────────────────────────────────────────────────────────────────────┐
-//! │ SOSA TUNE   │ Vocal Range ⌄ │ Key & Scale ⌄ │ Default*   ←  →  ☰         │
-//! │ AUTOTUNE    │ Alto/Tenor    │ A Major       │ Factory                     │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ ● AutoKey Listen        ╭─────╮                                 (↶)      │
-//! │  ~~~~~~~~~~~~~~~~~~~~~~ │  A  │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  (↷)      │
-//! │                         ╰─────╯                                 (?) (⚙)  │
-//! │          [════════════════▮════════════════]                    (⏻)      │
-//! │          -100     -50     0     +50     +100                             │
-//! │                         Edit Notes                                       │
-//! │   (C) (C#) (D) (D#) (E) (F) (F#) (G) (G#) (A) (A#) (B)                   │
-//! ├──────────────────────────────────────────────────────────────────────────┤
-//! │ Detune 440.0 Hz ◯ │ Retune ◔ 15 │ Humanize ◔ 24 │ Flex ◔ 28 │ Mode  ◖ Modern│
-//! └──────────────────────────────────────────────────────────────────────────┘
+//! ┌──────────────────────────────────────────────────────────────────────────────┐
+//! │ SOSA TUNE │ Vocal Range ⌄ │ Key & Scale ⌄ │ Default* [Low Latency][ HQ  ] ← → ☰ │
+//! │ AUTOTUNE  │ Alto/Tenor    │ A Major       │ Factory  [  Modern   ][Classic]     │
+//! ├──────────────────────────────────────────────────────────────────────────────┤
+//! │ [A][B][Copy A→B]                                                    (↶)      │
+//! │ ● AutoKey Listen        ╭─────╮                                     (↷)      │
+//! │  ~~~~~~~~~~~~~~~~~~~~~~ │  A  │ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~    (?)      │
+//! │                         ╰─────╯                                     (⚙)      │
+//! │          [════════════════▮════════════════]                        (⏻)      │
+//! │                         Edit Notes                                           │
+//! │   (C) (C#) (D) (D#) (E) (F) (F#) (G) (G#) (A) (A#) (B)                       │
+//! ├──────────────────────────────────────────────────────────────────────────────┤
+//! │ Detune 440.0 Hz ◯ │ Retune ◔ 15 │ Humanize ◔ 24 │ Flex ◔ 28 │ Vibrato ◔ 0 │ Formant ◔ 0 │
+//! └─────────────────────────────────────────────────────────────────────────── ◢ ┘
 //! ```
+//!
+//! - I numeri accanto alle manopole si possono cliccare e scrivere.
+//! - A / B: due impostazioni da confrontare; Copy copia quella attiva sull'altra.
+//! - ◢ (angolo in basso a destra) e il pannello ⚙: misura della finestra.
+//! - ☰ e ⚙: Save as Default (le nuove istanze partono dalle impostazioni attuali).
 
 use crate::gui::create_egui_editor;
 use crate::gui::egui::{
@@ -31,7 +36,7 @@ use crate::params::{
     Key, QualityChoice, ScaleChoice, SosaTuneParams, StyleChoice, VoiceChoice, EDITOR_HEIGHT, EDITOR_WIDTH,
 };
 use crate::presets::{self, FACTORY};
-use crate::shared::{detect_key, PitchDisplay};
+use crate::shared::{KeySource, PitchDisplay};
 use nih_plug::prelude::*;
 use std::f32::consts::{PI, TAU};
 use std::sync::atomic::Ordering;
@@ -41,8 +46,19 @@ use std::sync::Arc;
 
 /// Larghezza dell'immagine di riferimento.
 const REF_WIDTH: f32 = 1448.0;
-/// Da pixel dell'immagine a punti della finestra.
-const SCALE: f32 = EDITOR_WIDTH as f32 / REF_WIDTH;
+thread_local! {
+    /// Da pixel dell'immagine a punti della finestra: dipende dalla misura
+    /// della finestra (che si puo' ingrandire), aggiornato a ogni fotogramma.
+    static UI_SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(EDITOR_WIDTH as f32 / REF_WIDTH) };
+}
+
+fn scale() -> f32 {
+    UI_SCALE.with(|s| s.get())
+}
+
+fn set_scale(window_width: f32) {
+    UI_SCALE.with(|s| s.set((window_width / REF_WIDTH).max(0.05)));
+}
 
 /// Converte le misure dell'immagine di riferimento in posizioni nella finestra.
 #[derive(Clone, Copy)]
@@ -52,10 +68,10 @@ struct Geo {
 
 impl Geo {
     fn p(&self, x: f32, y: f32) -> Pos2 {
-        self.origin + Vec2::new(x * SCALE, y * SCALE)
+        self.origin + Vec2::new(x * scale(), y * scale())
     }
     fn d(&self, v: f32) -> f32 {
-        v * SCALE
+        v * scale()
     }
     fn r(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> Rect {
         Rect::from_min_max(self.p(x0, y0), self.p(x1, y1))
@@ -144,7 +160,7 @@ enum Weight {
 
 /// Un carattere; `size` in pixel dell'immagine di riferimento.
 fn font(size: f32, weight: Weight) -> FontId {
-    let size = size * SCALE;
+    let size = size * scale();
     match weight {
         Weight::Regular => FontId::proportional(size),
         Weight::Medium => FontId::new(size, FontFamily::Name("medium".into())),
@@ -176,6 +192,25 @@ fn text_tracked(
     let rect = align.anchor_size(pos, galley.size());
     painter.galley(rect.min, galley, color);
     rect
+}
+
+/// Larghezza di un testo in pixel dell'immagine di riferimento.
+fn text_width(painter: &Painter, text: &str, size: f32, weight: Weight, tracking: f32) -> f32 {
+    let font = font(size, weight);
+    let mut job = egui::text::LayoutJob::default();
+    job.append(text, 0.0, egui::TextFormat { font_id: font.clone(), extra_letter_spacing: tracking * font.size, ..Default::default() });
+    painter.layout_job(job).size().x / scale()
+}
+
+/// La dimensione del carattere (al massimo `size`) con cui `text` sta in
+/// `max_width` pixel dell'immagine di riferimento.
+fn fitted_size(painter: &Painter, text: &str, size: f32, weight: Weight, tracking: f32, max_width: f32) -> f32 {
+    let width = text_width(painter, text, size, weight, tracking);
+    if width <= max_width || width <= 0.0 {
+        size
+    } else {
+        (size * max_width / width).max(12.0)
+    }
 }
 
 /// Testo dell'interfaccia (spaziatura standard dell'immagine).
@@ -558,6 +593,23 @@ struct GuiState {
     autokey_found: Option<(String, f64)>,
     last_blocks: usize,
     last_audio_time: f64,
+    /// Valore che si sta scrivendo a mano (id del parametro e testo).
+    editing: Option<Editing>,
+    /// Riconoscimento del tipo di voce in corso: (inizio, voce di prima).
+    auto_voice: Option<(f64, VoiceChoice)>,
+    auto_voice_checked: f64,
+    /// L'istogramma delle note va azzerato (inizio del riconoscimento).
+    reset_histogram: bool,
+    /// Messaggio breve in alto al centro (A/B, Save As Default...).
+    toast: Option<(String, f64)>,
+}
+
+/// Un numero che si sta scrivendo al posto di girare la manopola.
+struct Editing {
+    id: &'static str,
+    text: String,
+    /// Al primo fotogramma il campo prende il cursore.
+    focus: bool,
 }
 
 fn new_state(diagnostics_enabled: bool) -> GuiState {
@@ -575,6 +627,11 @@ fn new_state(diagnostics_enabled: bool) -> GuiState {
         autokey_found: None,
         last_blocks: 0,
         last_audio_time: f64::NEG_INFINITY,
+        editing: None,
+        auto_voice: None,
+        auto_voice_checked: 0.0,
+        reset_histogram: false,
+        toast: None,
     }
 }
 
@@ -654,28 +711,297 @@ impl Headless {
 
 /// Disegna un fotogramma dell'interfaccia.
 fn draw(ctx: &egui::Context, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState) {
+    // Tutto si disegna in proporzione alla larghezza della finestra.
+    let screen = ctx.screen_rect();
+    set_scale(screen.width());
     state.diagnostics.observe(ctx, params);
     state.history.track(ctx, params);
     let now = ctx.input(|i| i.time);
     autokey(params, display, setter, state, now);
+    auto_voice(params, display, setter, state, now);
 
     egui::CentralPanel::default().frame(egui::Frame::new().fill(OUTER_BG)).show(ctx, |ui| {
         let origin = ui.max_rect().min;
-        ui.allocate_exact_size(Vec2::new(EDITOR_WIDTH as f32, EDITOR_HEIGHT as f32), Sense::hover());
+        ui.allocate_exact_size(screen.size(), Sense::hover());
         let g = Geo { origin };
         let painter = ui.painter().clone();
 
         background(&painter, g);
         header(ui, &painter, g, params, setter, state);
         stage(ui, &painter, g, params, display, setter, state, now);
+        ab_buttons(ui, &painter, g, params, setter, state, now);
         side_buttons(ui, &painter, g, params, setter, state, now);
         edit_notes(ui, &painter, g, params, display, setter, state);
-        bottom_bar(ui, &painter, g, params, setter);
+        bottom_bar(ui, &painter, g, params, setter, state);
+        toast(&painter, g, state, now);
+        resize_grip(ui, &painter, screen, params);
     });
 
     let g = Geo { origin: ctx.screen_rect().min };
-    menus(ctx, g, params, setter, state);
-    overlays(ctx, g, params, display, setter, state);
+    menus(ctx, g, params, setter, state, now);
+    overlays(ctx, g, params, display, setter, state, now);
+}
+
+// --- A/B, numeri scritti a mano, finestra, predefiniti -----------------------------
+
+/// Tutti i parametri (tranne il bypass) come (id, valore normalizzato).
+fn snapshot_params(params: &SosaTuneParams) -> Vec<(String, f32)> {
+    params
+        .param_map()
+        .into_iter()
+        .filter(|(id, _, _)| id != "bypass")
+        // SAFETY: i puntatori vengono dai parametri del plugin, vivi quanto l'interfaccia.
+        .map(|(id, ptr, _)| (id, unsafe { ptr.unmodulated_normalized_value() }))
+        .collect()
+}
+
+/// Imposta i parametri elencati (id, valore normalizzato), avvisando il DAW.
+fn apply_params(params: &SosaTuneParams, setter: &ParamSetter, values: &[(String, f32)]) {
+    let map = params.param_map();
+    let context = setter.raw_context;
+    for (id, value) in values {
+        if let Some((_, ptr, _)) = map.iter().find(|(pid, _, _)| pid == id) {
+            // SAFETY: vedi `snapshot_params`.
+            let current = unsafe { ptr.unmodulated_normalized_value() };
+            if (current - value).abs() > 1e-7 {
+                unsafe {
+                    context.raw_begin_set_parameter(*ptr);
+                    context.raw_set_parameter_normalized(*ptr, value.clamp(0.0, 1.0));
+                    context.raw_end_set_parameter(*ptr);
+                }
+            }
+        }
+    }
+}
+
+/// Tasti A / B / Copy (in alto a sinistra): due impostazioni da confrontare.
+const AB_A: (f32, f32, f32, f32) = (84.0, 199.0, 122.0, 229.0);
+const AB_B: (f32, f32, f32, f32) = (127.0, 199.0, 165.0, 229.0);
+const AB_COPY: (f32, f32, f32, f32) = (172.0, 199.0, 286.0, 229.0);
+
+fn ab_buttons(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState, now: f64) {
+    let slot = params.ab_slot.load(Ordering::Relaxed) % 2;
+    let names = ["A", "B"];
+    for (i, r) in [AB_A, AB_B].into_iter().enumerate() {
+        let help = "Confronto A/B: due impostazioni complete del plugin. Clicca A o B per \
+                    passare dall'una all'altra; Copy copia quella attiva sull'altra.";
+        if small_choice(ui, painter, g, r, names[i], slot == i, help) {
+            // Si salva quella attiva e si carica l'altra (la prima volta e' una copia).
+            let current = snapshot_params(params);
+            let mut other = params.ab_other.write();
+            let target = if other.is_empty() { current.clone() } else { std::mem::take(&mut *other) };
+            *other = current;
+            drop(other);
+            apply_params(params, setter, &target);
+            params.ab_slot.store(i, Ordering::Relaxed);
+            state.toast = Some((format!("Impostazione {}", names[i]), now));
+        }
+    }
+    let copy_label = if slot == 0 { "Copy A→B" } else { "Copy B→A" };
+    let rect = g.r(AB_COPY.0, AB_COPY.1, AB_COPY.2, AB_COPY.3);
+    let response = ui
+        .interact(rect, Id::new("ab-copia"), Sense::click())
+        .on_hover_text("Copia l'impostazione attiva sull'altra (per partire uguali e cambiare solo qualcosa).");
+    let edge = if response.hovered() { Color32::from_rgb(0x4a, 0x64, 0x84) } else { Color32::from_rgb(0x22, 0x32, 0x46) };
+    painter.rect(rect, CornerRadius::same(g.d(8.0) as u8), Color32::from_rgb(0x03, 0x0a, 0x14), Stroke::new(g.d(1.4), edge), StrokeKind::Inside);
+    text_tracked(painter, rect.center(), Align2::CENTER_CENTER, copy_label, font(16.0, Weight::Regular), TEXT_DIM, -0.03);
+    if response.clicked() {
+        *params.ab_other.write() = snapshot_params(params);
+        state.toast = Some((format!("{} copiata su {}", names[slot], names[1 - slot]), now));
+    }
+}
+
+/// Tasto piccolo di una scelta (A / B).
+fn small_choice(ui: &Ui, painter: &Painter, g: Geo, r: (f32, f32, f32, f32), label: &str, selected: bool, help: &str) -> bool {
+    let rect = g.r(r.0, r.1, r.2, r.3);
+    let response = ui.interact(rect, Id::new(("ab", label)), Sense::click()).on_hover_text(help);
+    let radius = CornerRadius::same(g.d(8.0) as u8);
+    if selected {
+        rounded_gradient(painter, rect, [g.d(8.0); 4], Color32::from_rgb(0x08, 0x2c, 0x50), Color32::from_rgb(0x04, 0x3a, 0x6a));
+        glow_rect(painter, rect, g.d(8.0), Color32::from_rgb(0x4c, 0xd8, 0xff), g.d(7.0), 0.45);
+        painter.rect_stroke(rect, radius, Stroke::new(g.d(1.8), Color32::from_rgb(0xae, 0xf5, 0xff)), StrokeKind::Inside);
+    } else {
+        let edge = if response.hovered() { Color32::from_rgb(0x4a, 0x64, 0x84) } else { Color32::from_rgb(0x22, 0x32, 0x46) };
+        painter.rect(rect, radius, Color32::from_rgb(0x03, 0x0a, 0x14), Stroke::new(g.d(1.4), edge), StrokeKind::Inside);
+    }
+    txt(painter, rect.center(), Align2::CENTER_CENTER, label, font(17.0, Weight::Medium), if selected { TEXT } else { TEXT_DIM });
+    response.clicked() && !selected
+}
+
+/// Messaggio breve in alto al centro.
+fn toast(painter: &Painter, g: Geo, state: &GuiState, now: f64) {
+    if let Some((text, when)) = &state.toast {
+        let age = (now - when) as f32;
+        if age < 2.5 {
+            let alpha = (2.5 - age).clamp(0.0, 1.0);
+            let color = Color32::from_rgba_unmultiplied(0x43, 0xe6, 0xff, (alpha * 255.0) as u8);
+            txt(painter, g.p(724.0, 214.0), Align2::CENTER_CENTER, text, font(18.0, Weight::Regular), color);
+        }
+    }
+}
+
+/// Il numero di un comando: cliccandolo si scrive il valore con la tastiera
+/// (Invio per confermare, Esc per lasciar perdere). `to_plain` converte il
+/// numero scritto nel valore del parametro (per esempio /100 per le
+/// percentuali); i valori fuori scala vengono portati al minimo o al massimo.
+#[allow(clippy::too_many_arguments)]
+fn value_entry<P: Param>(
+    ui: &Ui,
+    painter: &Painter,
+    setter: &ParamSetter,
+    param: &P,
+    id: &'static str,
+    rect: Rect,
+    text_pos: (Pos2, Align2),
+    shown: String,
+    font_id: FontId,
+    to_plain: impl Fn(f32) -> P::Plain,
+    state: &mut GuiState,
+) {
+    let editing = state.editing.as_ref().is_some_and(|e| e.id == id);
+    if !editing {
+        text_tracked(painter, text_pos.0, text_pos.1, &shown, font_id, TEXT, -0.07);
+        let response = ui
+            .interact(rect, Id::new(("numero", id)), Sense::click())
+            .on_hover_cursor(CursorIcon::Text)
+            .on_hover_text("Clic per scrivere il valore");
+        if response.clicked() {
+            state.editing = Some(Editing { id, text: String::new(), focus: true });
+        }
+        return;
+    }
+    let ctx = ui.ctx().clone();
+    let Some(edit) = state.editing.as_mut() else { return };
+    painter.rect_stroke(rect.shrink(1.0), CornerRadius::same(6), Stroke::new(1.4, CYAN), StrokeKind::Inside);
+    let response = egui::Area::new(Id::new(("scrivi", id)))
+        .order(Order::Foreground)
+        .fixed_pos(rect.min)
+        .show(&ctx, |ui| {
+            ui.add_sized(
+                rect.size(),
+                egui::TextEdit::singleline(&mut edit.text)
+                    .font(font_id.clone())
+                    .hint_text(egui::RichText::new(shown.clone()).font(font_id.clone()).color(TEXT_FAINT))
+                    .horizontal_align(egui::Align::Center)
+                    .vertical_align(egui::Align::Center)
+                    .text_color(TEXT)
+                    .frame(false)
+                    .margin(egui::Margin::ZERO),
+            )
+        })
+        .inner;
+    if edit.focus {
+        response.request_focus();
+        edit.focus = false;
+        return;
+    }
+    let (enter, escape) = ctx.input(|i| (i.key_pressed(egui::Key::Enter), i.key_pressed(egui::Key::Escape)));
+    if escape {
+        state.editing = None;
+    } else if enter || response.lost_focus() {
+        if let Some(number) = parse_number(&edit.text) {
+            setter.begin_set_parameter(param);
+            setter.set_parameter(param, to_plain(number));
+            setter.end_set_parameter(param);
+        }
+        state.editing = None;
+    }
+}
+
+/// Un numero scritto a mano: accetta la virgola, i segni e le unita' ("120 ms").
+fn parse_number(text: &str) -> Option<f32> {
+    let cleaned: String = text
+        .trim()
+        .replace(',', ".")
+        .chars()
+        .filter(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '+'))
+        .collect();
+    cleaned.parse::<f32>().ok().filter(|v| v.is_finite())
+}
+
+/// Misure della finestra: dal 60% al 200% di quella iniziale.
+const MIN_ZOOM: f32 = 0.6;
+const MAX_ZOOM: f32 = 2.0;
+
+/// Chiede al DAW di ridimensionare la finestra (sempre nelle stesse proporzioni).
+fn request_zoom(params: &SosaTuneParams, zoom: f32) {
+    let zoom = zoom.clamp(MIN_ZOOM, MAX_ZOOM);
+    let width = (EDITOR_WIDTH as f32 * zoom).round() as u32;
+    let height = (EDITOR_HEIGHT as f32 * zoom).round() as u32;
+    if params.editor_state.size() != (width, height) {
+        params.editor_state.set_requested_size((width, height));
+    }
+}
+
+/// Angolo in basso a destra: trascinandolo la finestra si ingrandisce o rimpicciolisce.
+fn resize_grip(ui: &Ui, painter: &Painter, screen: Rect, params: &SosaTuneParams) {
+    let size = 18.0;
+    let rect = Rect::from_min_max(screen.max - Vec2::splat(size), screen.max);
+    let response = ui
+        .interact(rect, Id::new("ridimensiona"), Sense::drag())
+        .on_hover_cursor(CursorIcon::ResizeNwSe)
+        .on_hover_text("Trascina per ingrandire o rimpicciolire la finestra");
+    let color = if response.hovered() || response.dragged() { TEXT_DIM } else { Color32::from_rgb(0x2c, 0x3c, 0x50) };
+    for k in [4.0, 9.0, 14.0] {
+        painter.line_segment([Pos2::new(screen.max.x - k, screen.max.y - 2.0), Pos2::new(screen.max.x - 2.0, screen.max.y - k)], Stroke::new(1.2, color));
+    }
+    if response.dragged() {
+        if let Some(pointer) = response.interact_pointer_pos() {
+            let width = (pointer.x - screen.min.x + 4.0).max(1.0);
+            request_zoom(params, width / EDITOR_WIDTH as f32);
+        }
+    }
+}
+
+/// "Save As Default": i valori attuali diventano quelli di partenza delle
+/// nuove istanze (vedi `defaults.rs`).
+fn save_as_default(params: &SosaTuneParams, state: &mut GuiState, now: f64) {
+    let values: std::collections::HashMap<String, f32> = params
+        .param_map()
+        .into_iter()
+        .filter(|(id, _, _)| id != "bypass")
+        // SAFETY: vedi `snapshot_params`.
+        .map(|(id, ptr, _)| (id, unsafe { ptr.unmodulated_plain_value() }))
+        .collect();
+    let text = match crate::defaults::save(&values) {
+        Ok(()) => "Salvato come predefinito: le nuove istanze partono così".to_owned(),
+        Err(e) => format!("Non riesco a salvare il predefinito ({e})"),
+    };
+    state.toast = Some((text, now));
+}
+
+fn reset_default(state: &mut GuiState, now: f64) {
+    let text = match crate::defaults::clear() {
+        Ok(()) => "Predefinito di fabbrica (dalle nuove istanze)".to_owned(),
+        Err(e) => format!("Non riesco a cancellare il predefinito ({e})"),
+    };
+    state.toast = Some((text, now));
+}
+
+/// Riconoscimento del tipo di voce (voce "Auto" nel menu Vocal Range): per
+/// sentire anche le note piu' gravi si ascolta con Low Male, poi si sceglie
+/// il tipo di voce dalle note cantate.
+fn auto_voice(params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState, now: f64) {
+    if state.reset_histogram {
+        display.reset_histogram();
+        state.reset_histogram = false;
+    }
+    let Some((started, previous)) = state.auto_voice else { return };
+    if now - state.auto_voice_checked < 1.0 {
+        return;
+    }
+    state.auto_voice_checked = now;
+    if let Some(range) = crate::shared::detect_voice_range(&display.note_histogram()) {
+        let voice = [VoiceChoice::Soprano, VoiceChoice::AltoTenor, VoiceChoice::Low][range];
+        set_param(setter, &params.voice, voice);
+        state.auto_voice = None;
+        state.toast = Some((format!("Vocal Range: {}", voice_label(voice)), now));
+    } else if now - started > 40.0 {
+        // Nessuna voce sentita: si torna a com'era.
+        set_param(setter, &params.voice, previous);
+        state.auto_voice = None;
+        state.toast = Some(("Vocal Range: nessuna voce sentita".to_owned(), now));
+    }
 }
 
 // --- Sfondo e pannello -----------------------------------------------------------------
@@ -717,9 +1043,31 @@ const VOICE_LABEL_X: f32 = 432.0;
 const KEY_LABEL_X: f32 = 674.0;
 /// Riquadro dei preset (x0, y0, x1, y1).
 const PRESET_BOX: (f32, f32, f32, f32) = (873.5, 89.0, 1398.0, 182.5);
-/// Tasti della modalita' nel riquadro dei preset.
-const MODE_LOW: (f32, f32, f32, f32) = (996.5, 115.5, 1135.5, 164.0);
-const MODE_HQ: (f32, f32, f32, f32) = (1141.5, 115.5, 1222.0, 164.0);
+/// Tasti nel riquadro dei preset, su due righe: in alto la modalita'
+/// (Low Latency / HQ), sotto lo stile (Modern / Classic).
+const MODE_LOW: (f32, f32, f32, f32) = (996.5, 98.5, 1135.5, 133.5);
+const MODE_HQ: (f32, f32, f32, f32) = (1141.5, 98.5, 1222.0, 133.5);
+const STYLE_MODERN: (f32, f32, f32, f32) = (996.5, 138.5, 1135.5, 173.5);
+const STYLE_CLASSIC: (f32, f32, f32, f32) = (1141.5, 138.5, 1222.0, 173.5);
+
+#[allow(clippy::too_many_arguments)]
+/// Un tasto di una scelta (bordo blu luminoso quando e' quello attivo).
+/// Restituisce `true` se e' stato cliccato.
+fn choice_button(ui: &Ui, painter: &Painter, g: Geo, r: (f32, f32, f32, f32), id: &str, label: &str, selected: bool, help: &str) -> bool {
+    let rect = g.r(r.0, r.1, r.2, r.3);
+    let response = ui.interact(rect, Id::new(("scelta", id)), Sense::click()).on_hover_text(help);
+    let radius = CornerRadius::same(g.d(9.0) as u8);
+    if selected {
+        rounded_gradient(painter, rect, [g.d(9.0); 4], Color32::from_rgb(0x08, 0x2c, 0x50), Color32::from_rgb(0x04, 0x3a, 0x6a));
+        glow_rect(painter, rect, g.d(9.0), Color32::from_rgb(0x4c, 0xd8, 0xff), g.d(8.0), 0.5);
+        painter.rect_stroke(rect, radius, Stroke::new(g.d(2.0), Color32::from_rgb(0xae, 0xf5, 0xff)), StrokeKind::Inside);
+    } else {
+        let edge = if response.hovered() { Color32::from_rgb(0x34, 0x44, 0x58) } else { Color32::from_rgb(0x1d, 0x28, 0x38) };
+        painter.rect(rect, radius, Color32::from_rgb(0x02, 0x09, 0x13), Stroke::new(g.d(1.5), edge), StrokeKind::Inside);
+    }
+    text_tracked(painter, rect.center(), Align2::CENTER_CENTER, label, font(17.5, Weight::Regular), TEXT, -0.04);
+    response.clicked() && !selected
+}
 /// Frecce e lista dei preset (centri x, y comune).
 const PRESET_PREV_X: f32 = 1258.5;
 const PRESET_NEXT_X: f32 = 1310.5;
@@ -739,8 +1087,11 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
 
     // Vocal Range e Key & Scale: menu a tendina.
     let fields = [
-        (Menu::Voice, VOICE_LABEL_X, 610.0, "Vocal Range", voice_label(params.voice.value()).to_owned(), g.r(411.0, 92.0, 642.0, 182.0),
-            "Il tipo di voce: decide la nota più grave riconosciuta. Per le voci maschili scegli Alto/Tenor o Low Male."),
+        (Menu::Voice, VOICE_LABEL_X, 610.0, "Vocal Range",
+            if state.auto_voice.is_some() { "Auto…".to_owned() } else { voice_label(params.voice.value()).to_owned() },
+            g.r(411.0, 92.0, 642.0, 182.0),
+            "Il tipo di voce: decide la nota più grave riconosciuta. Per le voci maschili scegli Alto/Tenor o Low Male; \
+             con Auto il plugin ascolta qualche secondo di voce e lo sceglie da solo."),
         (Menu::KeyScale, KEY_LABEL_X, 832.0, "Key & Scale", key_scale_label(params), g.r(652.0, 92.0, 856.0, 182.0),
             "Tonalità e scala: la voce viene portata sulle note di questa scala."),
     ];
@@ -775,32 +1126,38 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     let name_response = ui
         .interact(name_hit, Id::new("preset-nome"), Sense::click())
         .on_hover_text(format!("{}\n(* = modificato. Clic per la lista dei preset.)", preset.help));
-    text_tracked(painter, g.p(889.0, 118.0), Align2::LEFT_CENTER, name, font(25.5, Weight::Medium), TEXT, -0.08);
-    text_tracked(painter, g.p(889.0, 153.0), Align2::LEFT_CENTER, presets::BANK, font(24.5, Weight::Regular), Color32::from_rgb(0x9a, 0xab, 0xc4), -0.06);
+    // Il nome sta nello spazio prima dei tasti Low Latency / HQ: se e' lungo
+    // va su due righe (al posto di "Factory") e, se serve, si rimpicciolisce.
+    let room = MODE_LOW.0 - 10.0 - 889.0;
+    if text_width(painter, &name, 25.5, Weight::Medium, -0.08) <= room {
+        text_tracked(painter, g.p(889.0, 118.0), Align2::LEFT_CENTER, &name, font(25.5, Weight::Medium), TEXT, -0.08);
+        text_tracked(painter, g.p(889.0, 153.0), Align2::LEFT_CENTER, presets::BANK, font(24.5, Weight::Regular), Color32::from_rgb(0x9a, 0xab, 0xc4), -0.06);
+    } else {
+        let (first, second) = split_name(&name);
+        let size = fitted_size(painter, first, 23.0, Weight::Medium, -0.08, room)
+            .min(fitted_size(painter, second, 23.0, Weight::Medium, -0.08, room));
+        text_tracked(painter, g.p(889.0, 118.0), Align2::LEFT_CENTER, first, font(size, Weight::Medium), TEXT, -0.08);
+        text_tracked(painter, g.p(889.0, 151.0), Align2::LEFT_CENTER, second, font(size, Weight::Medium), TEXT, -0.08);
+    }
 
-    // Modalita': Low Latency / HQ.
+    // Modalita' (Low Latency / HQ) e stile (Modern / Classic).
     let quality = params.quality.value();
-    let modes = [
-        (QualityChoice::LowLatency, "Low Latency", MODE_LOW, "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Qualità da monitoraggio: per il mix passa a HQ."),
-        (QualityChoice::Hq, "HQ", MODE_HQ, "Qualità alta: phase vocoder con finestra adattata alla voce e timbro (formanti) preservato, il suono più pulito e l'intonazione più precisa. Latenza 64 ms, compensata dal DAW: ideale per il mix."),
-    ];
-    for (choice, label, r, help) in modes {
-        let rect = g.r(r.0, r.1, r.2, r.3);
-        let response = ui.interact(rect, Id::new(("modo", label)), Sense::click()).on_hover_text(help);
-        let selected = quality == choice;
-        let radius = CornerRadius::same(g.d(10.0) as u8);
-        if selected {
-            rounded_gradient(painter, rect, [g.d(10.0); 4], Color32::from_rgb(0x08, 0x2c, 0x50), Color32::from_rgb(0x04, 0x3a, 0x6a));
-            glow_rect(painter, rect, g.d(10.0), Color32::from_rgb(0x4c, 0xd8, 0xff), g.d(10.0), 0.55);
-            painter.rect_stroke(rect, radius, Stroke::new(g.d(2.2), Color32::from_rgb(0xae, 0xf5, 0xff)), StrokeKind::Inside);
-        } else {
-            let edge = if response.hovered() { Color32::from_rgb(0x34, 0x44, 0x58) } else { Color32::from_rgb(0x1d, 0x28, 0x38) };
-            painter.rect(rect, radius, Color32::from_rgb(0x02, 0x09, 0x13), Stroke::new(g.d(1.5), edge), StrokeKind::Inside);
-        }
-        text_tracked(painter, rect.center(), Align2::CENTER_CENTER, label, font(19.0, Weight::Regular), TEXT, -0.05);
-        if response.clicked() && !selected {
-            set_param(setter, &params.quality, choice);
-        }
+    if choice_button(ui, painter, g, MODE_LOW, "low", "Low Latency", quality == QualityChoice::LowLatency,
+        "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Qualità da monitoraggio: per il mix passa a HQ.") {
+        set_param(setter, &params.quality, QualityChoice::LowLatency);
+    }
+    if choice_button(ui, painter, g, MODE_HQ, "hq", "HQ", quality == QualityChoice::Hq,
+        "Qualità alta: phase vocoder con finestra adattata alla voce e timbro (formanti) preservato, il suono più pulito e l'intonazione più precisa. Latenza 64 ms, compensata dal DAW: ideale per il mix.") {
+        set_param(setter, &params.quality, QualityChoice::Hq);
+    }
+    let style = params.style.value();
+    if choice_button(ui, painter, g, STYLE_MODERN, "modern", "Modern", style == StyleChoice::Modern,
+        "Moderno: le note partono già intonate e la correzione non rimbalza tra due note.") {
+        set_param(setter, &params.style, StyleChoice::Modern);
+    }
+    if choice_button(ui, painter, g, STYLE_CLASSIC, "classic", "Classic", style == StyleChoice::Classic,
+        "Classico: ogni nota parte come l'hai cantata e scivola sulla nota giusta; il bersaglio cambia subito (il carattere degli autotune di una volta).") {
+        set_param(setter, &params.style, StyleChoice::Classic);
     }
 
     let clicked = |id: &str, center: Pos2, help: &str| {
@@ -830,6 +1187,20 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     if list || name_response.clicked() {
         let open = state.menu.map(|(m, _)| m) == Some(Menu::Preset);
         state.menu = if open { None } else { Some((Menu::Preset, preset_box)) };
+    }
+}
+
+/// Divide il nome di un preset in due righe il piu' possibile uguali
+/// ("Natural Vocal*" -> "Natural" / "Vocal*").
+pub(crate) fn split_name(name: &str) -> (&str, &str) {
+    let middle = name.len() / 2;
+    let split = name
+        .match_indices(' ')
+        .map(|(i, _)| i)
+        .min_by_key(|&i| (i as i64 - middle as i64).abs());
+    match split {
+        Some(i) => (&name[..i], &name[i + 1..]),
+        None => (name, ""),
     }
 }
 
@@ -942,7 +1313,7 @@ fn stage(
             let a1 = TAU * (s + 1) as f32 / steps as f32;
             let p0 = polar(rings_center, g.d(r), a0);
             let p1 = polar(rings_center, g.d(r), a1);
-            let y = (0.5 * (p0.y + p1.y) - g.origin.y) / SCALE;
+            let y = (0.5 * (p0.y + p1.y) - g.origin.y) / scale();
             // Visibili soprattutto ai lati della sfera, sfumano in alto e in basso.
             let fade = (1.0 - ((y - 560.0) / 80.0).clamp(0.0, 1.0)) * (0.25 + 0.75 * ((y - 230.0) / 150.0).clamp(0.0, 1.0));
             if fade <= 0.0 {
@@ -1155,9 +1526,14 @@ fn stage(
     txt(painter, g.p(137.0, 255.0), Align2::LEFT_CENTER, "AutoKey Listen", font(25.0, Weight::Regular), Color32::from_rgb(0xe6, 0xec, 0xf4));
     let hit = g.r(80.0, 230.0, 335.0, 276.0);
     let help = match &state.autokey_found {
-        Some((text, _)) => format!("Riconoscimento automatico della tonalità dalla voce.\nUltima trovata: {text}"),
-        None => "Riconoscimento automatico della tonalità: accendilo e fai suonare la voce \
-                 per qualche secondo, Key & Scale si imposta da solo."
+        Some((text, _)) => format!(
+            "Riconoscimento automatico della tonalità dalla voce, dagli accordi \
+             o dalla base nel sidechain.\nUltima trovata: {text}"
+        ),
+        None => "Riconoscimento automatico della tonalità: accendilo e fai suonare la traccia \
+                 per qualche secondo, Key & Scale si imposta da solo.\n\
+                 Ascolta anche gli accordi (polifonia) e, se mandi la base al sidechain \
+                 del plugin, segue la base."
             .to_owned(),
     };
     let response = ui.interact(hit, Id::new("autokey"), Sense::click()).on_hover_text(help);
@@ -1188,7 +1564,7 @@ fn big_note(painter: &Painter, center: Pos2, pc: usize, color: Color32) {
     // della dimensione e la linea di base a 1,05 dalla cima della riga.
     let size = 112.0 / 0.705;
     let font_id = font(size, Weight::Display);
-    let px = size * SCALE;
+    let px = size * scale();
     let sharp = matches!(pc % 12, 1 | 3 | 6 | 8 | 10);
     let letter = painter.layout_no_wrap(LETTERS[pc % 12].to_owned(), font_id, color);
     let mark = sharp.then(|| painter.layout_no_wrap("#".to_owned(), font(size * 0.45, Weight::Display), color));
@@ -1398,15 +1774,15 @@ fn icon_undo(painter: &Painter, g: Geo, c: Pos2, mirror: bool) {
     let s = if mirror { -1.0 } else { 1.0 };
     let stroke = Stroke::new(g.d(2.4), Color32::from_rgb(0xe6, 0xec, 0xf4));
     // Freccia che torna indietro: tratto orizzontale in alto, curva, ritorno.
-    let mut points = vec![c + Vec2::new(-11.0 * s, -7.0) * SCALE];
+    let mut points = vec![c + Vec2::new(-11.0 * s, -7.0) * scale()];
     for i in 0..=12 {
         let a = -PI / 2.0 + PI * i as f32 / 12.0;
-        points.push(c + Vec2::new((2.0 + 9.0 * a.cos()) * s, 2.0 + 9.0 * a.sin()) * SCALE);
+        points.push(c + Vec2::new((2.0 + 9.0 * a.cos()) * s, 2.0 + 9.0 * a.sin()) * scale());
     }
-    points.push(c + Vec2::new(-9.0 * s, 11.0) * SCALE);
+    points.push(c + Vec2::new(-9.0 * s, 11.0) * scale());
     painter.add(Shape::line(points, stroke));
     painter.add(Shape::line(
-        vec![c + Vec2::new(-5.0 * s, -13.0) * SCALE, c + Vec2::new(-11.0 * s, -7.0) * SCALE, c + Vec2::new(-5.0 * s, -1.0) * SCALE],
+        vec![c + Vec2::new(-5.0 * s, -13.0) * scale(), c + Vec2::new(-11.0 * s, -7.0) * scale(), c + Vec2::new(-5.0 * s, -1.0) * scale()],
         stroke,
     ));
 }
@@ -1428,7 +1804,7 @@ fn icon_gear(painter: &Painter, g: Geo, c: Pos2) {
 fn icon_power(painter: &Painter, g: Geo, c: Pos2, color: Color32) {
     let stroke = Stroke::new(g.d(2.8), color);
     painter.add(Shape::line(arc_points(c, g.d(14.0), -PI / 2.0 + 0.75, 1.5 * PI - 0.75), stroke));
-    painter.line_segment([c + Vec2::new(0.0, -17.0) * SCALE, c + Vec2::new(0.0, -3.0) * SCALE], stroke);
+    painter.line_segment([c + Vec2::new(0.0, -17.0) * scale(), c + Vec2::new(0.0, -3.0) * scale()], stroke);
 }
 
 fn side_buttons(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState, now: f64) {
@@ -1579,46 +1955,60 @@ fn knob_visual(painter: &Painter, g: Geo, center: Pos2, r: f32, value: f32, styl
 }
 
 #[allow(clippy::too_many_arguments)]
-fn knob_with_box<P: Param>(
+fn knob_with_box(
     ui: &Ui,
     painter: &Painter,
     g: Geo,
     setter: &ParamSetter,
-    param: &P,
+    param: &FloatParam,
     label: (&str, f32),
     knob: (f32, f32),
     value_box: (f32, f32),
     text: String,
-    text_at: Option<f32>,
+    entry: (&'static str, f32),
     style: ArcStyle,
     help: &str,
+    state: &mut GuiState,
 ) {
     text_tracked(painter, g.p(label.1, 879.0), Align2::LEFT_CENTER, label.0, font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec), -0.08);
     let rect = g.r(value_box.0, 909.0, value_box.1, 976.0);
     painter.rect(rect, CornerRadius::same(g.d(9.0) as u8), BOX_BG, Stroke::new(g.d(1.4), BOX_EDGE), StrokeKind::Inside);
     // Il numero sta al centro della parte del riquadro non coperta dalla manopola.
-    let text_x = text_at.unwrap_or(0.5 * (knob.0 + 34.0 + value_box.1));
-    text_tracked(painter, g.p(text_x + 2.0, 943.0), Align2::CENTER_CENTER, text, font(28.0, Weight::Medium), TEXT, -0.07);
+    let text_x = 0.5 * (knob.0 + 34.0 + value_box.1);
     let center = g.p(knob.0, knob.1);
     knob_visual(painter, g, center, g.d(34.0), param.unmodulated_normalized_value(), style);
     let hit = g.r(knob.0 - 46.0, 860.0, value_box.1, 985.0);
     drag_param(ui, setter, param, hit, label.0, help);
+    // Il numero: cliccandolo si scrive il valore (trascinando si gira la manopola).
+    let number_rect = g.r(knob.0 + 36.0, 912.0, value_box.1 - 3.0, 973.0);
+    value_entry(
+        ui,
+        painter,
+        setter,
+        param,
+        entry.0,
+        number_rect,
+        (g.p(text_x + 2.0, 943.0), Align2::CENTER_CENTER),
+        text,
+        font(28.0, Weight::Medium),
+        |v| v / entry.1,
+        state,
+    );
 }
 
-fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter) {
+fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState) {
     let bar = g.r(37.0, 843.0, 1411.0, 1008.0);
     let radii = [g.d(42.0), g.d(42.0), g.d(32.0), g.d(32.0)];
     rounded_gradient(painter, bar, radii, Color32::from_rgb(0x08, 0x10, 0x22), Color32::from_rgb(0x06, 0x09, 0x17));
     rounded_stroke(painter, bar, radii, Stroke::new(g.d(1.6), Color32::from_rgb(0x1a, 0x30, 0x4c)));
     // Riflesso sul bordo in alto.
     painter.line_segment([g.p(120.0, 844.5), g.p(1330.0, 844.5)], Stroke::new(g.d(1.2), light(Color32::from_rgb(0x5a, 0x8c, 0xd0), 0.35)));
-    for x in [302.0, 512.0, 724.0, 926.0, 1181.0] {
+    for x in [302.0, 512.0, 724.0, 926.0, 1168.0] {
         painter.line_segment([g.p(x, 862.0), g.p(x, 990.0)], Stroke::new(g.d(1.4), SEPARATOR));
     }
 
     // Detune.
     text_tracked(painter, g.p(74.0, 899.0), Align2::LEFT_CENTER, "Detune", font(21.0, Weight::Regular), Color32::from_rgb(0xc8, 0xd0, 0xdc), -0.06);
-    text_tracked(painter, g.p(74.0, 940.0), Align2::LEFT_CENTER, format!("{:.1} Hz", params.detune.value()), font(30.0, Weight::Medium), TEXT, -0.07);
     knob_visual(painter, g, g.p(243.0, 928.0), g.d(32.0), params.detune.unmodulated_normalized_value(), ArcStyle::None);
     drag_param(
         ui,
@@ -1628,6 +2018,19 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         "detune",
         "Accordatura: la frequenza del La4. 440 Hz è lo standard; cambiala se la base \
          è accordata diversamente (per esempio 432 Hz). Doppio clic = 440 Hz.",
+    );
+    value_entry(
+        ui,
+        painter,
+        setter,
+        &params.detune,
+        "detune",
+        g.r(66.0, 918.0, 206.0, 962.0),
+        (g.p(74.0, 940.0), Align2::LEFT_CENTER),
+        format!("{:.1} Hz", params.detune.value()),
+        font(30.0, Weight::Medium),
+        |v| v,
+        state,
     );
 
     knob_with_box(
@@ -1640,10 +2043,11 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         (367.0, 943.0),
         (392.0, 484.0),
         format!("{:.0}", params.retune_speed.value()),
-        None,
+        ("retune", 1.0),
         ArcStyle::Cyan,
         "Quanto in fretta la voce viene portata sulla nota giusta (ms).\n\
          0 = effetto robotico, 10-30 = pop, 50-150 = naturale.",
+        state,
     );
     knob_with_box(
         ui,
@@ -1655,10 +2059,11 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         (573.0, 943.0),
         (598.0, 692.0),
         format!("{:.0}", params.humanize.value() * 100.0),
-        None,
+        ("humanize", 100.0),
         ArcStyle::Violet,
         "Sulle note lunghe la correzione diventa più morbida, così le note tenute \
          non suonano \"congelate\"; quelle brevi restano corrette.",
+        state,
     );
     knob_with_box(
         ui,
@@ -1670,14 +2075,32 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         (787.0, 943.0),
         (812.0, 904.0),
         format!("{:.0}", params.flex_tune.value() * 100.0),
-        None,
+        ("flex-tune", 100.0),
         ArcStyle::White,
         "Corregge solo quando la voce è già vicina alla nota: scivolate e note \
          volutamente \"sporche\" restano come le hai cantate.",
+        state,
     );
 
-    // Formant (come nella seconda versione dell'immagine: al posto dei tasti
-    // della modalita', che sono passati nell'intestazione).
+    // Vibrato e Formant (Modern / Classic sono passati in alto, accanto a
+    // Low Latency / HQ).
+    let vibrato = params.vibrato.value() * 100.0;
+    knob_with_box(
+        ui,
+        painter,
+        g,
+        setter,
+        &params.vibrato,
+        ("Vibrato", 957.0),
+        (992.0, 943.0),
+        (1017.0, 1135.0),
+        if vibrato.abs() < 0.5 { "0".to_owned() } else { format!("{vibrato:+.0}") },
+        ("vibrato", 100.0),
+        ArcStyle::Violet,
+        "Vibrato naturale: a sinistra lo riduce (fino a toglierlo), a destra lo \
+         aggiunge, anche sopra la correzione robotica. Doppio clic = 0.",
+        state,
+    );
     let formant = params.formant.value();
     knob_with_box(
         ui,
@@ -1685,46 +2108,16 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         g,
         setter,
         &params.formant,
-        ("Formant", 957.0),
-        (992.0, 943.0),
-        (1022.0, 1154.0),
+        ("Formant", 1199.0),
+        (1234.0, 943.0),
+        (1259.0, 1377.0),
         if formant.abs() < 0.05 { "0".to_owned() } else { format!("{formant:+.1}") },
-        Some(1105.0),
+        ("formant", 1.0),
         ArcStyle::Cyan,
         "Il timbro della voce, senza cambiare la nota (in modalità HQ): a destra più \
          piccola e chiara, a sinistra più grande e scura. Doppio clic = 0.",
+        state,
     );
-
-    // Modern / Classic.
-    let style = params.style.value();
-    for (choice, label, y, help) in [
-        (StyleChoice::Modern, "Modern", 897.0, "Moderno: le note partono già intonate e la correzione non rimbalza tra due note."),
-        (StyleChoice::Classic, "Classic", 953.0, "Classico: ogni nota parte come l'hai cantata e scivola sulla nota giusta; il bersaglio cambia subito (il carattere degli autotune di una volta)."),
-    ] {
-        let on = style == choice;
-        let pill = g.r(1227.0, y - 17.0, 1289.0, y + 17.0);
-        let hit = g.r(1220.0, y - 24.0, 1400.0, y + 24.0);
-        let response = ui.interact(hit, Id::new(("stile", label)), Sense::click()).on_hover_text(help);
-        let r = g.d(17.0);
-        if on {
-            rounded_gradient(painter, pill, [r; 4], Color32::from_rgb(0x1e, 0x72, 0xee), Color32::from_rgb(0x2c, 0x8c, 0xff));
-            glow_rect(painter, pill, r, Color32::from_rgb(0x2c, 0x8c, 0xff), g.d(8.0), 0.35);
-            let knob = g.p(1244.0, y);
-            radial(painter, knob, 0.0, g.d(13.0), Color32::WHITE, Color32::from_rgb(0xd8, 0xe8, 0xff));
-            painter.circle_filled(g.p(1275.0, y), g.d(6.0), Color32::from_rgb(0x0d, 0x98, 0xf5));
-        } else {
-            rounded_gradient(painter, pill, [r; 4], Color32::from_rgb(0x1c, 0x2c, 0x3e), Color32::from_rgb(0x14, 0x22, 0x32));
-            let knob = g.p(1272.0, y);
-            radial(painter, knob, 0.0, g.d(13.5), Color32::from_rgb(0x5a, 0x70, 0x8e), Color32::from_rgb(0x34, 0x48, 0x62));
-            if response.hovered() {
-                rounded_stroke(painter, pill, [r; 4], Stroke::new(g.d(1.2), Color32::from_rgb(0x4a, 0x5c, 0x74)));
-            }
-        }
-        text_tracked(painter, g.p(1309.0, y), Align2::LEFT_CENTER, label, font(20.5, Weight::Regular), TEXT, -0.07);
-        if response.clicked() && !on {
-            set_param(setter, &params.style, choice);
-        }
-    }
 }
 
 // --- Menu a tendina ------------------------------------------------------------------
@@ -1746,14 +2139,14 @@ fn menu_frame(painter: &Painter, rect: Rect) {
     painter.rect(rect, CornerRadius::same(12), MENU_BG, Stroke::new(1.2, Color32::from_rgb(0x24, 0x3a, 0x56)), StrokeKind::Inside);
 }
 
-fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState) {
+fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState, now: f64) {
     let Some((menu, trigger)) = state.menu else { return };
     let (pos, size) = match menu {
-        Menu::Voice => (g.p(VOICE_LABEL_X - 21.0, 186.0), Vec2::new(g.d(250.0), g.d(170.0))),
+        Menu::Voice => (g.p(VOICE_LABEL_X - 21.0, 186.0), Vec2::new(g.d(250.0), g.d(220.0))),
         Menu::KeyScale => (g.p(KEY_LABEL_X - 22.0, 186.0), Vec2::new(g.d(430.0), g.d(420.0))),
         Menu::Preset => (
             g.p(PRESET_BOX.0, 188.0),
-            Vec2::new(g.d(PRESET_BOX.2 - PRESET_BOX.0), g.d(30.0 + 52.0 * FACTORY.len() as f32)),
+            Vec2::new(g.d(PRESET_BOX.2 - PRESET_BOX.0), g.d(30.0 + 52.0 * (FACTORY.len() + 2) as f32)),
         ),
     };
     let popup = Rect::from_min_size(pos, size);
@@ -1767,12 +2160,26 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
             menu_frame(&painter, popup);
             match menu {
                 Menu::Voice => {
+                    let auto = state.auto_voice.is_some();
                     for (i, voice) in [VoiceChoice::Soprano, VoiceChoice::AltoTenor, VoiceChoice::Low].into_iter().enumerate() {
                         let rect = Rect::from_min_size(pos + Vec2::new(g.d(12.0), g.d(14.0 + 50.0 * i as f32)), Vec2::new(size.x - g.d(24.0), g.d(44.0)));
-                        if menu_item(ui, &painter, rect, Id::new(("voce", i)), voice_label(voice), params.voice.value() == voice, 23.0) {
+                        if menu_item(ui, &painter, rect, Id::new(("voce", i)), voice_label(voice), !auto && params.voice.value() == voice, 23.0) {
                             set_param(setter, &params.voice, voice);
+                            state.auto_voice = None;
                             close = true;
                         }
+                    }
+                    // Auto: il plugin ascolta la voce e sceglie da solo.
+                    let rect = Rect::from_min_size(pos + Vec2::new(g.d(12.0), g.d(14.0 + 150.0)), Vec2::new(size.x - g.d(24.0), g.d(44.0)));
+                    if menu_item(ui, &painter, rect, Id::new(("voce", 3)), "Auto (ascolta)", auto, 23.0) {
+                        let previous = params.voice.value();
+                        state.auto_voice = Some((now, previous));
+                        state.auto_voice_checked = now;
+                        state.reset_histogram = true;
+                        // Low Male sente anche le note piu' gravi.
+                        set_param(setter, &params.voice, VoiceChoice::Low);
+                        state.toast = Some(("Vocal Range: canta qualche secondo…".to_owned(), now));
+                        close = true;
                     }
                 }
                 Menu::KeyScale => {
@@ -1833,6 +2240,23 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
                             close = true;
                         }
                     }
+                    // Le impostazioni attuali come partenza delle nuove istanze.
+                    let n = FACTORY.len();
+                    let y = 15.0 + 52.0 * n as f32;
+                    painter.line_segment(
+                        [pos + Vec2::new(g.d(24.0), g.d(y - 3.0)), pos + Vec2::new(size.x - g.d(24.0), g.d(y - 3.0))],
+                        Stroke::new(1.0, Color32::from_rgb(0x22, 0x34, 0x4a)),
+                    );
+                    let rect = Rect::from_min_size(pos + Vec2::new(g.d(12.0), g.d(y)), Vec2::new(size.x - g.d(24.0), g.d(46.0)));
+                    if menu_item(ui, &painter, rect, Id::new(("preset", n)), "Save as Default", false, 22.0) {
+                        save_as_default(params, state, now);
+                        close = true;
+                    }
+                    let rect = Rect::from_min_size(pos + Vec2::new(g.d(12.0), g.d(y + 52.0)), Vec2::new(size.x - g.d(24.0), g.d(46.0)));
+                    if menu_item(ui, &painter, rect, Id::new(("preset", n + 1)), "Reset Default", false, 22.0) {
+                        reset_default(state, now);
+                        close = true;
+                    }
                 }
             }
         });
@@ -1848,7 +2272,7 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
 
 // --- Guida e impostazioni ----------------------------------------------------------------
 
-fn overlays(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState) {
+fn overlays(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState, now: f64) {
     let Some(overlay) = state.overlay else { return };
     let rect = g.r(70.0, 205.0, 1280.0, 690.0);
     let mut close = false;
@@ -1869,15 +2293,15 @@ fn overlays(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, display: &Pitc
             let x_hit = Rect::from_center_size(x_center, Vec2::splat(g.d(50.0)));
             let x_response = ui.interact(x_hit, Id::new("chiudi"), Sense::click()).on_hover_text("Chiudi");
             let stroke = Stroke::new(g.d(2.4), if x_response.hovered() { TEXT } else { TEXT_DIM });
-            painter.line_segment([x_center + Vec2::splat(-10.0 * SCALE), x_center + Vec2::splat(10.0 * SCALE)], stroke);
-            painter.line_segment([x_center + Vec2::new(-10.0, 10.0) * SCALE, x_center + Vec2::new(10.0, -10.0) * SCALE], stroke);
+            painter.line_segment([x_center + Vec2::splat(-10.0 * scale()), x_center + Vec2::splat(10.0 * scale())], stroke);
+            painter.line_segment([x_center + Vec2::new(-10.0, 10.0) * scale(), x_center + Vec2::new(10.0, -10.0) * scale()], stroke);
             if x_response.clicked() {
                 close = true;
             }
 
             match overlay {
                 Overlay::Help => help_page(&painter, g),
-                Overlay::Settings => settings_page(ui, &painter, g, params, display, setter),
+                Overlay::Settings => settings_page(ui, &painter, g, params, display, setter, state, now),
             }
         });
     if close {
@@ -1888,41 +2312,58 @@ fn overlays(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, display: &Pitc
 fn help_page(painter: &Painter, g: Geo) {
     painter.text(g.p(110.0, 250.0), Align2::LEFT_CENTER, "Guida rapida", font(30.0, Weight::Medium), TEXT);
     let lines = [
-        ("Vocal Range", "il tipo di voce (decide la nota più grave riconosciuta)."),
+        ("A / B / Copy", "due impostazioni da confrontare; Copy copia quella attiva sull'altra."),
+        ("Vocal Range", "tipo di voce (la nota più grave riconosciuta); Auto la sceglie da solo."),
         ("Key & Scale", "tonalità e scala: la voce va solo sulle note illuminate."),
-        ("AutoKey Listen", "accendilo e fai suonare la voce: la tonalità si imposta da sola."),
+        ("AutoKey Listen", "riconosce la tonalità dalla voce, dagli accordi o dalla base (sidechain)."),
         ("Edit Notes", "clic su una nota per includerla o escluderla dalla scala."),
-        ("Indicatore", "di quanti centesimi la voce è calante (−) o crescente (+)."),
-        ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
-        ("Humanize / Flex Tune", "note lunghe più libere / corregge solo vicino alla nota."),
-        ("Detune / Formant", "accordatura del La4 (440 Hz) / timbro della voce (in HQ)."),
-        ("Mode", "Low Latency (0 ms) per registrare in diretta, HQ (64 ms) per il mix."),
+        ("Low Latency / HQ", "0 ms per registrare in diretta / qualità piena per il mix."),
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
-        ("↶ ↷  ⚙  ⏻", "annulla e ripeti, altre impostazioni, accensione."),
+        ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
+        ("Humanize / Flex Tune", "note lunghe più libere / corregge di più vicino alla nota."),
+        ("Vibrato / Formant", "toglie o aggiunge vibrato / timbro della voce (in HQ)."),
+        ("Detune", "accordatura del La4: 440 Hz, o quella della base (es. 432 Hz)."),
+        ("☰  ⚙  ⏻", "preset e Save as Default, misura della finestra, accensione."),
     ];
     for (i, (name, text)) in lines.iter().enumerate() {
-        let y = 300.0 + i as f32 * 34.0;
-        painter.text(g.p(110.0, y), Align2::LEFT_CENTER, *name, font(21.0, Weight::Medium), CYAN);
-        painter.text(g.p(390.0, y), Align2::LEFT_CENTER, *text, font(21.0, Weight::Regular), TEXT);
+        let y = 296.0 + i as f32 * 30.0;
+        painter.text(g.p(110.0, y), Align2::LEFT_CENTER, *name, font(20.0, Weight::Medium), CYAN);
+        painter.text(g.p(390.0, y), Align2::LEFT_CENTER, *text, font(20.0, Weight::Regular), TEXT);
     }
-    txt(painter, 
-        g.p(110.0, 668.0),
+    txt(painter,
+        g.p(110.0, 662.0),
         Align2::LEFT_CENTER,
-        "Manopole: trascina in su o in giù (Maiusc = ritocchi fini), doppio clic = valore iniziale.",
-        font(19.0, Weight::Regular),
+        "Manopole: trascina (Maiusc = fine), doppio clic = predefinito, clic sul numero per scriverlo. Angolo in basso a destra = misura.",
+        font(17.0, Weight::Regular),
         TEXT_DIM,
     );
 }
 
-/// Prima manopola del pannello impostazioni (quattro, centrate nel pannello).
-const SETTINGS_KNOB_X0: f32 = 367.5;
+/// Prima manopola del pannello impostazioni (tre, centrate nel pannello).
+const SETTINGS_KNOB_X0: f32 = 470.0;
+/// Tasti della misura della finestra (percentuali) e loro posizione.
+const ZOOM_STEPS: [f32; 5] = [0.75, 1.0, 1.25, 1.5, 2.0];
+const ZOOM_X0: f32 = 330.0;
+const ZOOM_Y: f32 = 548.0;
+/// Tasti Save as Default / Reset Default nel pannello.
+const SAVE_DEFAULT: (f32, f32, f32, f32) = (110.0, 588.0, 380.0, 628.0);
+const RESET_DEFAULT: (f32, f32, f32, f32) = (395.0, 588.0, 620.0, 628.0);
 
-fn settings_page(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter) {
+#[allow(clippy::too_many_arguments)]
+fn settings_page(
+    ui: &Ui,
+    painter: &Painter,
+    g: Geo,
+    params: &SosaTuneParams,
+    display: &PitchDisplay,
+    setter: &ParamSetter,
+    state: &mut GuiState,
+    now: f64,
+) {
     painter.text(g.p(110.0, 250.0), Align2::LEFT_CENTER, "Impostazioni", font(30.0, Weight::Medium), TEXT);
-    let knobs: [(&str, String, f32, &str); 4] = [
+    let knobs: [(&str, String, f32, &str); 3] = [
         ("Amount", format!("{:.0}%", params.amount.value() * 100.0), params.amount.unmodulated_normalized_value(), "Quanta correzione applicare: 100% = completa."),
         ("Transpose", format!("{:+} st", params.transpose.value()), params.transpose.unmodulated_normalized_value(), "Sposta tutta la voce di un certo numero di semitoni."),
-        ("Vibrato", format!("{:+.0}%", params.vibrato.value() * 100.0), params.vibrato.unmodulated_normalized_value(), "Vibrato naturale: a sinistra lo riduce, a destra lo aggiunge."),
         ("Sensitivity", format!("{:.0}%", params.tracking.value() * 100.0), params.tracking.unmodulated_normalized_value(), "Quanto il plugin è disposto a riconoscere una nota: alzala per voci con molta aria."),
     ];
     for (i, (label, text, value, help)) in knobs.iter().enumerate() {
@@ -1931,49 +2372,89 @@ fn settings_page(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, di
         painter.text(g.p(x, 320.0), Align2::CENTER_CENTER, *label, font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec));
         let style = match i {
             0 => ArcStyle::Cyan,
-            2 => ArcStyle::Violet,
             _ => ArcStyle::White,
         };
         knob_visual(painter, g, center, g.d(40.0), *value, style);
-        txt(painter, g.p(x, 480.0), Align2::CENTER_CENTER, text, font(24.0, Weight::Medium), TEXT);
         let hit = g.r(x - 70.0, 300.0, x + 70.0, 500.0);
+        // Il numero sotto la manopola: cliccandolo si scrive il valore.
+        let number = g.r(x - 70.0, 462.0, x + 70.0, 498.0);
+        let at = (g.p(x, 480.0), Align2::CENTER_CENTER);
+        let f = font(24.0, Weight::Medium);
         match i {
-            0 => drag_param(ui, setter, &params.amount, hit, "amount", help),
-            1 => drag_param(ui, setter, &params.transpose, hit, "transpose", help),
-            2 => drag_param(ui, setter, &params.vibrato, hit, "vibrato", help),
-            _ => drag_param(ui, setter, &params.tracking, hit, "tracking", help),
-        };
+            0 => {
+                drag_param(ui, setter, &params.amount, hit, "amount", help);
+                value_entry(ui, painter, setter, &params.amount, "amount", number, at, text.clone(), f, |v| v / 100.0, state);
+            }
+            1 => {
+                drag_param(ui, setter, &params.transpose, hit, "transpose", help);
+                value_entry(ui, painter, setter, &params.transpose, "transpose", number, at, text.clone(), f, |v| v.round() as i32, state);
+            }
+            _ => {
+                drag_param(ui, setter, &params.tracking, hit, "tracking", help);
+                value_entry(ui, painter, setter, &params.tracking, "tracking", number, at, text.clone(), f, |v| v / 100.0, state);
+            }
+        }
     }
-    txt(painter, 
-        g.p(110.0, 570.0),
+
+    // Misura della finestra.
+    txt(painter, g.p(110.0, ZOOM_Y), Align2::LEFT_CENTER, "Finestra", font(21.0, Weight::Regular), TEXT_DIM);
+    let current = params.editor_state.size().0 as f32 / EDITOR_WIDTH as f32;
+    for (i, zoom) in ZOOM_STEPS.into_iter().enumerate() {
+        let x0 = ZOOM_X0 + i as f32 * 100.0;
+        let selected = (current - zoom).abs() < 0.02;
+        let label = format!("{:.0}%", zoom * 100.0);
+        if choice_button(ui, painter, g, (x0, ZOOM_Y - 18.0, x0 + 90.0, ZOOM_Y + 18.0), &format!("zoom{i}"), &label, selected,
+            "Misura della finestra (si può anche trascinare l'angolo in basso a destra).") {
+            request_zoom(params, zoom);
+        }
+    }
+
+    // Predefinito per le nuove istanze.
+    for (r, label, id, help) in [
+        (SAVE_DEFAULT, "Save as Default", "salva-predefinito", "Le impostazioni attuali diventano quelle di partenza di ogni nuova istanza di Sosa Tune."),
+        (RESET_DEFAULT, "Reset Default", "azzera-predefinito", "Le nuove istanze tornano a partire dalle impostazioni di fabbrica."),
+    ] {
+        let rect = g.r(r.0, r.1, r.2, r.3);
+        let response = ui.interact(rect, Id::new(id), Sense::click()).on_hover_text(help);
+        let edge = if response.hovered() { Color32::from_rgb(0x4a, 0x64, 0x84) } else { Color32::from_rgb(0x22, 0x32, 0x46) };
+        painter.rect(rect, CornerRadius::same(g.d(9.0) as u8), Color32::from_rgb(0x03, 0x0a, 0x14), Stroke::new(g.d(1.4), edge), StrokeKind::Inside);
+        txt(painter, rect.center(), Align2::CENTER_CENTER, label, font(19.0, Weight::Regular), TEXT);
+        if response.clicked() {
+            if id == "salva-predefinito" {
+                save_as_default(params, state, now);
+            } else {
+                reset_default(state, now);
+            }
+        }
+    }
+
+    txt(painter,
+        g.p(110.0, 662.0),
         Align2::LEFT_CENTER,
         format!(
-            "Latenza: {:.1} ms ({})",
+            "Latenza: {:.1} ms ({}). Low Latency = 0 ms; quella di HQ la compensa il DAW (uguale in bypass: niente salti).",
             display.latency_ms(),
             if params.quality.value() == QualityChoice::Hq { "HQ" } else { "Low Latency" }
         ),
-        font(21.0, Weight::Regular),
+        font(18.0, Weight::Regular),
         TEXT_DIM,
-    );
-    txt(painter, 
-        g.p(110.0, 610.0),
-        Align2::LEFT_CENTER,
-        "Low Latency non ha ritardo; la latenza di HQ la compensa il DAW. Tutti i comandi sono automatizzabili.",
-        font(19.0, Weight::Regular),
-        TEXT_FAINT,
     );
 }
 
 // --- AutoKey ----------------------------------------------------------------------------
 
-/// "AutoKey Listen": una volta al secondo guarda quanto e' stata cantata ogni
-/// nota e, se la tonalita' e' chiara, imposta Key & Scale.
+/// "AutoKey Listen": una volta al secondo cerca la tonalita' e, se e' chiara,
+/// imposta Key & Scale. Ascolta, nell'ordine:
+/// 1. il **sidechain** (la base della canzone mandata al plugin), se c'e';
+/// 2. l'audio della traccia, anche **polifonico** (accordi, una base), se
+///    sulla traccia c'e' piu' musica che voce;
+/// 3. la **voce**, una nota alla volta.
 fn autokey(params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState, now: f64) {
     if !params.autokey.load(Ordering::Relaxed) || now - state.autokey_checked < 1.0 {
         return;
     }
     state.autokey_checked = now;
-    let Some((tonic, minor, confidence)) = detect_key(&display.note_profile()) else { return };
+    let Some((tonic, minor, confidence, source)) = display.detect_key_all() else { return };
     if confidence < 0.5 {
         return;
     }
@@ -1982,7 +2463,12 @@ fn autokey(params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter
     if params.key.value() != key || params.scale.value() != scale {
         set_param(setter, &params.key, key);
         set_param(setter, &params.scale, scale);
-        state.autokey_found = Some((format!("{} {}", KEY_NAMES[tonic], scale_label(scale)), now));
+        let from = match source {
+            KeySource::Voice => "voce",
+            KeySource::Polyphonic => "accordi",
+            KeySource::Sidechain => "sidechain",
+        };
+        state.autokey_found = Some((format!("{} {} ({from})", KEY_NAMES[tonic], scale_label(scale)), now));
     }
 }
 
@@ -2071,8 +2557,9 @@ mod diagnostics {
 
 // --- Posizioni per le prove dell'interfaccia --------------------------------------------
 
-/// Dove si trovano i comandi (in punti della finestra), per le prove in `preview.rs`.
-#[cfg(test)]
+/// Dove si trovano i comandi (in punti della finestra), per le prove e le
+/// anteprime in `preview.rs`.
+#[allow(dead_code)]
 pub(crate) mod layout {
     use super::*;
 
@@ -2092,8 +2579,35 @@ pub(crate) mod layout {
     pub fn detune() -> Pos2 {
         at(243.0, 928.0)
     }
-    pub fn formant() -> Pos2 {
+    pub fn vibrato() -> Pos2 {
         at(992.0, 943.0)
+    }
+    pub fn formant() -> Pos2 {
+        at(1234.0, 943.0)
+    }
+    /// Il numero accanto alla manopola Retune Speed (clic = scrivere il valore).
+    pub fn retune_value() -> Pos2 {
+        at(442.0, 943.0)
+    }
+    /// Il numero accanto alla manopola Humanize.
+    pub fn humanize_value() -> Pos2 {
+        at(652.0, 943.0)
+    }
+    /// Il numero del Detune.
+    pub fn detune_value() -> Pos2 {
+        at(130.0, 940.0)
+    }
+    fn center(r: (f32, f32, f32, f32)) -> Pos2 {
+        at(0.5 * (r.0 + r.2), 0.5 * (r.1 + r.3))
+    }
+    pub fn ab_a() -> Pos2 {
+        center(AB_A)
+    }
+    pub fn ab_b() -> Pos2 {
+        center(AB_B)
+    }
+    pub fn ab_copy() -> Pos2 {
+        center(AB_COPY)
     }
     pub fn mode_hq() -> Pos2 {
         at(0.5 * (MODE_HQ.0 + MODE_HQ.2), 0.5 * (MODE_HQ.1 + MODE_HQ.3))
@@ -2102,10 +2616,10 @@ pub(crate) mod layout {
         at(0.5 * (MODE_LOW.0 + MODE_LOW.2), 0.5 * (MODE_LOW.1 + MODE_LOW.3))
     }
     pub fn classic() -> Pos2 {
-        at(1258.0, 953.0)
+        center(STYLE_CLASSIC)
     }
     pub fn modern() -> Pos2 {
-        at(1258.0, 897.0)
+        center(STYLE_MODERN)
     }
     pub fn power() -> Pos2 {
         at(1338.0, 592.0)
@@ -2143,7 +2657,7 @@ pub(crate) mod layout {
     pub fn autokey() -> Pos2 {
         at(200.0, 253.0)
     }
-    /// Una voce del menu Vocal Range (0 = Soprano, 1 = Alto/Tenor, 2 = Low Male).
+    /// Una voce del menu Vocal Range (0 = Soprano, 1 = Alto/Tenor, 2 = Low Male, 3 = Auto).
     pub fn voice_item(i: usize) -> Pos2 {
         at(540.0, 186.0 + 14.0 + 50.0 * i as f32 + 22.0)
     }
@@ -2157,11 +2671,27 @@ pub(crate) mod layout {
         let (col, row) = (i % 2, i / 2);
         at(KEY_LABEL_X - 22.0 + 14.0 + 203.0 * col as f32 + 99.0, 186.0 + 194.0 + 54.0 * row as f32 + 24.0)
     }
+    /// Una voce del menu dei preset (dopo i preset: Save as Default, Reset Default).
     pub fn preset_item(i: usize) -> Pos2 {
         at(1164.0, 188.0 + 15.0 + 52.0 * i as f32 + 23.0)
     }
-    /// Le manopole del pannello impostazioni (0 = Amount ... 3 = Sensitivity).
+    /// Le manopole del pannello impostazioni (0 = Amount, 1 = Transpose, 2 = Sensitivity).
     pub fn settings_knob(i: usize) -> Pos2 {
         at(SETTINGS_KNOB_X0 + i as f32 * 205.0, 400.0)
+    }
+    /// Il numero sotto una manopola del pannello impostazioni.
+    pub fn settings_value(i: usize) -> Pos2 {
+        at(SETTINGS_KNOB_X0 + i as f32 * 205.0, 480.0)
+    }
+    /// Un tasto della misura della finestra (0 = 75% ... 4 = 200%).
+    pub fn zoom_button(i: usize) -> Pos2 {
+        at(ZOOM_X0 + i as f32 * 100.0 + 45.0, ZOOM_Y)
+    }
+    pub fn save_default_button() -> Pos2 {
+        center(SAVE_DEFAULT)
+    }
+    /// L'angolo per ridimensionare (in punti della finestra iniziale).
+    pub fn resize_grip() -> Pos2 {
+        Pos2::new(EDITOR_WIDTH as f32 - 6.0, EDITOR_HEIGHT as f32 - 6.0)
     }
 }

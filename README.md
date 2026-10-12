@@ -22,14 +22,17 @@
 - **Quantità** di correzione e **trasposizione** fino a ±12 semitoni.
 - Cambia la nota **senza cambiare il timbro** della voce (in HQ: **phase vocoder** a picchi bloccati con finestra adattata alla voce e formanti preservate dal "true envelope": niente "effetto scoiattolo", niente click).
 - Due **modalità**: **Low Latency** a latenza zero per registrare con il plugin acceso, **HQ** per il mix.
-- Tre impostazioni di **voce** (soprano, alto/tenore, voce bassa): decidono la nota più grave riconosciuta.
-- Interfaccia con la nota cantata, l'indicatore dello scarto in centesimi, manopole, tastiera della scala e **AutoKey** (la tonalità si imposta da sola ascoltando la voce).
+- Tre impostazioni di **voce** (soprano, alto/tenore, voce bassa): decidono la nota più grave riconosciuta. Con **Auto** il plugin ascolta qualche secondo di voce e sceglie da solo.
+- Interfaccia con la nota cantata, l'indicatore dello scarto in centesimi, manopole, tastiera della scala e **AutoKey** (la tonalità si imposta da sola ascoltando la voce, gli **accordi** sulla traccia o la **base mandata al sidechain**).
+- **Confronto A/B** con **Copy**, numeri che si possono **scrivere a mano**, finestra **ridimensionabile** (dal 60% al 200%), **Save as Default** per far partire ogni nuova istanza dalle tue impostazioni.
 - Mono e stereo, qualsiasi frequenza di campionamento, latenza comunicata al DAW (che la compensa da solo).
 
 | Modalità | Latenza | Quando usarla |
 |---|---|---|
 | **Low Latency** | **0 ms** | Mentre registri: nessun ritardo in cuffia. Qualità da monitoraggio (le formanti seguono la nota, il comando Formant non agisce) |
 | **HQ** | 64 ms (compensata dal DAW) | Per il mix: il suono più pulito, timbro preservato, intonazione più precisa |
+
+In bypass la latenza resta quella della modalità (come chiedono le regole VST3 e come fanno i plugin professionali): accendere e spegnere il plugin durante l'ascolto non sposta la traccia e non crea buchi; in bypass esce la voce originale identica, a tempo. Per registrare senza ritardo usa Low Latency, che è a 0 ms anche con il plugin acceso.
 
 | Voce | Nota più grave riconosciuta |
 |---|---|
@@ -102,7 +105,7 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 ## Come si usa
 
 1. Imposta la **Tonalità** e la **Scala** della canzone (per esempio La minore → Tonalità A, Scala Minore naturale). Se non le conosci, lascia **Cromatica**: ogni nota viene portata al semitono più vicino.
-2. Scegli il tipo di **Voce**.
+2. Scegli il tipo di **Voce** (oppure **Auto** e canta qualche secondo).
 3. Parti da un **preset** e poi rifinisci, per esempio:
    - **Natural Vocal**: velocità 80 ms e Humanize, si sente intonato ma non "corretto";
    - **Pop Polish**: velocità 15 ms, intonazione precisa e brillante;
@@ -121,18 +124,22 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 | Formanti | Il timbro: + voce più piccola e chiara, − più grande e scura. La nota non cambia (solo in HQ) | 0 st |
 | Sensibilità | Alzala per voci con molta aria o sussurrate, abbassala se senti salti strani | 30% |
 | Trasponi | Sposta tutta la voce di semitoni, mantenendo il timbro | 0 st |
-| Bypass | Il pulsante di bypass del DAW: la voce passa senza correzione ma con lo stesso ritardo, cosi' resta a tempo | spento |
+| Bypass | Il pulsante di bypass del DAW: esce la voce originale, identica, con lo stesso ritardo, così resta a tempo | spento |
 
 6. Sulla **tastiera** clicca un tasto per escludere o includere una nota (la scala diventa "Personalizzata").
 
 ### L'interfaccia
 
-- **Vocal Range** e **Key & Scale** (in alto): menu a tendina per tipo di voce, tonalità e scala. **AutoKey Listen**: accendilo e fai suonare la voce, la tonalità si imposta da sola.
+- **Vocal Range** e **Key & Scale** (in alto): menu a tendina per tipo di voce, tonalità e scala. In Vocal Range, **Auto (ascolta)**: canta qualche secondo e il tipo di voce si sceglie da solo.
+- **AutoKey Listen**: accendilo e fai suonare la traccia, la tonalità si imposta da sola. Ascolta la voce, ma anche gli **accordi** (pianoforte, chitarra, una base sulla traccia). Per seguire **la base della canzone**, mandala all'ingresso **sidechain** del plugin ("Sidechain (base per AutoKey)"): quando c'è, AutoKey usa quella. Sotto compare la tonalità trovata e da dove (voce, accordi o sidechain).
+- **A / B / Copy** (in alto a sinistra): due impostazioni complete da confrontare. Clic su A o B per passare dall'una all'altra; **Copy** copia quella attiva sull'altra. Le due impostazioni vengono salvate con il progetto.
 - **Nota al centro**: la nota che stai cantando; l'indicatore dice di quanti **centesimi** sei calante (−) o crescente (+).
-- **Manopole** Detune, Retune Speed, Humanize, Flex Tune e Formant: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. Passandoci sopra col mouse compare la spiegazione.
-- **Low Latency / HQ** (in alto, accanto al preset): 0 ms per registrare, HQ per il mix. **Modern / Classic** (in basso a destra): note già intonate oppure ogni nota che scivola sulla nota giusta.
+- **Manopole** Detune, Retune Speed, Humanize, Flex Tune, Vibrato e Formant: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. **Clic sul numero** per scrivere il valore con la tastiera (Invio conferma, Esc annulla). Passandoci sopra col mouse compare la spiegazione.
+- **Low Latency / HQ** e **Modern / Classic** (in alto a destra, nel riquadro del preset): 0 ms per registrare o HQ per il mix; note già intonate oppure ogni nota che scivola sulla nota giusta.
 - **Edit Notes** (in basso): clic su una nota per includerla o escluderla dalla scala.
-- **⚙**: Amount, Transpose, Vibrato, Sensitivity e la latenza attuale. **↶ ↷**: annulla e ripeti.
+- **☰** (preset): la lista dei preset, **Save as Default** (le nuove istanze partono dalle impostazioni attuali) e **Reset Default**.
+- **⚙**: Amount, Transpose e Sensitivity (anche scrivendo il numero), misura della finestra (75-200%), Save/Reset Default e la latenza attuale. **↶ ↷**: annulla e ripeti. **?**: guida rapida.
+- **Angolo in basso a destra**: trascinalo per ingrandire o rimpicciolire la finestra (se il DAW lo permette).
 
 ---
 
@@ -198,22 +205,24 @@ A ogni modifica il plugin viene messo alla prova automaticamente su un Mac, con 
 - **Validatore ufficiale Steinberg VST3**: 537 prove, 0 errori (canali mono, stereo, mono → stereo, frequenze da 22 a 384 kHz, bypass, salvataggio e ripristino);
 - **pluginval** al livello più severo (10): apertura, parametri, automazione, salvataggio, chiamate da più thread, blocchi audio di ogni dimensione;
 - **clap-validator**: 34 prove, 0 errori (formato CLAP);
-- **prove dell'interfaccia** (`cargo test -p sosatune --release`): clic e trascinamenti simulati su tutti i comandi dell'interfaccia e bypass del DAW;
+- **prove dell'interfaccia** (`cargo test -p sosatune --release`): clic e trascinamenti simulati su tutti i comandi dell'interfaccia e bypass del DAW, numeri scritti a mano, A/B e Copy, Save as Default, Vocal Range Auto, ridimensionamento della finestra;
 - **auval** di Apple per la versione AU.
 
-Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (traccia vocale mono in Pro Tools/PatchWork, Logic, Cubase...).
+Configurazioni supportate: stereo → stereo, mono → mono, mono → stereo (traccia vocale mono in Pro Tools/PatchWork, Logic, Cubase...), ognuna con un ingresso **sidechain** stereo facoltativo (per AutoKey).
 
 ## Struttura del progetto
 
 ```text
 sosatune/
 ├── dsp/                 il motore audio (nessuna libreria esterna)
-│   ├── src/             yin, fft, scale, corrector, vocoder (HQ), zerolat (Low Latency), synth, wav
+│   ├── src/             yin, fft, scale, corrector, vocoder (HQ), zerolat (Low Latency),
+│   │                    chroma (tonalità dagli accordi), synth, wav
 │   ├── examples/        demo.rs e process.rs (provare su file WAV)
 │   └── tests/           test di robustezza
 ├── plugin/              il plugin VST3/CLAP
 │   └── src/             lib.rs (collegamento al DAW), params.rs (parametri),
-│                        editor.rs (interfaccia), shared.rs (dati per il grafico)
+│                        editor.rs (interfaccia), shared.rs (dati per il grafico,
+│                        AutoKey, tipo di voce), defaults.rs (Save as Default)
 ├── xtask/               lo strumento che crea i file .vst3 e .clap
 ├── vendor/nih-plug/     nih-plug con le correzioni di compatibilità (vedi nih-plug-sosatune.patch)
 └── .github/workflows/   compilazione automatica per Mac su GitHub

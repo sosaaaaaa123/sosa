@@ -25,6 +25,7 @@
 //! Il punto di ingresso e' [`PitchCorrector`]: gli dai un campione alla volta e lui
 //! restituisce il campione corretto.
 
+pub mod chroma;
 pub mod corrector;
 pub mod fft;
 pub mod scale;
