@@ -44,6 +44,8 @@ fn every_sample_rate_and_voice_type_is_stable() {
                     humanize: 0.5,
                     flex_tune: 0.3,
                     vibrato: 0.8,
+                    // Formanti preservate e spostate in mono, non preservate in stereo.
+                    preserve_formants: channels == 1,
                     formant: -3.0,
                     tracking: 0.8,
                     reference_hz: 432.0,
@@ -80,6 +82,7 @@ fn changing_settings_while_running_is_safe() {
             humanize: (k % 4) as f32 / 3.0,
             flex_tune: (k % 6) as f32 / 5.0,
             vibrato: (k % 7) as f32 / 3.0 - 1.0,
+            preserve_formants: k % 3 != 2,
             formant: (k % 13) as f32 - 6.0,
             tracking: (k % 5) as f32 / 4.0,
             reference_hz: 420.0 + (k % 9) as f32 * 5.0,

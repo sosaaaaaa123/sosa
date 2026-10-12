@@ -1,7 +1,6 @@
 use atomic_refcell::AtomicRefMut;
 use std::cell::Cell;
 use std::collections::VecDeque;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use vst3_sys::vst::IComponentHandler;
 
@@ -161,31 +160,23 @@ impl<P: Vst3Plugin> GuiContext for WrapperGuiContext<P> {
         crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_SET_CALLS);
         match self.inner.param_ptr_to_hash.get(&param) {
             Some(hash) => {
-                // SosaTune: the plugin applies editor changes itself instead of relying on the
-                // host to send them back to the processor (some hosts and plugin containers never
-                // do, and then the controls appear dead):
-                // - not processing, or the host stopped calling `process()` (transport stopped,
-                //   REAPER's bypass...): apply right away;
-                // - processing: queue the change, it is applied at the start of the next process
-                //   call (never in the middle of one).
-                let now_ns = self.inner.created_at.elapsed().as_nanos() as u64;
-                let last_ns = self.inner.last_process_ns.load(Ordering::SeqCst);
-                let idle = now_ns.saturating_sub(last_ns) > 150_000_000;
-                if !self.inner.is_processing.load(Ordering::SeqCst) || idle {
-                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_DIRECT);
-                    self.inner.set_normalized_value_by_hash(
-                        *hash,
-                        normalized,
-                        self.inner
-                            .current_buffer_config
-                            .load()
-                            .map(|c| c.sample_rate),
-                    );
-                } else if self.inner.gui_param_queue.push((*hash, normalized)).is_err() {
-                    nih_debug_assert_failure!("The editor parameter queue is full");
-                } else {
-                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_QUEUED);
-                }
+                // SosaTune: the plugin applies editor changes itself, right away, instead of
+                // relying on the host to send them back to the processor or on the next
+                // `process()` call. Some hosts and plugin containers never send them back, some
+                // stop calling `process()` (transport stopped, track inactive, REAPER's bypass),
+                // and right after the plugin is inserted the processing state can change while
+                // the editor is already open: in all of those cases the controls looked dead
+                // until the editor was reopened. The parameters are atomics and SosaTune reads
+                // them once per block, so a change from the editor thread is always safe.
+                crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_DIRECT);
+                self.inner.set_normalized_value_by_hash(
+                    *hash,
+                    normalized,
+                    self.inner
+                        .current_buffer_config
+                        .load()
+                        .map(|c| c.sample_rate),
+                );
 
                 // Tell the host about the change (automation, undo, saving). If the host never
                 // gave us a component handler the value has still been applied above.

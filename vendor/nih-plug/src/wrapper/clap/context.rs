@@ -175,17 +175,18 @@ impl<P: ClapPlugin> GuiContext for WrapperGuiContext<P> {
                 // be changed when the output event is written to prevent changing parameter values
                 // in the middle of processing audio.
                 let clap_plain_value = normalized as f64 * param.step_count().unwrap_or(1) as f64;
-                // SosaTune: when the host is not calling `process()` (Logic Pro with an empty
-                // track, whose AU wrapper never flushes), the event would wait forever and the
-                // controls would look dead. In that case the value is applied right away; the
-                // queued event still tells the host as soon as processing resumes.
-                if !self.wrapper.host_is_processing() {
-                    self.wrapper.update_plain_value_by_hash(
-                        *hash,
-                        ClapParamUpdate::PlainValueSet(clap_plain_value),
-                        self.wrapper.current_sample_rate(),
-                    );
-                }
+                // SosaTune: the value is applied right away, whatever the host is doing. When
+                // the host is not calling `process()` (Logic Pro with an empty track, whose AU
+                // wrapper never flushes) the event would wait forever, and when the processing
+                // state changes while the editor is open (right after inserting the plugin) the
+                // controls could look dead until the editor was reopened. The parameters are
+                // atomics and SosaTune reads them once per block, so this is always safe. The
+                // queued event still tells the host (automation, undo, saving).
+                self.wrapper.update_plain_value_by_hash(
+                    *hash,
+                    ClapParamUpdate::PlainValueSet(clap_plain_value),
+                    self.wrapper.current_sample_rate(),
+                );
                 let success = self
                     .wrapper
                     .queue_parameter_event(OutputParamEvent::SetValue {

@@ -790,7 +790,9 @@ impl<P: ClapPlugin> Wrapper<P> {
     /// Returns `false` if the parameter value queue was full and the update will not be sent to the
     /// host (it will still be set on the plugin either way).
     /// SosaTune: `true` when the host is really calling `process()` (processing, with a call in
-    /// the last 150 ms). Otherwise parameter changes from the editor are applied immediately.
+    /// the last 150 ms). (Editor changes are now always applied immediately; kept for
+    /// diagnostics.)
+    #[allow(dead_code)]
     pub fn host_is_processing(&self) -> bool {
         if !self.is_processing.load(Ordering::SeqCst) {
             return false;

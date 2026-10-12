@@ -417,7 +417,7 @@ mod tests {
             (layout::flex(), params.flex_tune.as_ptr(), params.flex_tune.unmodulated_normalized_value()),
             (layout::detune(), params.detune.as_ptr(), params.detune.unmodulated_normalized_value()),
             (layout::vibrato(), params.vibrato.as_ptr(), params.vibrato.unmodulated_normalized_value()),
-            (layout::formant(), params.formant.as_ptr(), params.formant.unmodulated_normalized_value()),
+            (layout::throat(), params.throat.as_ptr(), params.throat.unmodulated_normalized_value()),
         ];
         for (i, &(pos, ptr, start)) in knobs.iter().enumerate() {
             let changes = run(&params, drag_up(pos, 40.0));
@@ -442,6 +442,22 @@ mod tests {
         assert_eq!(last_value(&changes, params.style.as_ptr()), Some(classic), "Classic: {changes:?}");
         let changes = run(&params, click(layout::modern()));
         assert!(changes.is_empty(), "{changes:?}");
+    }
+
+    /// Formant e Throat come in Auto-Tune: il tasto accende e spegne la
+    /// correzione delle formanti; con il tasto spento Throat non risponde.
+    #[test]
+    fn formant_button_and_throat() {
+        let params = SosaTuneParams::preview();
+        assert!(params.formant_correction.value(), "acceso di partenza");
+        let changes = run(&params, click(layout::formant_toggle()));
+        assert_eq!(last_value(&changes, params.formant_correction.as_ptr()), Some(0.0), "{changes:?}");
+
+        let params = SosaTuneParams { formant_correction: BoolParam::new("Formant", false), ..SosaTuneParams::preview() };
+        let changes = run(&params, click(layout::formant_toggle()));
+        assert_eq!(last_value(&changes, params.formant_correction.as_ptr()), Some(1.0), "{changes:?}");
+        let changes = run(&params, drag_up(layout::throat(), 40.0));
+        assert!(changes.is_empty(), "Throat con Formant spento non deve cambiare: {changes:?}");
     }
 
     #[test]

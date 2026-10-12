@@ -6,7 +6,7 @@
 //! innocua: al massimo un punto del grafico e' leggermente sbagliato per un
 //! fotogramma.
 
-use sosatune_dsp::chroma::key_from_chroma;
+use sosatune_dsp::chroma::{key_from_chroma, relative_key};
 use sosatune_dsp::PitchReport;
 use nih_plug::prelude::AtomicF32;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -98,12 +98,12 @@ impl KeyListen {
 
     pub fn label(self) -> &'static str {
         match self {
-            KeyListen::Auto => "Auto",
+            KeyListen::Auto => "Auto (la base se c'è)",
             KeyListen::Voice => "Voce",
-            KeyListen::Track => "Traccia (accordi)",
-            KeyListen::SideBoth => "Sidechain L+R",
-            KeyListen::SideLeft => "Sidechain L",
-            KeyListen::SideRight => "Sidechain R",
+            KeyListen::Track => "Accordi della traccia",
+            KeyListen::SideBoth => "Base in sidechain",
+            KeyListen::SideLeft => "Base in sidechain (L)",
+            KeyListen::SideRight => "Base in sidechain (R)",
         }
     }
 
@@ -330,21 +330,29 @@ pub fn detect_key(profile: &[f32; 12]) -> Option<(usize, bool, f32)> {
         return None;
     }
     let share = |pc: usize| profile[pc % 12] / total;
+    let mut scores = [[0.0f32; 2]; 12];
     let mut best = (0usize, false, f32::MIN);
-    let mut second = f32::MIN;
-    for tonic in 0..12 {
+    for (tonic, row) in scores.iter_mut().enumerate() {
         for (minor, scale) in [(false, &MAJOR), (true, &MINOR)] {
             let fit: f32 = scale.iter().map(|&i| share(tonic + i)).sum();
             let score = fit + 0.15 * (share(tonic) + 0.5 * share(tonic + 7));
+            row[minor as usize] = score;
             if score > best.2 {
-                second = best.2;
                 best = (tonic, minor, score);
-            } else if score > second {
-                second = score;
             }
         }
     }
-    // Affidabile se la migliore stacca bene la seconda.
+    // Affidabile se la migliore stacca bene le altre, esclusa la relativa
+    // (stesse note: per la correzione la scala e' la stessa).
+    let relative = relative_key(best.0, best.1);
+    let mut second = f32::MIN;
+    for (tonic, row) in scores.iter().enumerate() {
+        for minor in [false, true] {
+            if (tonic, minor) != (best.0, best.1) && (tonic, minor) != relative {
+                second = second.max(row[minor as usize]);
+            }
+        }
+    }
     let confidence = ((best.2 - second) / 0.04).clamp(0.0, 1.0);
     Some((best.0, best.1, confidence))
 }

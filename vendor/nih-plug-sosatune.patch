@@ -55,7 +55,6 @@
 -inherits = "release"
 -debug = true
 -strip = "none"
-diff -ruN nih/src/lib.rs sosa/vendor/nih-plug/src/lib.rs
 --- nih/src/lib.rs	2026-10-12 06:48:40.413668133 +0000
 +++ sosa/vendor/nih-plug/src/lib.rs	2026-10-11 11:54:44.322641768 +0000
 @@ -112,6 +112,8 @@
@@ -67,7 +66,6 @@ diff -ruN nih/src/lib.rs sosa/vendor/nih-plug/src/lib.rs
  
  // This is also re-exported from the prelude but since the other export entry points are macros and
  // macros are always accessible from the crate's root, it seems like a good idea to keep the
-diff -ruN nih/src/sosatune_diag.rs sosa/vendor/nih-plug/src/sosatune_diag.rs
 --- nih/src/sosatune_diag.rs	1970-01-01 00:00:00.000000000 +0000
 +++ sosa/vendor/nih-plug/src/sosatune_diag.rs	2026-10-11 11:54:44.324395190 +0000
 @@ -0,0 +1,41 @@
@@ -112,9 +110,8 @@ diff -ruN nih/src/sosatune_diag.rs sosa/vendor/nih-plug/src/sosatune_diag.rs
 +        r(&UNKNOWN_PARAM),
 +    )
 +}
-diff -ruN nih/src/wrapper/clap/context.rs sosa/vendor/nih-plug/src/wrapper/clap/context.rs
 --- nih/src/wrapper/clap/context.rs	2026-10-12 06:48:40.415390533 +0000
-+++ sosa/vendor/nih-plug/src/wrapper/clap/context.rs	2026-10-12 06:48:27.105601956 +0000
++++ sosa/vendor/nih-plug/src/wrapper/clap/context.rs	2026-10-12 14:51:21.995766734 +0000
 @@ -6,7 +6,7 @@
  use std::collections::{HashMap, VecDeque};
  use std::sync::Arc;
@@ -124,27 +121,27 @@ diff -ruN nih/src/wrapper/clap/context.rs sosa/vendor/nih-plug/src/wrapper/clap/
  use crate::event_loop::EventLoop;
  use crate::prelude::{
      ClapPlugin, GuiContext, InitContext, ParamPtr, PluginApi, PluginNoteEvent, ProcessContext,
-@@ -175,6 +175,17 @@
+@@ -175,6 +175,18 @@
                  // be changed when the output event is written to prevent changing parameter values
                  // in the middle of processing audio.
                  let clap_plain_value = normalized as f64 * param.step_count().unwrap_or(1) as f64;
-+                // SosaTune: when the host is not calling `process()` (Logic Pro with an empty
-+                // track, whose AU wrapper never flushes), the event would wait forever and the
-+                // controls would look dead. In that case the value is applied right away; the
-+                // queued event still tells the host as soon as processing resumes.
-+                if !self.wrapper.host_is_processing() {
-+                    self.wrapper.update_plain_value_by_hash(
-+                        *hash,
-+                        ClapParamUpdate::PlainValueSet(clap_plain_value),
-+                        self.wrapper.current_sample_rate(),
-+                    );
-+                }
++                // SosaTune: the value is applied right away, whatever the host is doing. When
++                // the host is not calling `process()` (Logic Pro with an empty track, whose AU
++                // wrapper never flushes) the event would wait forever, and when the processing
++                // state changes while the editor is open (right after inserting the plugin) the
++                // controls could look dead until the editor was reopened. The parameters are
++                // atomics and SosaTune reads them once per block, so this is always safe. The
++                // queued event still tells the host (automation, undo, saving).
++                self.wrapper.update_plain_value_by_hash(
++                    *hash,
++                    ClapParamUpdate::PlainValueSet(clap_plain_value),
++                    self.wrapper.current_sample_rate(),
++                );
                  let success = self
                      .wrapper
                      .queue_parameter_event(OutputParamEvent::SetValue {
-diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/wrapper.rs
 --- nih/src/wrapper/clap/wrapper.rs	2026-10-12 06:48:40.415467706 +0000
-+++ sosa/vendor/nih-plug/src/wrapper/clap/wrapper.rs	2026-10-12 06:48:22.901378265 +0000
++++ sosa/vendor/nih-plug/src/wrapper/clap/wrapper.rs	2026-10-12 14:51:40.839014230 +0000
 @@ -72,10 +72,10 @@
  use std::num::NonZeroU32;
  use std::os::raw::c_char;
@@ -211,12 +208,14 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
              current_audio_io_layout: AtomicCell::new(
                  P::AUDIO_IO_LAYOUTS.first().copied().unwrap_or_default(),
              ),
-@@ -772,6 +789,22 @@
+@@ -772,6 +789,24 @@
      ///
      /// Returns `false` if the parameter value queue was full and the update will not be sent to the
      /// host (it will still be set on the plugin either way).
 +    /// SosaTune: `true` when the host is really calling `process()` (processing, with a call in
-+    /// the last 150 ms). Otherwise parameter changes from the editor are applied immediately.
++    /// the last 150 ms). (Editor changes are now always applied immediately; kept for
++    /// diagnostics.)
++    #[allow(dead_code)]
 +    pub fn host_is_processing(&self) -> bool {
 +        if !self.is_processing.load(Ordering::SeqCst) {
 +            return false;
@@ -234,7 +233,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
      pub fn queue_parameter_event(&self, event: OutputParamEvent) -> bool {
          let result = self.output_parameter_events.push(event).is_ok();
  
-@@ -1889,10 +1922,12 @@
+@@ -1889,10 +1924,12 @@
              param.update_smoother(buffer_config.sample_rate, true);
          }
  
@@ -248,7 +247,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
              // NOTE: `Plugin::reset()` is called in `clap_plugin::start_processing()` instead of in
              //       this function
  
-@@ -1907,13 +1942,24 @@
+@@ -1907,13 +1944,24 @@
              true
          } else {
              false
@@ -274,7 +273,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
          wrapper.plugin.lock().deactivate();
      }
  
-@@ -1954,6 +2000,10 @@
+@@ -1954,6 +2002,10 @@
      ) -> clap_process_status {
          check_null_ptr!(CLAP_PROCESS_ERROR, plugin, (*plugin).plugin_data, process);
          let wrapper = &*((*plugin).plugin_data as *const Self);
@@ -285,7 +284,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
  
          // Panic on allocations if the `assert_process_allocs` feature has been enabled, and make
          // sure that FTZ is set up correctly
-@@ -2505,11 +2555,15 @@
+@@ -2505,11 +2557,15 @@
          } else {
              index + num_input_ports
          };
@@ -303,7 +302,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
              _ => CLAP_INVALID_ID,
          };
  
-@@ -3152,6 +3206,12 @@
+@@ -3152,6 +3208,12 @@
              return false;
          }
          let length = u64::from_le_bytes(length_bytes);
@@ -316,7 +315,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
  
          let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
          if !read_stream(&*stream, read_buffer.spare_capacity_mut()) {
-@@ -3167,6 +3227,12 @@
+@@ -3167,6 +3229,12 @@
                  let success = wrapper.set_state_inner(&mut state);
                  if success {
                      nih_trace!("Loaded state ({} bytes)", read_buffer.len());
@@ -329,10 +328,17 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/
                  }
  
                  success
-diff -ruN nih/src/wrapper/vst3/context.rs sosa/vendor/nih-plug/src/wrapper/vst3/context.rs
 --- nih/src/wrapper/vst3/context.rs	2026-10-12 06:48:40.417546109 +0000
-+++ sosa/vendor/nih-plug/src/wrapper/vst3/context.rs	2026-10-11 11:54:44.326565250 +0000
-@@ -158,32 +158,47 @@
++++ sosa/vendor/nih-plug/src/wrapper/vst3/context.rs	2026-10-12 14:51:40.837862795 +0000
+@@ -1,7 +1,6 @@
+ use atomic_refcell::AtomicRefMut;
+ use std::cell::Cell;
+ use std::collections::VecDeque;
+-use std::sync::atomic::Ordering;
+ use std::sync::Arc;
+ use vst3_sys::vst::IComponentHandler;
+ 
+@@ -158,32 +157,39 @@
      }
  
      unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
@@ -356,35 +362,28 @@ diff -ruN nih/src/wrapper/vst3/context.rs sosa/vendor/nih-plug/src/wrapper/vst3/
 -                                .map(|c| c.sample_rate),
 -                        );
 -                    }
+-
 +        crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_SET_CALLS);
 +        match self.inner.param_ptr_to_hash.get(&param) {
 +            Some(hash) => {
-+                // SosaTune: the plugin applies editor changes itself instead of relying on the
-+                // host to send them back to the processor (some hosts and plugin containers never
-+                // do, and then the controls appear dead):
-+                // - not processing, or the host stopped calling `process()` (transport stopped,
-+                //   REAPER's bypass...): apply right away;
-+                // - processing: queue the change, it is applied at the start of the next process
-+                //   call (never in the middle of one).
-+                let now_ns = self.inner.created_at.elapsed().as_nanos() as u64;
-+                let last_ns = self.inner.last_process_ns.load(Ordering::SeqCst);
-+                let idle = now_ns.saturating_sub(last_ns) > 150_000_000;
-+                if !self.inner.is_processing.load(Ordering::SeqCst) || idle {
-+                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_DIRECT);
-+                    self.inner.set_normalized_value_by_hash(
-+                        *hash,
-+                        normalized,
-+                        self.inner
-+                            .current_buffer_config
-+                            .load()
-+                            .map(|c| c.sample_rate),
-+                    );
-+                } else if self.inner.gui_param_queue.push((*hash, normalized)).is_err() {
-+                    nih_debug_assert_failure!("The editor parameter queue is full");
-+                } else {
-+                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_QUEUED);
-+                }
- 
++                // SosaTune: the plugin applies editor changes itself, right away, instead of
++                // relying on the host to send them back to the processor or on the next
++                // `process()` call. Some hosts and plugin containers never send them back, some
++                // stop calling `process()` (transport stopped, track inactive, REAPER's bypass),
++                // and right after the plugin is inserted the processing state can change while
++                // the editor is already open: in all of those cases the controls looked dead
++                // until the editor was reopened. The parameters are atomics and SosaTune reads
++                // them once per block, so a change from the editor thread is always safe.
++                crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_DIRECT);
++                self.inner.set_normalized_value_by_hash(
++                    *hash,
++                    normalized,
++                    self.inner
++                        .current_buffer_config
++                        .load()
++                        .map(|c| c.sample_rate),
++                );
++
 +                // Tell the host about the change (automation, undo, saving). If the host never
 +                // gave us a component handler the value has still been applied above.
 +                if let Some(handler) = &*self.inner.component_handler.borrow() {
@@ -403,7 +402,6 @@ diff -ruN nih/src/wrapper/vst3/context.rs sosa/vendor/nih-plug/src/wrapper/vst3/
          }
  
          #[cfg(debug_assertions)]
-diff -ruN nih/src/wrapper/vst3/inner.rs sosa/vendor/nih-plug/src/wrapper/vst3/inner.rs
 --- nih/src/wrapper/vst3/inner.rs	2026-10-12 06:48:40.417684769 +0000
 +++ sosa/vendor/nih-plug/src/wrapper/vst3/inner.rs	2026-10-11 11:54:44.326769999 +0000
 @@ -1,11 +1,12 @@
@@ -448,7 +446,6 @@ diff -ruN nih/src/wrapper/vst3/inner.rs sosa/vendor/nih-plug/src/wrapper/vst3/in
              // Some hosts, like the current version of Bitwig and Ardour at the time of writing,
              // will try using the plugin's default not yet initialized bus arrangement. Because of
              // that, we'll always initialize this configuration even before the host requests a
-diff -ruN nih/src/wrapper/vst3/wrapper.rs sosa/vendor/nih-plug/src/wrapper/vst3/wrapper.rs
 --- nih/src/wrapper/vst3/wrapper.rs	2026-10-12 06:48:40.417684769 +0000
 +++ sosa/vendor/nih-plug/src/wrapper/vst3/wrapper.rs	2026-10-11 11:54:44.326769999 +0000
 @@ -431,7 +431,14 @@

@@ -1,6 +1,7 @@
 //! Il correttore: unisce rilevamento (YIN), scelta della nota (scale) e
 //! spostamento dell'intonazione (phase vocoder). E' il "cervello" del plugin.
 
+use crate::formant::FormantFilter;
 use crate::scale::{hz_to_note, NoteSnapper, VoiceType};
 use crate::vocoder::{GrainPitch, PhaseVocoder};
 use crate::yin::YinDetector;
@@ -29,8 +30,15 @@ pub struct CorrectionSettings {
     /// Vibrato naturale (-1..1): negativo lo riduce, positivo lo aggiunge
     /// (anche con correzione robotica, che altrimenti lo cancellerebbe).
     pub vibrato: f32,
-    /// Spostamento delle formanti in semitoni: positivo = voce piu' "piccola",
-    /// negativo = voce piu' "grande", senza cambiare la nota.
+    /// Correzione delle formanti (il tasto Formant di Auto-Tune): `true` =
+    /// il timbro resta quello della voce anche spostando la nota (niente
+    /// "effetto scoiattolo" trasponendo); `false` = le formanti si spostano
+    /// insieme alla nota, come in un pitch shifter semplice.
+    pub preserve_formants: bool,
+    /// Spostamento delle formanti in semitoni (la manopola Throat: gola piu'
+    /// corta = positivo, voce piu' "piccola"; piu' lunga = negativo, voce
+    /// piu' "grande"), senza cambiare la nota. Agisce solo con
+    /// `preserve_formants`.
     pub formant: f32,
     /// Sensibilita' del rilevamento (0..1): piu' alta = riconosce anche voci
     /// con molta aria, ma con piu' rischio di errori.
@@ -56,6 +64,7 @@ impl Default for CorrectionSettings {
             humanize: 0.0,
             flex_tune: 0.0,
             vibrato: 0.0,
+            preserve_formants: true,
             formant: 0.0,
             tracking: 0.3,
             reference_hz: 440.0,
@@ -195,6 +204,10 @@ pub struct PitchCorrector {
     /// Entrambi pronti: cambiare modalita' durante la riproduzione non
     /// alloca memoria.
     zero: DelayShifter,
+    /// Low Latency: formanti riportate al loro posto dopo la testina.
+    formants: FormantFilter,
+    /// Di quanto spostare le formanti dopo la testina (cambia con dolcezza).
+    formant_warp: f32,
 
     /// Ultimi campioni (mono) per il rilevatore.
     mono: Vec<f32>,
@@ -281,6 +294,8 @@ impl PitchCorrector {
             detector,
             vocoder,
             zero,
+            formants: FormantFilter::new(sample_rate, channels),
+            formant_warp: 1.0,
             mono: vec![0.0; mono_len],
             mono_mask: mono_len - 1,
             frame,
@@ -370,6 +385,8 @@ impl PitchCorrector {
     pub fn reset(&mut self) {
         self.vocoder.reset();
         self.zero.reset();
+        self.formants.reset();
+        self.formant_warp = 1.0;
         self.mono.fill(0.0);
         self.countdown = self.hop;
         self.position = 0;
@@ -423,7 +440,11 @@ impl PitchCorrector {
         let mono_mask = self.mono_mask;
         let newest = self.position;
         let edge = VOICED_EDGE_MS * 0.001 * self.sample_rate as f64;
-        let formant = 2f32.powf(settings.formant.clamp(-12.0, 12.0) / 12.0);
+        // Throat: le formanti si spostano solo con la correzione delle formanti
+        // attiva. Senza, seguono la nota (formant = rapporto di pitch, vedi sotto).
+        let preserve = settings.preserve_formants;
+        let formant = if preserve { 2f32.powf(settings.formant.clamp(-12.0, 12.0) / 12.0) } else { 1.0 };
+        let with_formant = |g: GrainPitch| GrainPitch { formant: if preserve { formant } else { g.ratio }, ..g };
         let unvoiced = GrainPitch { period: self.unvoiced_period, ratio: 1.0, voiced: false, formant };
         // Centro dell'analisi piu' recente (per la latenza zero).
         let latest = &self.history[(self.history_head + HISTORY - 1) % HISTORY];
@@ -451,7 +472,7 @@ impl PitchCorrector {
                 // periodicita' manca il frame passa intatto, nel mezzo la
                 // correzione si attenua con dolcezza.
                 let Some((local, score)) = periodicity(mono, mono_mask, newest, here, g.period) else {
-                    return GrainPitch { formant, ..g };
+                    return with_formant(g);
                 };
                 let voicing = smoothstep(NOISE_SCORE, VOICE_SCORE, score);
                 if voicing <= 0.0 {
@@ -470,7 +491,7 @@ impl PitchCorrector {
                     g.period = local;
                 }
             }
-            GrainPitch { formant, ..g }
+            with_formant(g)
         };
         if self.hq {
             self.vocoder.process(&input[..channels], &mut output[..channels], |t| pitch_between(t, t));
@@ -501,6 +522,34 @@ impl PitchCorrector {
                 }
                 g
             });
+            // Formanti (vedi `formant.rs`): la testina le ha spostate insieme
+            // alla nota (del rapporto di pitch). Il filtro le misura sulla voce
+            // gia' spostata e le riporta dove erano (diviso il rapporto),
+            // oppure dove le vuole Throat. Con la correzione delle formanti
+            // spenta il filtro e' esattamente neutro, e lo e' anche quando la
+            // nota non si sposta: il suono della Low Latency resta quello.
+            let target = if preserve { formant / self.zero.current_ratio() as f32 } else { 1.0 };
+            // Il timbro e' misurato sugli ultimi ~24 ms. Verso il filtro
+            // neutro (warp = 1) si va subito: per esempio quando finisce una
+            // nota e arriva una consonante, che la testina non sposta. Verso
+            // una correzione piu' forte si va piano (~25 ms), il tempo perche'
+            // la misura descriva la voce nuova: all'attacco di una nota il
+            // filtro non applica il timbro di un attimo prima.
+            // Se il bersaglio sta dall'altra parte del neutro (la nota passa da
+            // sopra a sotto l'intonazione cantata) prima si torna al neutro.
+            let crossing = (target - 1.0) * (self.formant_warp - 1.0) < 0.0;
+            let goal = if crossing { 1.0 } else { target };
+            let toward_neutral = (goal - 1.0).abs() < (self.formant_warp - 1.0).abs();
+            let time = if toward_neutral { 0.002 } else { 0.025 };
+            self.formant_warp += (goal - self.formant_warp) * (1.0 / (time * self.sample_rate)).min(1.0);
+            let warp = self.formant_warp;
+            let out_mono = output[..channels].iter().sum::<f32>() / channels as f32;
+            self.formants.push(out_mono, warp);
+            for out in output.iter_mut().take(channels).enumerate() {
+                let (ch, y) = out;
+                let e = self.formants.whiten(ch, *y);
+                *y = self.formants.color(ch, e, *y);
+            }
         }
         frame[..channels].copy_from_slice(&output[..channels]);
 

@@ -16,6 +16,8 @@
 //!   --flex 0            0-100: Flex-Tune, corregge solo vicino alla nota
 //!   --vibrato 0         da -100 (toglie) a +100 (aggiunge) il vibrato naturale
 //!   --formanti 0        spostamento del timbro in semitoni (da -12 a +12)
+//!   --throat 100        lunghezza della gola come in Auto-Tune (50-180, 100 = voce originale)
+//!   --correzione-formanti si   timbro preservato spostando la nota (no = formanti con la nota)
 //!   --sensibilita 30    0-100: piu' alta = riconosce anche voci con molta aria
 //!   --la 440            accordatura: frequenza del La4 in Hz (400-480)
 //!   --modo bassa        bassa (latenza minima) | hq (piu' preciso, piu' latenza)
@@ -94,7 +96,7 @@ fn fail(message: &str) -> ! {
     eprintln!(
         "Uso: process <ingresso.wav> <uscita.wav> [--tonalita C] [--scala maggiore] [--velocita 20] \
          [--quantita 100] [--trasponi 0] [--voce alto] [--humanize 0] [--flex 0] [--vibrato 0] \
-         [--formanti 0] [--sensibilita 30] [--pitch file.csv]"
+         [--formanti 0] [--throat 100] [--correzione-formanti si] [--sensibilita 30] [--pitch file.csv]"
     );
     exit(1);
 }
@@ -126,6 +128,10 @@ fn main() {
                 "flex" | "flex-tune" => settings.flex_tune = (number() / 100.0).clamp(0.0, 1.0),
                 "vibrato" => settings.vibrato = (number() / 100.0).clamp(-1.0, 1.0),
                 "formanti" | "formant" => settings.formant = number().clamp(-12.0, 12.0),
+                "throat" | "gola" => settings.formant = 12.0 * (100.0 / number().clamp(50.0, 180.0)).log2(),
+                "correzione-formanti" | "formant-correction" => {
+                    settings.preserve_formants = !matches!(value.to_lowercase().as_str(), "no" | "off" | "0" | "false")
+                }
                 "sensibilita" | "tracking" => settings.tracking = (number() / 100.0).clamp(0.0, 1.0),
                 "la" | "a4" => settings.reference_hz = number().clamp(400.0, 480.0),
                 "modo" | "mode" => hq = matches!(value.to_lowercase().as_str(), "hq" | "alta" | "high"),

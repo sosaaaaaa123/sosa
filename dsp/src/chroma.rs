@@ -177,31 +177,53 @@ fn correlation(a: &[f32; 12], b: &[f32; 12]) -> f32 {
     ab / (aa * bb).sqrt().max(1e-12)
 }
 
+/// La tonalita' relativa (stesse note): La minore per Do maggiore e viceversa.
+pub fn relative_key(tonic: usize, minor: bool) -> (usize, bool) {
+    if minor {
+        ((tonic + 3) % 12, false)
+    } else {
+        ((tonic + 9) % 12, true)
+    }
+}
+
 /// La tonalita' piu' probabile per un cromagramma: (tonica 0..11, minore?,
 /// affidabilita' 0..1). `None` se il cromagramma e' vuoto o piatto.
+///
+/// L'affidabilita' guarda quanto la migliore stacca le altre tonalita',
+/// esclusa la sua relativa: Do maggiore e La minore hanno le stesse note, e
+/// per l'intonazione la scala e' la stessa (sbagliare tra le due non cambia
+/// nessuna nota corretta).
 pub fn key_from_chroma(chroma: &[f32; 12]) -> Option<(usize, bool, f32)> {
     let total: f32 = chroma.iter().sum();
     if total <= 0.0 {
         return None;
     }
+    let mut scores = [[0.0f32; 2]; 12];
     let mut best = (0usize, false, f32::MIN);
-    let mut second = f32::MIN;
-    for tonic in 0..12 {
+    for (tonic, row) in scores.iter_mut().enumerate() {
         for (minor, profile) in [(false, &MAJOR_PROFILE), (true, &MINOR_PROFILE)] {
             let rotated: [f32; 12] = std::array::from_fn(|i| profile[(i + 12 - tonic) % 12]);
             let r = correlation(chroma, &rotated);
+            row[minor as usize] = r;
             if r > best.2 {
-                second = best.2;
                 best = (tonic, minor, r);
-            } else if r > second {
-                second = r;
             }
         }
     }
     if best.2 < 0.3 {
         return None;
     }
-    // Affidabile se somiglia bene e stacca la seconda scelta.
+    let relative = relative_key(best.0, best.1);
+    let mut second = f32::MIN;
+    for (tonic, row) in scores.iter().enumerate() {
+        for minor in [false, true] {
+            if (tonic, minor) == (best.0, best.1) || (tonic, minor) == relative {
+                continue;
+            }
+            second = second.max(row[minor as usize]);
+        }
+    }
+    // Affidabile se somiglia bene e stacca le altre tonalita'.
     let confidence = (((best.2 - second) / 0.08).clamp(0.0, 1.0) * ((best.2 - 0.3) / 0.4).clamp(0.0, 1.0)).sqrt();
     Some((best.0, best.1, confidence))
 }
@@ -268,6 +290,73 @@ mod tests {
         let d = [62.0, 66.0, 69.0];
         let audio = chords(sr, &[gm, cm, d, gm, gm, cm, d, gm], 1.0);
         assert_eq!(detect(&audio, sr), (7, true), "Sol minore");
+    }
+
+    /// Una base "vera": accordi, basso 808, cassa, rullante e charleston
+    /// (la batteria piu' forte degli accordi).
+    fn beat(sr: f32, chords: &[[f32; 3]], seconds: f32) -> Vec<f32> {
+        let n = (sr * seconds) as usize;
+        let mut seed = 12345u32;
+        let mut noise = move || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 9) as f32 / (1u32 << 23) as f32 - 0.5
+        };
+        let mut prev_noise = 0.0;
+        (0..n)
+            .map(|i| {
+                let t = i as f32 / sr;
+                let chord = chords[(t as usize) % chords.len()];
+                let tc = t.fract();
+                // Accordi (pad).
+                let mut pad = 0.0;
+                for &note in &chord {
+                    let f = note_to_hz(note);
+                    for h in 1..6 {
+                        pad += (2.0 * PI * f * h as f32 * t).sin() / (h * h) as f32;
+                    }
+                }
+                // 808 sulla fondamentale, due ottave sotto.
+                let bass = (2.0 * PI * note_to_hz(chord[0] - 24.0) * t).sin() * (-tc * 2.0).exp();
+                // Batteria a 120 bpm.
+                let beat_t = (t * 2.0).fract() / 2.0;
+                let beat_n = (t * 2.0) as usize;
+                let kick_f = 45.0 + 75.0 * (-beat_t * 30.0).exp();
+                let kick = (2.0 * PI * kick_f * beat_t).sin() * (-beat_t * 12.0).exp();
+                let w = noise();
+                let snare = if beat_n % 2 == 1 { w * (-beat_t * 25.0).exp() } else { 0.0 };
+                let hat_t = (t * 4.0).fract() / 4.0;
+                let hat = (w - prev_noise) * (-hat_t * 80.0).exp();
+                prev_noise = w;
+                0.08 * pad + 0.35 * bass + 0.6 * kick + 0.5 * snare + 0.3 * hat
+            })
+            .collect()
+    }
+
+    #[test]
+    fn finds_the_key_of_a_beat_with_drums() {
+        let sr = 44100.0;
+        // Sol minore: Gm - Eb - Bb - F.
+        let gm = [55.0, 58.0, 62.0];
+        let eb = [51.0, 55.0, 58.0];
+        let bb = [58.0, 62.0, 65.0];
+        let f = [53.0, 57.0, 60.0];
+        let audio = beat(sr, &[gm, eb, bb, f], 8.0);
+        let mut a = ChromaAnalyzer::new(sr);
+        for &x in &audio {
+            a.process(x);
+        }
+        let (tonic, minor, confidence) = key_from_chroma(&a.chroma()).expect("tonalita'");
+        // Sol minore o la sua relativa Si bemolle maggiore (stesse note).
+        assert!((tonic, minor) == (7, true) || (tonic, minor) == (10, false), "{tonic} {minor}");
+        assert!(confidence >= 0.5, "affidabilita' {confidence}: AutoKey non la imposterebbe");
+        assert!(a.seconds() > 6.0);
+    }
+
+    #[test]
+    fn relative_keys_have_the_same_notes() {
+        assert_eq!(relative_key(0, false), (9, true));
+        assert_eq!(relative_key(9, true), (0, false));
+        assert_eq!(relative_key(7, true), (10, false));
     }
 
     #[test]
