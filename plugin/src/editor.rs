@@ -2277,12 +2277,6 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     // delle formanti, la manopola cambia la lunghezza della gola (solo con il
     // tasto acceso).
     let formant_on = params.formant_correction.value();
-    if small_toggle(ui, painter, g, FORMANT_TOGGLE, "Formant", formant_on,
-        "Formant (come in Auto-Tune): acceso, il timbro della voce resta naturale anche \
-         correggendo o trasponendo molto (niente \"effetto scoiattolo\"). Spento, le \
-         formanti si spostano insieme alla nota. Funziona in HQ e in Low Latency.") {
-        set_param(setter, &params.formant_correction, !formant_on);
-    }
     let throat = params.throat.value();
     knob_with_box_ex(
         ui,
@@ -2304,6 +2298,13 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         formant_on,
         state,
     );
+    // Il tasto dopo la manopola: sta "sopra" la sua zona di trascinamento.
+    if small_toggle(ui, painter, g, FORMANT_TOGGLE, "Formant", formant_on,
+        "Formant (come in Auto-Tune): acceso, il timbro della voce resta naturale anche \
+         correggendo o trasponendo molto (niente \"effetto scoiattolo\"). Spento, le \
+         formanti si spostano insieme alla nota. Funziona in HQ e in Low Latency.") {
+        set_param(setter, &params.formant_correction, !formant_on);
+    }
 }
 
 // --- Menu a tendina ------------------------------------------------------------------

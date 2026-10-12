@@ -18,8 +18,9 @@ resolver = "2"
 # - CLAP: ingresso mono -> uscita stereo dichiarato correttamente
 # - CLAP e VST3: dati di stato corrotti non fanno piu' chiudere il DAW
 # - VST3: le manopole funzionano anche negli host/contenitori che non rimandano le modifiche
-# - CLAP e AU (Logic Pro): le manopole funzionano anche quando l'host non elabora l'audio
-#   (traccia vuota, trasporto fermo): la modifica viene applicata subito
+# - CLAP, AU (Logic Pro) e VST3: le modifiche fatte nella finestra del plugin vengono
+#   applicate subito, qualunque cosa faccia l'host (traccia vuota, trasporto fermo, plugin
+#   appena inserito): le manopole non restano mai "morte"
 [patch."https://github.com/robbert-vdh/nih-plug.git"]
 nih_plug = { path = "vendor/nih-plug" }
 
