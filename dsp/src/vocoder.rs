@@ -15,12 +15,16 @@
 //!    per la frequenza nuova, e le righe della sua zona la seguono rigidamente
 //!    ("identity phase locking", Laroche e Dolson 1999): cosi' ogni armonica
 //!    resta un'onda pulita, senza l'effetto "metallico" o "in una stanza"
-//!    dei phase vocoder semplici;
+//!    dei phase vocoder semplici. In piu' le armoniche (fino a 5 kHz)
+//!    restano in fase tra loro: l'armonica h gira di h volte la fondamentale,
+//!    e la forma d'onda di ogni ciclo della voce si conserva;
 //! 5. il **timbro** (l'inviluppo spettrale, cioe' le formanti) viene misurato
 //!    con il "true envelope" (cepstrum ripetuto che segue le cime delle
 //!    armoniche) e rimesso al suo posto dopo lo spostamento: la voce cambia
 //!    nota ma non diventa "da scoiattolo" o "da orco";
-//! 6. torna nel tempo (FFT inversa) e somma i pezzi sovrapposti.
+//! 6. torna nel tempo (FFT inversa) e somma i pezzi sovrapposti, tenendo
+//!    di ogni pezzo solo i 16 ms centrali (finestra di sintesi corta): nei
+//!    passaggi tra le note non si mescolano pezzi spostati in modo diverso.
 //!
 //! Dove non c'e' una nota (consonanti, respiri) e sugli attacchi bruschi lo
 //! spettro passa **identico**: la ricostruzione e' perfetta, niente sbavature
@@ -72,6 +76,9 @@ struct ChannelState {
     has_prev: bool,
     /// Energia media recente (per riconoscere gli attacchi).
     energy: f32,
+    /// Rotazione accumulata della fondamentale: l'armonica `h` gira di
+    /// `h` volte questo angolo (vedi `HARMONIC_LOCK_HZ`).
+    theta: f32,
 }
 
 pub struct PhaseVocoder {
@@ -94,6 +101,10 @@ pub struct PhaseVocoder {
     position: u64,
     countdown: usize,
     states: Vec<ChannelState>,
+    /// Righe FFT sotto `HARMONIC_LOCK_HZ`.
+    harmonic_lock_bins: f32,
+    /// Lunghezza della finestra di sintesi (campioni, pari).
+    synth_len: usize,
     /// Somma delle finestre (analisi x sintesi) caduta su ogni campione in
     /// uscita: dividendo per lei la ricostruzione e' esatta qualunque sia la
     /// lunghezza delle finestre.
@@ -101,6 +112,7 @@ pub struct PhaseVocoder {
 
     // Memoria di lavoro (allocata una volta sola).
     window: Vec<f32>,
+    synth_window: Vec<f32>,
     spectrum: Vec<Complex>,
     out_spectrum: Vec<Complex>,
     env_buf: Vec<Complex>,
@@ -126,6 +138,25 @@ impl PhaseVocoder {
     const HOP_S: f32 = 0.0053;
     /// Quanti periodi della voce stanno in una finestra.
     const PERIODS_PER_WINDOW: f32 = 6.0;
+    /// Finestra di sintesi: 16 ms al centro della finestra di analisi. Ogni
+    /// pezzo in uscita contiene cosi' solo la voce vicina al suo centro,
+    /// spostata con il rapporto giusto per quel punto. Con la finestra lunga
+    /// (fino a 64 ms) nei passaggi tra le note si sommavano pezzi spostati con
+    /// rapporti diversi: tante copie appena stonate tra loro, una risonanza
+    /// metallica sui medio-alti (misurata: armoniche del basso fino a 1,8 dB
+    /// fuori posto nei passaggi, ora 0,8).
+    const SYNTH_WINDOW_S: f32 = 0.016;
+    /// Sotto questa frequenza le armoniche restano "in fase" tra loro (vedi
+    /// `process_frame`): la forma d'onda della voce si conserva come in un
+    /// pitch shifter nel tempo. Piu' in alto ogni armonica gira per conto
+    /// suo: li' i piccoli errori, moltiplicati per il numero dell'armonica,
+    /// darebbero un ronzio alla velocita' dei frame.
+    const HARMONIC_LOCK_HZ: f32 = 5000.0;
+    /// Picchi considerati fino a 100 dB sotto il piu' forte. (Con 70 dB le
+    /// armoniche deboli in alto restavano fuori e venivano spostate tutte
+    /// insieme all'ultima armonica trovata, fuori posto: un fruscio
+    /// metallico sopra i 5 kHz.)
+    const PEAK_FLOOR: f32 = 1e-5;
     /// Iterazioni del "true envelope" (inviluppo che passa sopra le armoniche).
     const ENVELOPE_ITERATIONS: usize = 4;
     /// Ad ogni iterazione l'inviluppo sale del doppio di quanto le armoniche
@@ -156,6 +187,7 @@ impl PhaseVocoder {
                 rotation: vec![0.0; half + 1],
                 has_prev: false,
                 energy: 0.0,
+                theta: 0.0,
             })
             .collect();
         Self {
@@ -167,6 +199,8 @@ impl PhaseVocoder {
             max_window,
             window_len: max_window as f32,
             periods_per_window: Self::PERIODS_PER_WINDOW,
+            harmonic_lock_bins: Self::HARMONIC_LOCK_HZ / sample_rate * n_fft as f32,
+            synth_len: even(Self::SYNTH_WINDOW_S).max(3 * hop).min(min_window),
             fft: Fft::new(n_fft),
             env_fft: Fft::new(n_env),
             n_env,
@@ -175,6 +209,7 @@ impl PhaseVocoder {
             states,
             norm: vec![0.0; 2 * n_fft],
             window: vec![0.0; max_window],
+            synth_window: vec![0.0; max_window],
             spectrum: vec![Complex::default(); n_fft],
             out_spectrum: vec![Complex::default(); n_fft],
             env_buf: vec![Complex::default(); n_env],
@@ -213,6 +248,7 @@ impl PhaseVocoder {
             s.rotation.fill(0.0);
             s.has_prev = false;
             s.energy = 0.0;
+            s.theta = 0.0;
         }
     }
 
@@ -267,7 +303,7 @@ impl PhaseVocoder {
                 let mask = 2 * n - 1;
                 let base = center as usize + self.max_window - len / 2;
                 for i in 0..len {
-                    self.norm[(base + i) & mask] += self.window[i] * self.window[i];
+                    self.norm[(base + i) & mask] += self.window[i] * self.synth_window[i];
                 }
             }
         }
@@ -302,6 +338,18 @@ impl PhaseVocoder {
             let x = PI * (i as f32 + 0.5) / len as f32;
             let s = x.sin();
             self.window[i] = s * s;
+        }
+        // Finestra di sintesi: Hann di `synth_len` campioni al centro.
+        let short = self.synth_len.min(len);
+        let offset = (len - short) / 2;
+        for i in 0..len {
+            self.synth_window[i] = if i < offset || i >= offset + short {
+                0.0
+            } else {
+                let x = PI * ((i - offset) as f32 + 0.5) / short as f32;
+                let s = x.sin();
+                s * s
+            };
         }
     }
 
@@ -435,12 +483,14 @@ impl PhaseVocoder {
             // Niente nota (o attacco): lo spettro passa identico e le
             // rotazioni ripartono da zero.
             state.rotation.fill(0.0);
+            state.theta = 0.0;
         }
         let passthrough = !pitch.voiced || (!shifting && state.prev_rotation.iter().all(|&r| r == 0.0)) || onset;
 
         if passthrough {
             self.out_spectrum.copy_from_slice(&self.spectrum);
             self.states[ch].rotation.fill(0.0);
+            self.states[ch].theta = 0.0;
         } else {
             // 2) Inviluppo spettrale (formanti).
             let need_env = (ratio - 1.0).abs() > 1e-5 || (formant - 1.0).abs() > 1e-5;
@@ -467,7 +517,7 @@ impl PhaseVocoder {
             let state = &mut self.states[ch];
             let reach = ((2 * n) / len).max(2);
             let max_mag = self.magnitude.iter().cloned().fold(0.0f32, f32::max);
-            let floor = max_mag * 3e-4;
+            let floor = max_mag * Self::PEAK_FLOOR;
             self.peaks.clear();
             self.peak_bin.clear();
             let mut k = reach;
@@ -500,8 +550,21 @@ impl PhaseVocoder {
             if self.peaks.is_empty() {
                 self.out_spectrum.copy_from_slice(&self.spectrum);
                 state.rotation.fill(0.0);
+                state.theta = 0.0;
             }
             let count = self.peaks.len();
+            // Armoniche "in fase" tra loro: la fondamentale accumula la sua
+            // rotazione (theta) e l'armonica h gira di h x theta. Cosi' la
+            // forma d'onda di ogni ciclo della voce (l'impulso delle corde
+            // vocali) resta la stessa a nota spostata. Se ogni armonica
+            // accumulasse la sua rotazione per conto suo, i piccoli errori di
+            // misura le sfaserebbero piano piano tra loro: la voce perde la
+            // forma e diventa "phasey", metallica (misurato sulle voci
+            // maschili: somiglianza della forma d'onda con la voce ideale da
+            // 0,95 a 0,99).
+            let f0_bins = n as f32 / pitch.period.max(1.0);
+            state.theta = wrap(state.theta + hop * TAU / pitch.period.max(1.0) * (ratio - 1.0));
+            let theta = state.theta;
             let mut lo = 0usize;
             for p in 0..count {
                 let kp = self.peaks[p];
@@ -530,7 +593,15 @@ impl PhaseVocoder {
                     // La fase dell'armonica spostata gira alla velocita' della
                     // frequenza nuova: la rotazione accumula la differenza.
                     let omega = TAU * true_bin / n as f32;
-                    let rot = wrap(state.prev_rotation[kp] + hop * omega * (ratio - 1.0));
+                    let h = (true_bin / f0_bins).round();
+                    let harmonic = h >= 1.0
+                        && true_bin <= self.harmonic_lock_bins
+                        && (true_bin - h * f0_bins).abs() < 0.35 * f0_bins;
+                    let rot = if harmonic {
+                        wrap(h * theta)
+                    } else {
+                        wrap(state.prev_rotation[kp] + hop * omega * (ratio - 1.0))
+                    };
                     for k in lo..=hi {
                         state.rotation[k] = rot;
                         let ph = self.phase[k] + rot;
@@ -575,7 +646,7 @@ impl PhaseVocoder {
         self.fft.process(&mut self.out_spectrum, true);
         let scale = 1.0 / n as f32;
         for i in 0..len {
-            self.frame_out[i] = self.out_spectrum[(i + n - len / 2) & (n - 1)].re * scale * self.window[i];
+            self.frame_out[i] = self.out_spectrum[(i + n - len / 2) & (n - 1)].re * scale * self.synth_window[i];
         }
     }
 }

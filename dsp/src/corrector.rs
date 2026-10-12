@@ -220,6 +220,8 @@ pub struct PitchCorrector {
     snapper: NoteSnapper,
     /// Correzione attuale in semitoni (smussata secondo la velocita').
     correction: f32,
+    /// Primo stadio del filtro della correzione (vedi `approach`).
+    correction_mid: f32,
     was_voiced: bool,
     /// Per brevi "buchi" nel rilevamento in mezzo a una nota manteniamo la
     /// correzione precedente invece di toglierla di colpo.
@@ -292,6 +294,7 @@ impl PitchCorrector {
             history_head: 0,
             snapper: NoteSnapper::default(),
             correction: 0.0,
+            correction_mid: 0.0,
             was_voiced: false,
             hold_left: 0,
             hold_samples: (sample_rate * 0.03) as usize,
@@ -374,6 +377,7 @@ impl PitchCorrector {
         self.history_head = 0;
         self.snapper.reset();
         self.correction = 0.0;
+        self.correction_mid = 0.0;
         self.was_voiced = false;
         self.hold_left = 0;
         self.voiced_run = 0;
@@ -621,7 +625,8 @@ impl PitchCorrector {
             // Da quanto si sta cantando questa nota? (serve a Humanize e al vibrato)
             let reference = target.map_or(note, |t| t as f32);
             // Inizio di una nota dopo una pausa (o una consonante, anche breve).
-            let starting = !self.was_voiced || fresh || young;
+            // Nello stile classico anche i primi 30 ms ripartono dalla voce.
+            let starting = !self.was_voiced || fresh || (young && classic);
             if target != self.current_target || !self.was_voiced {
                 self.current_target = target;
                 self.note_age = 0.0;
@@ -639,6 +644,16 @@ impl PitchCorrector {
                 // Stile classico: la nota parte com'e' stata cantata e
                 // scivola sulla nota giusta con la velocita' scelta.
                 self.correction = if settings.retune_ms < 1.0 { desired } else { 0.0 };
+                self.correction_mid = self.correction;
+            } else if young && settings.retune_ms >= 1.0 {
+                // Primi 30 ms della nota: la nota si sceglie di nuovo a ogni
+                // analisi (le prime letture sono disturbate dall'attacco) e la
+                // correzione la raggiunge in ~8 ms. Prima ci saltava sopra di
+                // colpo: se nell'attacco la nota scelta cambiava (voce che
+                // sale "da sotto"), l'uscita faceva un gradino anche di due
+                // semitoni in 5 ms, un piccolo "blip" sulla nota.
+                let keep_natural = ((settings.retune_ms - 60.0) / 240.0).clamp(0.0, 1.0);
+                self.approach(desired * (1.0 - keep_natural), 8.0);
             } else if starting {
                 // Una nota che parte dopo una pausa parte gia' intonata: la
                 // velocita' di correzione vale per i passaggi da una nota
@@ -648,6 +663,7 @@ impl PitchCorrector {
                 // po' dell'attacco originale.
                 let keep_natural = ((settings.retune_ms - 60.0) / 240.0).clamp(0.0, 1.0);
                 self.correction = desired * (1.0 - keep_natural);
+                self.correction_mid = self.correction;
             }
 
             // Humanize: sulle note tenute (oltre ~0,15 s) la velocita' rallenta,
@@ -664,12 +680,9 @@ impl PitchCorrector {
             lock = weight * (1.0 - lock_ms / 80.0).clamp(0.0, 1.0);
             if retune_ms < 1.0 {
                 self.correction = desired;
+                self.correction_mid = desired;
             } else {
-                // Filtro "a un polo": si avvicina al bersaglio esponenzialmente,
-                // arrivando a ~95% in `retune_ms` millisecondi.
-                let time_constant = retune_ms * 0.001 / 3.0 * self.sample_rate;
-                let alpha = 1.0 - (-(self.hop as f32) / time_constant).exp();
-                self.correction += alpha * (desired - self.correction);
+                self.approach(desired, retune_ms);
             }
 
             // Vibrato naturale: lo isoliamo con il passa-banda e lo aggiungiamo
@@ -717,6 +730,7 @@ impl PitchCorrector {
             self.prev_analysis_voiced = false;
             self.current_target = None;
             self.correction = 0.0;
+            self.correction_mid = 0.0;
             period = self.unvoiced_period;
             ratio = 1.0;
             voiced = false;
@@ -736,6 +750,19 @@ impl PitchCorrector {
 }
 
 impl PitchCorrector {
+    /// Avvicina la correzione a `target` in modo che arrivi al ~95% in `ms`
+    /// millisecondi. Sono due filtri "a un polo" in fila: il passaggio da una
+    /// nota all'altra parte morbido e arriva morbido (una curva a S). Con un
+    /// filtro solo la correzione partiva di scatto (meta' del salto nei primi
+    /// 5 ms): un angolo nell'intonazione, che si sente come una piccola
+    /// risonanza all'inizio di ogni cambio di nota.
+    fn approach(&mut self, target: f32, ms: f32) {
+        let time_constant = ms * 0.001 / 4.74 * self.sample_rate;
+        let alpha = 1.0 - (-(self.hop as f32) / time_constant).exp();
+        self.correction_mid += alpha * (target - self.correction_mid);
+        self.correction += alpha * (self.correction_mid - self.correction);
+    }
+
     /// "Lampi" del rilevatore: a cavallo di una consonante o all'attacco di
     /// una parola capita che una o due analisi leggano la nota un'ottava (o
     /// piu') sopra o sotto, isolate tra due pause. Con quel periodo sbagliato
