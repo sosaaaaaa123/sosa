@@ -21,7 +21,8 @@
 //! 5. il **timbro** (l'inviluppo spettrale, cioe' le formanti) viene misurato
 //!    con il "true envelope" (cepstrum ripetuto che segue le cime delle
 //!    armoniche) e rimesso al suo posto dopo lo spostamento: la voce cambia
-//!    nota ma non diventa "da scoiattolo" o "da orco";
+//!    nota ma non diventa "da scoiattolo" o "da orco". Con Throat le
+//!    formanti si spostano apposta (vedi `formant_shift`);
 //! 6. torna nel tempo (FFT inversa) e somma i pezzi sovrapposti, tenendo
 //!    di ogni pezzo solo i 16 ms centrali (finestra di sintesi corta): nei
 //!    passaggi tra le note non si mescolano pezzi spostati in modo diverso.
@@ -79,6 +80,10 @@ struct ChannelState {
     /// Rotazione accumulata della fondamentale: l'armonica `h` gira di
     /// `h` volte questo angolo (vedi `HARMONIC_LOCK_HZ`).
     theta: f32,
+    /// Inviluppo (logaritmico) lisciato nel tempo, usato solo per spostare
+    /// le formanti (Throat), e da quanti frame non lo si aggiorna.
+    formant_env: Vec<f32>,
+    formant_age: usize,
 }
 
 pub struct PhaseVocoder {
@@ -121,7 +126,16 @@ pub struct PhaseVocoder {
     magnitude: Vec<f32>,
     phase: Vec<f32>,
     log_env: Vec<f32>,
-    target_env: Vec<f32>,
+    /// Throat: guadagno (logaritmico) per ogni riga in uscita.
+    formant_gain: Vec<f32>,
+    /// Throat: quanto l'inviluppo lisciato segue quello nuovo a ogni frame
+    /// (per ogni riga) e quanto pesa lo spostamento (1 fino a 7 kHz, poi 0).
+    formant_follow: Vec<f32>,
+    formant_weight: Vec<f32>,
+    /// Throat: dopo quanti frame senza nota l'inviluppo lisciato riparte da capo.
+    formant_hold: usize,
+    /// Throat: righe (da, a) su cui si misura il livello medio dell'inviluppo.
+    formant_level_bins: (usize, usize),
     peaks: Vec<usize>,
     peak_bin: Vec<f32>,
     frame_out: Vec<f32>,
@@ -163,6 +177,32 @@ impl PhaseVocoder {
     /// gli passano sopra: arriva sulle cime in meno passaggi (con 4 iterazioni
     /// e' preciso come con 8 senza accelerazione).
     const ENVELOPE_ACCEL: f32 = 2.0;
+    /// Throat (spostamento delle formanti): lisciatura nel tempo
+    /// dell'inviluppo da spostare. La misura del timbro su una voce vera
+    /// cambia di circa 1 dB da un frame all'altro (5 ms) anche su una nota
+    /// ferma: e' rumore di misura, non la bocca che si muove. Spostata cosi'
+    /// com'era, ogni frequenza riceveva il tremolio di un'altra: voce
+    /// "granulosa", soprattutto spostando di molti semitoni (tremolio misurato
+    /// sulle bande da ~0,52 a ~0,23 dB tra un frame e l'altro). Sotto 1,5 kHz
+    /// (prima e seconda formante, quelle delle vocali) si segue in fretta
+    /// per non impastare le parole; sopra 4 kHz (la "gola", che cambia poco)
+    /// si liscia di piu'.
+    const FORMANT_SMOOTH_LOW_S: f32 = 0.020;
+    const FORMANT_SMOOTH_HIGH_S: f32 = 0.100;
+    const FORMANT_SMOOTH_FROM_HZ: f32 = 1500.0;
+    const FORMANT_SMOOTH_TO_HZ: f32 = 4000.0;
+    /// Throat: sopra 7 kHz lo spostamento sfuma fino a sparire a 14 kHz. La'
+    /// non ci sono formanti ma l'aria e le "s": spostandole in alto
+    /// diventavano un fruscio forte (+10-15 dB sopra i 16 kHz), in basso
+    /// la voce perdeva brillantezza.
+    const FORMANT_FADE_HZ: f32 = 7000.0;
+    /// Throat: le spinte verso l'alto si ammorbidiscono (al massimo ~20 dB,
+    /// 10 dB diventano 9). Riempire una valle tra due formanti alza anche il
+    /// rumore che c'era dentro: spostando molto, quei punti diventavano ruvidi.
+    const FORMANT_MAX_BOOST: f32 = 20.0 / 8.685_89;
+    /// Throat: in un buco senza nota piu' corto di cosi' l'inviluppo lisciato
+    /// resta valido (la voce riconosciuta a tratti non lo fa ripartire ogni volta).
+    const FORMANT_HOLD_S: f32 = 0.050;
 
     pub fn new(channels: usize, sample_rate: f32) -> Self {
         Self::with_windows(channels, sample_rate, Self::MIN_WINDOW_S, Self::MAX_WINDOW_S)
@@ -188,6 +228,25 @@ impl PhaseVocoder {
                 has_prev: false,
                 energy: 0.0,
                 theta: 0.0,
+                formant_env: vec![0.0; half + 1],
+                formant_age: usize::MAX,
+            })
+            .collect();
+        let follow = |seconds: f32| 1.0 - (-(hop as f32) / (seconds * sample_rate)).exp();
+        let bin_hz = sample_rate / n_fft as f32;
+        let formant_follow = (0..=half)
+            .map(|k| {
+                let x = ((k as f32 * bin_hz - Self::FORMANT_SMOOTH_FROM_HZ)
+                    / (Self::FORMANT_SMOOTH_TO_HZ - Self::FORMANT_SMOOTH_FROM_HZ))
+                    .clamp(0.0, 1.0);
+                let x = x * x * (3.0 - 2.0 * x);
+                follow(Self::FORMANT_SMOOTH_LOW_S + (Self::FORMANT_SMOOTH_HIGH_S - Self::FORMANT_SMOOTH_LOW_S) * x)
+            })
+            .collect();
+        let formant_weight = (0..=half)
+            .map(|k| {
+                let octaves = ((k as f32 * bin_hz).max(1.0) / Self::FORMANT_FADE_HZ).log2().clamp(0.0, 1.0);
+                0.5 + 0.5 * (PI * octaves).cos()
             })
             .collect();
         Self {
@@ -218,7 +277,14 @@ impl PhaseVocoder {
             magnitude: vec![0.0; half + 1],
             phase: vec![0.0; half + 1],
             log_env: vec![0.0; half + 1],
-            target_env: vec![0.0; half + 1],
+            formant_gain: vec![0.0; half + 1],
+            formant_follow,
+            formant_weight,
+            formant_hold: ((Self::FORMANT_HOLD_S * sample_rate) as usize / hop).max(1),
+            formant_level_bins: (
+                ((200.0 / bin_hz) as usize).clamp(1, half - 1),
+                ((4000.0 / bin_hz) as usize).clamp(2, half),
+            ),
             peaks: Vec::with_capacity(half),
             peak_bin: Vec::with_capacity(half),
             frame_out: vec![0.0; max_window],
@@ -249,6 +315,7 @@ impl PhaseVocoder {
             s.has_prev = false;
             s.energy = 0.0;
             s.theta = 0.0;
+            s.formant_age = usize::MAX;
         }
     }
 
@@ -293,6 +360,8 @@ impl PhaseVocoder {
                         b.rotation.copy_from_slice(&a.rotation);
                         b.has_prev = a.has_prev;
                         b.energy = a.energy;
+                        b.formant_env.copy_from_slice(&a.formant_env);
+                        b.formant_age = a.formant_age;
                         self.add_frame(1, center, len);
                     } else {
                         self.process_frame(ch, center, len, pitch);
@@ -443,6 +512,47 @@ impl PhaseVocoder {
         }
     }
 
+    /// Throat: guadagno per ogni riga in uscita che sposta le formanti
+    /// (l'inviluppo letto `formant` volte piu' in basso: >1 voce piu' piccola,
+    /// <1 piu' grande). Usa l'inviluppo lisciato nel tempo, sfuma sopra 7 kHz
+    /// e ammorbidisce le spinte troppo forti (vedi le costanti `FORMANT_*`).
+    fn formant_shift(&mut self, ch: usize, formant: f32) {
+        let half = self.half;
+        // Si liscia la forma dell'inviluppo, non il volume: il livello medio
+        // (che sale e scende a ogni sillaba, uguale per tutte le frequenze) si
+        // toglie prima. Altrimenti, con lisciature diverse tra bassi e acuti,
+        // negli attacchi e nelle code delle note il guadagno sbaglierebbe.
+        let (lo, hi) = (self.formant_level_bins.0, self.formant_level_bins.1);
+        let level = self.log_env[lo..hi].iter().sum::<f32>() / (hi - lo) as f32;
+        let state = &mut self.states[ch];
+        if state.formant_age > self.formant_hold {
+            for k in 0..=half {
+                state.formant_env[k] = self.log_env[k] - level;
+            }
+        } else {
+            for k in 0..=half {
+                state.formant_env[k] += self.formant_follow[k] * (self.log_env[k] - level - state.formant_env[k]);
+            }
+        }
+        state.formant_age = 0;
+        let env = &state.formant_env;
+        for k in 0..=half {
+            let src = k as f32 / formant;
+            let i = src.floor() as usize;
+            let moved = if i >= half {
+                env[half]
+            } else {
+                let f = src - i as f32;
+                env[i] * (1.0 - f) + env[i + 1] * f
+            };
+            let mut gain = (moved - env[k]) * self.formant_weight[k];
+            if gain > 0.0 {
+                gain = Self::FORMANT_MAX_BOOST * (gain / Self::FORMANT_MAX_BOOST).tanh();
+            }
+            self.formant_gain[k] = gain;
+        }
+    }
+
     fn process_frame(&mut self, ch: usize, center: i64, len: usize, pitch: GrainPitch) {
         let n = self.n_fft;
         let half = self.half;
@@ -477,6 +587,10 @@ impl PhaseVocoder {
 
         let ratio = pitch.ratio.clamp(0.25, 4.0);
         let formant = pitch.formant.clamp(0.5, 2.0);
+        {
+            let state = &mut self.states[ch];
+            state.formant_age = state.formant_age.saturating_add(1);
+        }
         let shifting = pitch.voiced && ((ratio - 1.0).abs() > 1e-5 || (formant - 1.0).abs() > 1e-5);
         let state = &mut self.states[ch];
         if !pitch.voiced || onset {
@@ -494,21 +608,11 @@ impl PhaseVocoder {
         } else {
             // 2) Inviluppo spettrale (formanti).
             let need_env = (ratio - 1.0).abs() > 1e-5 || (formant - 1.0).abs() > 1e-5;
+            let throat = (formant - 1.0).abs() > 1e-5;
             if need_env {
                 self.spectral_envelope(pitch.period);
-                for k in 0..=half {
-                    self.target_env[k] = if (formant - 1.0).abs() > 1e-5 {
-                        let src = k as f32 / formant;
-                        let i = src.floor() as usize;
-                        if i >= half {
-                            self.log_env[half]
-                        } else {
-                            let f = src - i as f32;
-                            self.log_env[i] * (1.0 - f) + self.log_env[i + 1] * f
-                        }
-                    } else {
-                        self.log_env[k]
-                    };
+                if throat {
+                    self.formant_shift(ch, formant);
                 }
             }
 
@@ -617,8 +721,11 @@ impl PhaseVocoder {
                             let dest = dest as usize;
                             let mut mag = self.magnitude[k] * weight;
                             if need_env {
-                                let gain = (self.target_env[dest] - self.log_env[k]).clamp(-2.8, 2.8);
-                                mag *= gain.exp();
+                                // Timbro rimesso al suo posto dopo lo spostamento
+                                // della nota (+ Throat, se c'e').
+                                let keep = self.log_env[dest] - self.log_env[k];
+                                let gain = if throat { self.formant_gain[dest] + keep } else { keep };
+                                mag *= gain.clamp(-2.8, 2.8).exp();
                             }
                             self.out_spectrum[dest] = self.out_spectrum[dest] + Complex::new(mag * c, mag * s);
                         }
@@ -665,6 +772,99 @@ mod tests {
             out.push(o[0]);
         }
         (out, latency)
+    }
+
+    /// Livello (dB) di alcune bande di frequenza, frame per frame (FFT di
+    /// 2048 campioni ogni 256).
+    fn band_levels(x: &[f32], sr: f32, bands: &[(f32, f32)]) -> Vec<Vec<f32>> {
+        let n = 2048;
+        let fft = Fft::new(n);
+        let mut buf = vec![Complex::default(); n];
+        let mut out = vec![Vec::new(); bands.len()];
+        let mut start = 0;
+        while start + n <= x.len() {
+            for i in 0..n {
+                let w = (PI * (i as f32 + 0.5) / n as f32).sin().powi(2);
+                buf[i] = Complex::new(x[start + i] * w, 0.0);
+            }
+            fft.process(&mut buf, false);
+            for (b, &(lo, hi)) in bands.iter().enumerate() {
+                let (first, last) = ((lo / sr * n as f32) as usize, (hi / sr * n as f32) as usize);
+                let e: f32 = buf[first..last].iter().map(|c| c.re * c.re + c.im * c.im).sum();
+                out[b].push(10.0 * (e + 1e-20).log10());
+            }
+            start += 256;
+        }
+        out
+    }
+
+    #[test]
+    fn throat_moves_the_timbre_keeps_the_air_and_does_not_tremble() {
+        // Una vocale "a" con il respiro (rumore che scende verso gli acuti, come
+        // l'aria di una voce vera) e un tremolo di volume (5 Hz, +-6 dB).
+        let sr = 48000.0;
+        let len = 96000;
+        let vowel = crate::synth::steady_vowel(150.0, sr, len);
+        let mut breath = crate::synth::noise(len, 0.03, 7);
+        let k = (-TAU * 3000.0 / sr).exp();
+        for _ in 0..2 {
+            let mut y = 0.0;
+            for v in breath.iter_mut() {
+                y = (1.0 - k) * *v + k * y;
+                *v = y;
+            }
+        }
+        let input: Vec<f32> = vowel
+            .iter()
+            .zip(&breath)
+            .enumerate()
+            .map(|(i, (v, b))| (v + b) * (1.0 + 0.5 * (TAU * 5.0 * i as f32 / sr).sin()))
+            .collect();
+        let bands = [(400.0, 800.0), (800.0, 1600.0), (1600.0, 3200.0), (14000.0, 20000.0)];
+        let mean = |v: &[f32]| v.iter().sum::<f32>() / v.len() as f32;
+        let db = 20.0 / std::f32::consts::LN_10;
+        for semitones in [4.0f32, -4.0] {
+            let formant = 2f32.powf(semitones / 12.0);
+            let pitch = GrainPitch { period: sr / 150.0, ratio: 1.0, voiced: true, formant };
+            let mut pv = PhaseVocoder::new(1, sr);
+            let latency = pv.latency();
+            let mut out = Vec::with_capacity(len);
+            let mut gains: Vec<Vec<f32>> = Vec::new();
+            for (i, &x) in input.iter().enumerate() {
+                let mut o = [0.0];
+                pv.process(&[x], &mut o, |_| pitch);
+                out.push(o[0]);
+                if i > 12000 && pv.countdown == pv.hop {
+                    // Un frame appena calcolato: il guadagno di Throat usato.
+                    gains.push(pv.formant_gain.clone());
+                }
+            }
+            let dry = band_levels(&input[12000..len - latency], sr, &bands);
+            let wet = band_levels(&out[12000 + latency..], sr, &bands);
+            let change: Vec<f32> = (0..bands.len()).map(|b| mean(&wet[b]) - mean(&dry[b])).collect();
+            // Il timbro si sposta davvero...
+            if semitones > 0.0 {
+                assert!(change[1] > 6.0, "{semitones:+}: formanti non spostate in alto {change:?}");
+            } else {
+                assert!(change[1] < -1.5 && change[2] < -1.5, "{semitones:+}: formanti non spostate in basso {change:?}");
+            }
+            // ...l'aria sopra i 14 kHz resta com'era...
+            assert!(change[3].abs() < 0.5, "{semitones:+}: aria cambiata di {:.1} dB", change[3]);
+            let bin = |hz: f32| (hz / sr * pv.n_fft as f32) as usize;
+            for g in &gains {
+                assert!(g[bin(14100.0)..].iter().all(|v| v.abs() < 1e-6));
+                assert!(g.iter().all(|v| v * db <= 20.01), "spinta oltre 20 dB");
+            }
+            // ...e il guadagno non trema da un frame all'altro (senza lisciatura
+            // il respiro lo faceva saltare di 1-2 dB ogni 5 ms).
+            let (lo, hi) = (bin(300.0), bin(7000.0));
+            let steps: Vec<f32> = gains
+                .windows(2)
+                .flat_map(|w| (lo..hi).map(move |k| (w[1][k] - w[0][k]).abs() * db))
+                .collect();
+            let tremble = mean(&steps);
+            assert!(tremble < 0.5, "{semitones:+}: il guadagno trema di {tremble:.2} dB a frame");
+        }
     }
 
     #[test]
