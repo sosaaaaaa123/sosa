@@ -41,6 +41,9 @@ pub struct PitchDisplay {
     /// Quanto tempo (s) e' stata cantata ciascuna delle 12 note: serve a
     /// riconoscere la tonalita' della canzone ("AutoKey Listen").
     note_seconds: [AtomicF32; 12],
+    /// Secondi con una nota singola riconosciuta (senza pesi): dice se sulla
+    /// traccia c'e' una voce o musica polifonica.
+    voiced_seconds: AtomicF32,
     /// Quanto tempo (s) e' stata cantata ciascuna nota MIDI da `HIST_LOW` in
     /// su (con l'ottava): serve a riconoscere il tipo di voce.
     note_histogram: [AtomicF32; HIST_LEN],
@@ -85,6 +88,7 @@ impl Default for PitchDisplay {
             blocks: AtomicUsize::new(0),
             bypassed: AtomicBool::new(false),
             note_seconds: std::array::from_fn(|_| AtomicF32::new(0.0)),
+            voiced_seconds: AtomicF32::new(0.0),
             note_histogram: std::array::from_fn(|_| AtomicF32::new(0.0)),
             chroma_main: std::array::from_fn(|_| AtomicF32::new(0.0)),
             chroma_side: std::array::from_fn(|_| AtomicF32::new(0.0)),
@@ -122,6 +126,7 @@ impl PitchDisplay {
         let pc = (nearest as i32).rem_euclid(12) as usize;
         let slot = &self.note_seconds[pc];
         slot.store(slot.load(Ordering::Relaxed) + seconds * weight, Ordering::Relaxed);
+        self.voiced_seconds.store(self.voiced_seconds.load(Ordering::Relaxed) + seconds, Ordering::Relaxed);
         let bin = nearest as i32 - HIST_LOW;
         if (0..HIST_LEN as i32).contains(&bin) {
             let slot = &self.note_histogram[bin as usize];
@@ -135,6 +140,7 @@ impl PitchDisplay {
         for slot in &self.note_seconds {
             slot.store(0.0, Ordering::Relaxed);
         }
+        self.voiced_seconds.store(0.0, Ordering::Relaxed);
         for slot in self.chroma_main.iter().chain(&self.chroma_side) {
             slot.store(0.0, Ordering::Relaxed);
         }
@@ -175,6 +181,7 @@ impl PitchDisplay {
         let load = |a: &[AtomicF32; 12]| -> [f32; 12] { std::array::from_fn(|i| a[i].load(Ordering::Relaxed)) };
         choose_key(
             &self.note_profile(),
+            self.voiced_seconds.load(Ordering::Relaxed),
             &load(&self.chroma_main),
             self.music_main.load(Ordering::Relaxed),
             &load(&self.chroma_side),
@@ -269,11 +276,16 @@ pub fn detect_key(profile: &[f32; 12]) -> Option<(usize, bool, f32)> {
 /// 1. il **sidechain** (la base della canzone), se ha suonato per almeno 4 s:
 ///    e' la fonte piu' sicura;
 /// 2. l'**audio della traccia letto in modo polifonico**, quando non e' una
-///    voce sola (meno di meta' del tempo con una nota singola pulita): un
-///    pianoforte, una chitarra, la base messa sulla traccia;
-/// 3. altrimenti la **voce**, nota per nota ([`detect_key`]).
+///    voce sola (una nota singola riconosciuta per meno del 30% del tempo di
+///    musica): un pianoforte, una chitarra, la base messa sulla traccia. Su
+///    una voce vera la nota singola c'e' per il 60-70% del tempo, su accordi
+///    quasi mai;
+/// 3. altrimenti la **voce**, nota per nota ([`detect_key`]): su una voce e'
+///    piu' affidabile del cromagramma, che sente soprattutto le note tenute
+///    (spesso la quinta, non la tonica).
 pub fn choose_key(
     voice: &[f32; 12],
+    voiced_seconds: f32,
     main: &[f32; 12],
     main_seconds: f32,
     side: &[f32; 12],
@@ -285,8 +297,7 @@ pub fn choose_key(
             return Some((tonic, minor, confidence, KeySource::Sidechain));
         }
     }
-    let sung: f32 = voice.iter().sum();
-    if main_seconds >= MIN_MUSIC_S && sung < 0.5 * main_seconds {
+    if main_seconds >= MIN_MUSIC_S && voiced_seconds < 0.3 * main_seconds {
         if let Some((tonic, minor, confidence)) = key_from_chroma(main) {
             return Some((tonic, minor, confidence, KeySource::Polyphonic));
         }
@@ -333,15 +344,19 @@ mod tests {
         let voice = [11.0, 7.0, 42.0, 15.0, 3.0, 8.0, 0.0, 1.0, 0.0, 3.0, 5.0, 4.0];
         let c_major = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
         let none = [0.0; 12];
-        let k = choose_key(&voice, &none, 0.0, &c_major, 10.0).unwrap();
+        let k = choose_key(&voice, 90.0, &none, 0.0, &c_major, 10.0).unwrap();
         assert_eq!((k.0, k.1, k.3), (0, false, KeySource::Sidechain));
-        // Senza sidechain e con la voce che canta quasi sempre: la voce.
-        let k = choose_key(&voice, &c_major, 80.0, &none, 0.0).unwrap();
+        // Senza sidechain, su una voce vera (misurata: 44 s di nota singola su
+        // 69 s di musica, ma solo 24 s "pesati" perche' non intonata): la voce.
+        let k = choose_key(&voice, 44.0, &c_major, 69.0, &none, 0.0).unwrap();
         assert_eq!((k.0, k.1, k.3), (7, true, KeySource::Voice));
-        // Traccia polifonica (poche note singole pulite): il cromagramma.
+        // Traccia polifonica (accordi: quasi mai una nota singola): il cromagramma.
         let little = [0.2; 12];
-        let k = choose_key(&little, &c_major, 20.0, &none, 0.0).unwrap();
+        let k = choose_key(&little, 2.4, &c_major, 20.0, &none, 0.0).unwrap();
         assert_eq!((k.0, k.1, k.3), (0, false, KeySource::Polyphonic));
+        // Sidechain troppo breve: non conta ancora.
+        let k = choose_key(&voice, 90.0, &none, 0.0, &c_major, 2.0).unwrap();
+        assert_eq!(k.3, KeySource::Voice);
     }
 
     #[test]
