@@ -4,8 +4,8 @@
 //! cargo run --release -p sosatune --example anteprima -- anteprima.png
 //! ```
 //!
-//! Salva anche `anteprima-impostazioni.png`, `anteprima-preset.png`,
-//! `anteprima-guida.png` e `anteprima-autokey.png` (pannelli e menu aperti).
+//! Salva anche `anteprima-impostazioni.png`, `anteprima-preset.png` e
+//! `anteprima-guida.png` (pannelli e menu aperti).
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -17,9 +17,7 @@ fn main() {
     save(&path, &render_view(2.0, View::Main));
     // Accanto: pannello impostazioni, lista dei preset e guida rapida.
     let stem = path.trim_end_matches(".png");
-    for (view, suffix) in
-        [(View::Settings, "impostazioni"), (View::Presets, "preset"), (View::Help, "guida"), (View::Listen, "autokey")]
-    {
+    for (view, suffix) in [(View::Settings, "impostazioni"), (View::Presets, "preset"), (View::Help, "guida")] {
         save(&format!("{stem}-{suffix}.png"), &render_view(2.0, view));
     }
 }

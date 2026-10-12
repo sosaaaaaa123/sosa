@@ -265,10 +265,6 @@ pub struct SosaTuneParams {
     /// impostata da sola.
     #[persist = "autokey"]
     pub autokey: Arc<AtomicBool>,
-    /// Cosa ascolta AutoKey: indice in `shared::KeyListen::ALL` (0 = Auto,
-    /// 1 = voce, 2 = traccia, 3-5 = sidechain L+R / L / R).
-    #[persist = "autokey-source"]
-    pub autokey_source: Arc<AtomicUsize>,
 
     #[id = "key"]
     pub key: EnumParam<Key>,
@@ -309,19 +305,9 @@ pub struct SosaTuneParams {
     #[id = "vibrato"]
     pub vibrato: FloatParam,
 
-    /// Il tasto Formant (grafica come in Auto-Tune): accende la manopola
-    /// Throat. Il motore non cambia: in HQ il timbro della voce e' sempre
-    /// preservato, come prima.
-    #[id = "formant-correction"]
-    pub formant_correction: BoolParam,
-
-    /// Throat (grafica come in Auto-Tune): lunghezza della gola, da 50 a 180;
-    /// 100 = voce originale, meno = gola piu' corta (voce piu' piccola e
-    /// chiara), piu' = gola piu' lunga (piu' grande e scura). E' lo stesso
-    /// spostamento delle formanti della vecchia manopola Formant (in HQ),
-    /// espresso come in Auto-Tune. Agisce solo con il tasto Formant acceso.
-    #[id = "throat"]
-    pub throat: FloatParam,
+    /// Spostamento delle formanti (timbro) in semitoni.
+    #[id = "formant"]
+    pub formant: FloatParam,
 
     /// Sensibilita' del rilevamento della nota.
     #[id = "tracking"]
@@ -380,8 +366,10 @@ impl SosaTuneParams {
             humanize: percent_param("Humanize", d("humanize", 0.0).clamp(0.0, 1.0), 0.0),
             flex_tune: percent_param("Flex-Tune", d("flex-tune", 0.0).clamp(0.0, 1.0), 0.0),
             vibrato: percent_param("Vibrato", d("vibrato", 0.0).clamp(-1.0, 1.0), -1.0),
-            formant_correction: BoolParam::new("Formant", d("formant-correction", 1.0) >= 0.5),
-            throat: throat_param(d("throat", 100.0).clamp(50.0, 180.0)),
+            formant: FloatParam::new("Formanti", d("formant", 0.0).clamp(-12.0, 12.0), FloatRange::Linear { min: -12.0, max: 12.0 })
+                .with_unit(" st")
+                .with_step_size(0.1)
+                .with_value_to_string(formatters::v2s_f32_rounded(1)),
             tracking: percent_param("Sensibilità", d("tracking", 0.3).clamp(0.0, 1.0), 0.0),
             detune: FloatParam::new("Detune", d("detune", 440.0).clamp(410.0, 470.0), FloatRange::Linear { min: 410.0, max: 470.0 })
                 .with_unit(" Hz")
@@ -393,15 +381,6 @@ impl SosaTuneParams {
             custom: CustomNotes::with_defaults(saved),
             preset: Arc::new(AtomicUsize::new(0)),
             autokey: Arc::new(AtomicBool::new(false)),
-            // Anche la fonte di AutoKey fa parte di "Save as Default".
-            autokey_source: Arc::new(AtomicUsize::new(
-                saved
-                    .get("autokey-source")
-                    .filter(|v| v.is_finite() && **v >= 0.0)
-                    .map(|&v| v as usize)
-                    .filter(|&i| i < crate::shared::KeyListen::ALL.len())
-                    .unwrap_or(0),
-            )),
             ab_slot: Arc::new(AtomicUsize::new(0)),
             ab_other: Arc::new(RwLock::new(Vec::new())),
         }
@@ -423,20 +402,6 @@ fn retune_param(default: f32) -> FloatParam {
     .with_unit(" ms")
     .with_step_size(1.0)
     .with_value_to_string(formatters::v2s_f32_rounded(0))
-}
-
-/// Throat: lunghezza della gola (50-180, 100 = voce originale).
-fn throat_param(default: f32) -> FloatParam {
-    FloatParam::new("Throat", default, FloatRange::Linear { min: 50.0, max: 180.0 })
-        .with_step_size(1.0)
-        .with_value_to_string(formatters::v2s_f32_rounded(0))
-}
-
-/// Da Throat allo spostamento delle formanti in semitoni: le formanti sono
-/// inversamente proporzionali alla lunghezza della gola (gola lunga il
-/// doppio = formanti un'ottava sotto).
-pub fn throat_semitones(throat: f32) -> f32 {
-    12.0 * (100.0 / throat.clamp(50.0, 180.0)).log2()
 }
 
 /// Un parametro in percentuale, da `min` (0 o -1) a 1.
@@ -474,8 +439,7 @@ impl SosaTuneParams {
             humanize: self.humanize.value(),
             flex_tune: self.flex_tune.value(),
             vibrato: self.vibrato.value(),
-            // Con Formant spento Throat non agisce: timbro originale.
-            formant: if self.formant_correction.value() { throat_semitones(self.throat.value()) } else { 0.0 },
+            formant: self.formant.value(),
             tracking: self.tracking.value(),
             reference_hz: self.detune.value(),
             classic: self.style.value() == StyleChoice::Classic,
@@ -521,19 +485,11 @@ mod tests {
         assert_eq!(s.transpose, 3.0);
         let s = with(SosaTuneParams { vibrato: percent_param("Vibrato", -0.5, -1.0), ..Default::default() });
         assert_eq!(s.vibrato, -0.5);
-        // Throat 100 = timbro originale; 50 = gola corta (formanti un'ottava su).
-        assert!(base.formant.abs() < 1e-6);
-        let s = with(SosaTuneParams { throat: throat_param(50.0), ..Default::default() });
-        assert!((s.formant - 12.0).abs() < 1e-4);
-        let s = with(SosaTuneParams { throat: throat_param(141.4), ..Default::default() });
-        assert!((s.formant + 6.0).abs() < 0.01, "{}", s.formant);
-        // Formant spento: Throat non agisce.
         let s = with(SosaTuneParams {
-            formant_correction: BoolParam::new("Formant", false),
-            throat: throat_param(50.0),
+            formant: FloatParam::new("Formanti", 2.0, FloatRange::Linear { min: -12.0, max: 12.0 }),
             ..Default::default()
         });
-        assert_eq!(s.formant, 0.0);
+        assert_eq!(s.formant, 2.0);
         let s = with(SosaTuneParams { tracking: percent_param("Sensibilità", 0.8, 0.0), ..Default::default() });
         assert!((s.tracking - 0.8).abs() < 1e-6);
 
@@ -559,8 +515,7 @@ mod tests {
             ("vibrato", -0.25),
             ("note-cs", 0.0),
             ("quality", 0.0),
-            ("formant-correction", 0.0),
-            ("throat", 120.0),
+            ("formant", -3.5),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_owned(), v))
@@ -573,8 +528,7 @@ mod tests {
         assert_eq!(p.vibrato.value(), -0.25);
         assert!(!p.custom.c_sharp.value() && p.custom.c.value());
         assert_eq!(p.quality.value(), QualityChoice::LowLatency);
-        assert!(!p.formant_correction.value());
-        assert_eq!(p.throat.value(), 120.0);
+        assert_eq!(p.formant.value(), -3.5);
         // Valori fuori misura o di un'altra versione: ignorati senza danni.
         let junk: HashMap<String, f32> =
             [("key", 99.0), ("retune", f32::NAN), ("sconosciuto", 1.0)].into_iter().map(|(k, v)| (k.to_owned(), v)).collect();

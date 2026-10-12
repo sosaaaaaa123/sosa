@@ -21,7 +21,7 @@
 //! 5. il **timbro** (l'inviluppo spettrale, cioe' le formanti) viene misurato
 //!    con il "true envelope" (cepstrum ripetuto che segue le cime delle
 //!    armoniche) e rimesso al suo posto dopo lo spostamento: la voce cambia
-//!    nota ma non diventa "da scoiattolo" o "da orco". Con Throat le
+//!    nota ma non diventa "da scoiattolo" o "da orco". Con il comando Formant le
 //!    formanti si spostano apposta (vedi `formant_shift`);
 //! 6. torna nel tempo (FFT inversa) e somma i pezzi sovrapposti, tenendo
 //!    di ogni pezzo solo i 16 ms centrali (finestra di sintesi corta): nei
@@ -81,7 +81,7 @@ struct ChannelState {
     /// `h` volte questo angolo (vedi `HARMONIC_LOCK_HZ`).
     theta: f32,
     /// Inviluppo (logaritmico) lisciato nel tempo, usato solo per spostare
-    /// le formanti (Throat), e da quanti frame non lo si aggiorna.
+    /// le formanti (comando Formant), e da quanti frame non lo si aggiorna.
     formant_env: Vec<f32>,
     formant_age: usize,
     /// Brillantezza (vedi `spectral_tilt`) delle ultime note, lisciata.
@@ -128,17 +128,17 @@ pub struct PhaseVocoder {
     magnitude: Vec<f32>,
     phase: Vec<f32>,
     log_env: Vec<f32>,
-    /// Throat: guadagno (logaritmico) per ogni riga in uscita.
+    /// Formant: guadagno (logaritmico) per ogni riga in uscita.
     formant_gain: Vec<f32>,
-    /// Throat: quanto l'inviluppo lisciato segue quello nuovo a ogni frame
+    /// Formant: quanto l'inviluppo lisciato segue quello nuovo a ogni frame
     /// (per ogni riga) e quanto pesa lo spostamento (1 fino a 7 kHz, poi 0).
     formant_follow: Vec<f32>,
     formant_weight: Vec<f32>,
-    /// Throat: dopo quanti frame senza nota l'inviluppo lisciato riparte da capo.
+    /// Formant: dopo quanti frame senza nota l'inviluppo lisciato riparte da capo.
     formant_hold: usize,
-    /// Throat: righe (da, a) su cui si misura il livello medio dell'inviluppo.
+    /// Formant: righe (da, a) su cui si misura il livello medio dell'inviluppo.
     formant_level_bins: (usize, usize),
-    /// Throat nei frame senza nota: fino a quanti frame dall'ultima nota e'
+    /// Formant nei frame senza nota: fino a quanti frame dall'ultima nota e'
     /// pieno e dopo quanti e' sparito (vedi `FORMANT_BRIDGE_S`).
     formant_bridge: (f32, f32),
     /// Righe 200 Hz, 4 kHz e 16 kHz (per `spectral_tilt`).
@@ -184,7 +184,7 @@ impl PhaseVocoder {
     /// gli passano sopra: arriva sulle cime in meno passaggi (con 4 iterazioni
     /// e' preciso come con 8 senza accelerazione).
     const ENVELOPE_ACCEL: f32 = 2.0;
-    /// Throat (spostamento delle formanti): lisciatura nel tempo
+    /// Comando Formant (spostamento delle formanti): lisciatura nel tempo
     /// dell'inviluppo da spostare. La misura del timbro su una voce vera
     /// cambia di circa 1 dB da un frame all'altro (5 ms) anche su una nota
     /// ferma: e' rumore di misura, non la bocca che si muove. Spostata cosi'
@@ -198,23 +198,23 @@ impl PhaseVocoder {
     const FORMANT_SMOOTH_HIGH_S: f32 = 0.100;
     const FORMANT_SMOOTH_FROM_HZ: f32 = 1500.0;
     const FORMANT_SMOOTH_TO_HZ: f32 = 4000.0;
-    /// Throat: sopra 7 kHz lo spostamento sfuma fino a sparire a 14 kHz. La'
+    /// Formant: sopra 7 kHz lo spostamento sfuma fino a sparire a 14 kHz. La'
     /// non ci sono formanti ma l'aria e le "s": spostandole in alto
     /// diventavano un fruscio forte (+10-15 dB sopra i 16 kHz), in basso
     /// la voce perdeva brillantezza.
     const FORMANT_FADE_HZ: f32 = 7000.0;
-    /// Throat: le spinte verso l'alto si ammorbidiscono (al massimo ~20 dB,
+    /// Formant: le spinte verso l'alto si ammorbidiscono (al massimo ~20 dB,
     /// 10 dB diventano 9). Riempire una valle tra due formanti alza anche il
     /// rumore che c'era dentro: spostando molto, quei punti diventavano ruvidi.
     const FORMANT_MAX_BOOST: f32 = 20.0 / 8.685_89;
-    /// Throat: in un buco senza nota piu' corto di cosi' l'inviluppo lisciato
+    /// Formant: in un buco senza nota piu' corto di cosi' l'inviluppo lisciato
     /// resta valido (la voce riconosciuta a tratti non lo fa ripartire ogni volta).
     const FORMANT_HOLD_S: f32 = 0.050;
-    /// Throat nei frame che passano senza nota: consonanti, attacchi e i
+    /// Formant nei frame che passano senza nota: consonanti, attacchi e i
     /// punti in cui la nota si perde per un attimo in mezzo al canto (sulla
     /// voce di prova ~100 frame isolati con la voce forte). Prima li' il timbro
     /// tornava quello originale per 10-15 ms e poi di nuovo spostato: con
-    /// Throat lontano da 100 un "battito" del timbro. Ora quei frame ricevono
+    /// Formant lontano da 0 un "battito" del timbro. Ora quei frame ricevono
     /// lo stesso spostamento (solo il timbro: la nota passa intatta come
     /// prima), pieno per 16 ms e poi a sfumare fino a sparire a 64 ms: le
     /// consonanti lunghe, i respiri e le pause restano come sono.
@@ -545,7 +545,7 @@ impl PhaseVocoder {
         }
     }
 
-    /// Throat: guadagno per ogni riga in uscita che sposta le formanti
+    /// Formant: guadagno per ogni riga in uscita che sposta le formanti
     /// (l'inviluppo letto `formant` volte piu' in basso: >1 voce piu' piccola,
     /// <1 piu' grande). Usa l'inviluppo lisciato nel tempo, sfuma sopra 7 kHz
     /// e ammorbidisce le spinte troppo forti (vedi le costanti `FORMANT_*`).
@@ -574,7 +574,7 @@ impl PhaseVocoder {
         self.formant_gain_from_env(ch, formant, 1.0);
     }
 
-    /// Throat: guadagno per ogni riga dall'inviluppo lisciato del canale
+    /// Formant: guadagno per ogni riga dall'inviluppo lisciato del canale
     /// (`amount` = quanto dello spostamento, da 0 a 1).
     fn formant_gain_from_env(&mut self, ch: usize, formant: f32, amount: f32) {
         let half = self.half;
@@ -605,7 +605,7 @@ impl PhaseVocoder {
         ((high + 1e-12) / (low + 1e-12)).ln()
     }
 
-    /// Throat in un frame che passa senza nota (vedi `FORMANT_BRIDGE_S`):
+    /// Formant in un frame che passa senza nota (vedi `FORMANT_BRIDGE_S`):
     /// quanto dello spostamento applicare, dai frame passati dall'ultima nota.
     fn formant_bridge(&self, age: usize) -> f32 {
         let (full, gone) = self.formant_bridge;
@@ -671,7 +671,7 @@ impl PhaseVocoder {
             self.out_spectrum.copy_from_slice(&self.spectrum);
             self.states[ch].rotation.fill(0.0);
             self.states[ch].theta = 0.0;
-            // Throat: subito dopo una nota il timbro resta spostato (la nota
+            // Formant: subito dopo una nota il timbro resta spostato (la nota
             // e le fasi no: e' solo un filtro), poi sfuma (`FORMANT_BRIDGE_S`).
             let mut amount = self.formant_bridge(self.states[ch].formant_age);
             if (formant - 1.0).abs() > 1e-5 && amount > 0.0 {
@@ -699,10 +699,10 @@ impl PhaseVocoder {
         } else {
             // 2) Inviluppo spettrale (formanti).
             let need_env = (ratio - 1.0).abs() > 1e-5 || (formant - 1.0).abs() > 1e-5;
-            let throat = (formant - 1.0).abs() > 1e-5;
+            let shift_formants = (formant - 1.0).abs() > 1e-5;
             if need_env {
                 self.spectral_envelope(pitch.period);
-                if throat {
+                if shift_formants {
                     self.formant_shift(ch, formant);
                 }
             }
@@ -813,9 +813,9 @@ impl PhaseVocoder {
                             let mut mag = self.magnitude[k] * weight;
                             if need_env {
                                 // Timbro rimesso al suo posto dopo lo spostamento
-                                // della nota (+ Throat, se c'e').
+                                // della nota (+ comando Formant, se c'e').
                                 let keep = self.log_env[dest] - self.log_env[k];
-                                let gain = if throat { self.formant_gain[dest] + keep } else { keep };
+                                let gain = if shift_formants { self.formant_gain[dest] + keep } else { keep };
                                 mag *= gain.clamp(-2.8, 2.8).exp();
                             }
                             self.out_spectrum[dest] = self.out_spectrum[dest] + Complex::new(mag * c, mag * s);
@@ -890,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn throat_moves_the_timbre_keeps_the_air_and_does_not_tremble() {
+    fn formant_moves_the_timbre_keeps_the_air_and_does_not_tremble() {
         // Una vocale "a" con il respiro (rumore che scende verso gli acuti, come
         // l'aria di una voce vera) e un tremolo di volume (5 Hz, +-6 dB).
         let sr = 48000.0;
@@ -926,7 +926,7 @@ mod tests {
                 pv.process(&[x], &mut o, |_| pitch);
                 out.push(o[0]);
                 if i > 12000 && pv.countdown == pv.hop {
-                    // Un frame appena calcolato: il guadagno di Throat usato.
+                    // Un frame appena calcolato: il guadagno del comando Formant.
                     gains.push(pv.formant_gain.clone());
                 }
             }
@@ -959,10 +959,10 @@ mod tests {
     }
 
     #[test]
-    fn throat_does_not_blink_when_the_note_drops_for_a_moment() {
+    fn formant_does_not_blink_when_the_note_drops_for_a_moment() {
         // Una vocale tenuta in cui la nota "si perde" per un frame ogni tanto
         // (succede in mezzo al canto) e poi una lunga consonante. Il timbro
-        // spostato da Throat deve restare fermo nei buchi brevi e sparire
+        // spostato dal comando Formant deve restare fermo nei buchi brevi e sparire
         // in quelli lunghi.
         let sr = 48000.0;
         let len = 48000;
@@ -1010,7 +1010,7 @@ mod tests {
         let near = until * hop + latency / 2 + hop - 100;
         let moved = energy(&consonant[near..near + 200], &input[near - latency..near + 200 - latency]);
         let kept = energy(&consonant[near..near + 200], &steady[near..near + 200]);
-        assert!(kept < 0.05 * moved, "Throat si spegne di colpo dopo la nota");
+        assert!(kept < 0.05 * moved, "Formant si spegne di colpo dopo la nota");
 
         // Una "s" subito dopo la vocale invece passa intatta, anche nei primi ms.
         let switch = 24000;

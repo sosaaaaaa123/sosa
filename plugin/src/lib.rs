@@ -20,7 +20,7 @@ pub mod preview;
 mod shared;
 
 use params::{QualityChoice, SosaTuneParams, VoiceChoice};
-use shared::{KeyListen, PitchDisplay};
+use shared::PitchDisplay;
 
 pub struct SosaTune {
     params: Arc<SosaTuneParams>,
@@ -261,8 +261,8 @@ impl Plugin for SosaTune {
                 analyzer.reset();
             }
         }
-        // Cosa ascolta AutoKey (menu "Ascolta" sotto AutoKey Listen).
-        let listen = KeyListen::from_index(self.params.autokey_source.load(std::sync::atomic::Ordering::Relaxed));
+        // La base della canzone sul sidechain, se il DAW ce la manda: AutoKey
+        // la legge da sola (e' la fonte piu' sicura per la tonalita').
         let side = aux.inputs.first_mut().map(|b| b.as_slice_immutable());
         let side_channels = side.as_ref().map_or(0, |s| s.len());
         // Alcuni DAW, senza nessun sidechain scelto, ci mandano una copia
@@ -270,16 +270,13 @@ impl Plugin for SosaTune {
         // leggerebbe la voce come se fosse la base).
         let side = side.filter(|s| {
             side_channels > 0
+                && listening
                 && !(0..num_samples).all(|i| {
                     let main: f32 = (0..num_inputs).map(|ch| channels[ch][i]).sum::<f32>() / num_inputs as f32;
                     let x: f32 = s.iter().map(|c| c[i]).sum::<f32>() / side_channels as f32;
                     (main - x).abs() < 1e-6
                 })
         });
-        // Picco della base sul sidechain: l'interfaccia mostra se arriva davvero.
-        let side_peak = side.as_ref().map_or(0.0, |s| s.iter().flat_map(|c| c.iter()).fold(0.0f32, |m, x| m.max(x.abs())));
-        self.display.set_side_peak(side_peak);
-        let side = side.filter(|_| listening && listen.uses_sidechain());
         for analyzer in [&mut self.chroma_main, &mut self.chroma_side].into_iter().flatten() {
             analyzer.set_reference(settings.reference_hz);
         }
@@ -316,10 +313,8 @@ impl Plugin for SosaTune {
                     a.process(mono / num_inputs as f32);
                 }
                 if let (Some(a), Some(side)) = (&mut self.chroma_side, &side) {
-                    // Entrambi i canali, oppure solo il sinistro o il destro.
-                    let n = side_channels.min(2);
-                    let both = [side[0][i], side[n - 1][i]];
-                    a.process(listen.side_sample(&both[..n]));
+                    let x: f32 = side.iter().map(|c| c[i]).sum::<f32>() / side_channels as f32;
+                    a.process(x);
                 }
             }
             let report = corrector.process_frame(&mut frame[..num_inputs], &settings);

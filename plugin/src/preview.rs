@@ -37,8 +37,6 @@ pub enum View {
     Presets,
     /// La guida rapida (?).
     Help,
-    /// Il menu "Ascolta" di AutoKey aperto (con il sidechain scelto).
-    Listen,
 }
 
 /// Disegna l'interfaccia. `scale` = 2 per un'immagine nitida come sugli
@@ -54,9 +52,6 @@ pub fn render_view(scale: f32, view: View) -> PreviewImage {
         // "Natural Vocal": il nome lungo va su due righe.
         params.preset.store(1, std::sync::atomic::Ordering::Relaxed);
     }
-    if view == View::Listen {
-        params.autokey_source.store(crate::shared::KeyListen::SideBoth.index(), std::sync::atomic::Ordering::Relaxed);
-    }
     let display = PitchDisplay::default();
     sing_into(&params, &display);
     let opener = match view {
@@ -64,7 +59,6 @@ pub fn render_view(scale: f32, view: View) -> PreviewImage {
         View::Settings => Some(crate::editor::layout::settings()),
         View::Presets => Some(crate::editor::layout::preset_list()),
         View::Help => Some(crate::editor::layout::help()),
-        View::Listen => Some(crate::editor::layout::listen_field()),
     };
 
     let ctx = egui::Context::default();
@@ -417,7 +411,7 @@ mod tests {
             (layout::flex(), params.flex_tune.as_ptr(), params.flex_tune.unmodulated_normalized_value()),
             (layout::detune(), params.detune.as_ptr(), params.detune.unmodulated_normalized_value()),
             (layout::vibrato(), params.vibrato.as_ptr(), params.vibrato.unmodulated_normalized_value()),
-            (layout::throat(), params.throat.as_ptr(), params.throat.unmodulated_normalized_value()),
+            (layout::formant(), params.formant.as_ptr(), params.formant.unmodulated_normalized_value()),
         ];
         for (i, &(pos, ptr, start)) in knobs.iter().enumerate() {
             let changes = run(&params, drag_up(pos, 40.0));
@@ -442,22 +436,6 @@ mod tests {
         assert_eq!(last_value(&changes, params.style.as_ptr()), Some(classic), "Classic: {changes:?}");
         let changes = run(&params, click(layout::modern()));
         assert!(changes.is_empty(), "{changes:?}");
-    }
-
-    /// Formant e Throat come in Auto-Tune: il tasto accende e spegne la
-    /// correzione delle formanti; con il tasto spento Throat non risponde.
-    #[test]
-    fn formant_button_and_throat() {
-        let params = SosaTuneParams::preview();
-        assert!(params.formant_correction.value(), "acceso di partenza");
-        let changes = run(&params, click(layout::formant_toggle()));
-        assert_eq!(last_value(&changes, params.formant_correction.as_ptr()), Some(0.0), "{changes:?}");
-
-        let params = SosaTuneParams { formant_correction: BoolParam::new("Formant", false), ..SosaTuneParams::preview() };
-        let changes = run(&params, click(layout::formant_toggle()));
-        assert_eq!(last_value(&changes, params.formant_correction.as_ptr()), Some(1.0), "{changes:?}");
-        let changes = run(&params, drag_up(layout::throat(), 40.0));
-        assert!(changes.is_empty(), "Throat con Formant spento non deve cambiare: {changes:?}");
     }
 
     #[test]
@@ -636,7 +614,6 @@ mod tests {
         crate::defaults::TEST_DIR.with(|d| *d.borrow_mut() = Some(dir.clone()));
 
         let params = SosaTuneParams::preview();
-        params.autokey_source.store(crate::shared::KeyListen::SideLeft.index(), Ordering::Relaxed);
         let mut frames = click(layout::preset_list());
         frames.extend(click(layout::preset_item(FACTORY.len())));
         let changes = run(&params, frames);
@@ -650,7 +627,6 @@ mod tests {
         assert_eq!(fresh.retune_speed.value(), 15.0);
         assert_eq!(fresh.key.value(), Key::A);
         assert_eq!(fresh.scale.value(), ScaleChoice::Major);
-        assert_eq!(fresh.autokey_source.load(Ordering::Relaxed), crate::shared::KeyListen::SideLeft.index(), "anche la fonte di AutoKey");
 
         // Reset Default: le nuove istanze tornano ai valori di fabbrica.
         let mut frames = click(layout::preset_list());
@@ -658,7 +634,6 @@ mod tests {
         run(&params, frames);
         assert!(crate::defaults::load().is_empty());
         assert_eq!(SosaTuneParams::default().retune_speed.value(), 20.0);
-        assert_eq!(SosaTuneParams::default().autokey_source.load(Ordering::Relaxed), 0);
 
         // Anche dal pannello impostazioni.
         let mut frames = click(layout::settings());
@@ -668,27 +643,6 @@ mod tests {
 
         crate::defaults::TEST_DIR.with(|d| *d.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn autokey_can_listen_to_the_sidechain() {
-        use crate::shared::KeyListen;
-        let params = SosaTuneParams::preview();
-        params.autokey.store(false, Ordering::Relaxed);
-        let mut frames = click(layout::listen_field());
-        frames.extend(click(layout::listen_item(KeyListen::SideBoth.index())));
-        let changes = run(&params, frames);
-        assert!(changes.is_empty(), "la fonte di AutoKey non e' un parametro del DAW: {changes:?}");
-        assert_eq!(KeyListen::from_index(params.autokey_source.load(Ordering::Relaxed)), KeyListen::SideBoth);
-        assert!(params.autokey.load(Ordering::Relaxed), "scegliere una fonte accende AutoKey");
-
-        // Tutte le voci del menu si possono scegliere.
-        for (i, listen) in KeyListen::ALL.into_iter().enumerate() {
-            let mut frames = click(layout::listen_field());
-            frames.extend(click(layout::listen_item(i)));
-            run(&params, frames);
-            assert_eq!(KeyListen::from_index(params.autokey_source.load(Ordering::Relaxed)), listen);
-        }
     }
 
     #[test]
