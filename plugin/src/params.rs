@@ -309,15 +309,17 @@ pub struct SosaTuneParams {
     #[id = "vibrato"]
     pub vibrato: FloatParam,
 
-    /// Il tasto Formant (come in Auto-Tune): correzione delle formanti, cioe'
-    /// timbro della voce preservato anche spostando la nota.
+    /// Il tasto Formant (grafica come in Auto-Tune): accende la manopola
+    /// Throat. Il motore non cambia: in HQ il timbro della voce e' sempre
+    /// preservato, come prima.
     #[id = "formant-correction"]
     pub formant_correction: BoolParam,
 
-    /// Throat (come in Auto-Tune): lunghezza della gola, da 50 a 180;
+    /// Throat (grafica come in Auto-Tune): lunghezza della gola, da 50 a 180;
     /// 100 = voce originale, meno = gola piu' corta (voce piu' piccola e
-    /// chiara), piu' = gola piu' lunga (piu' grande e scura). Agisce solo con
-    /// il tasto Formant acceso.
+    /// chiara), piu' = gola piu' lunga (piu' grande e scura). E' lo stesso
+    /// spostamento delle formanti della vecchia manopola Formant (in HQ),
+    /// espresso come in Auto-Tune. Agisce solo con il tasto Formant acceso.
     #[id = "throat"]
     pub throat: FloatParam,
 
@@ -472,8 +474,8 @@ impl SosaTuneParams {
             humanize: self.humanize.value(),
             flex_tune: self.flex_tune.value(),
             vibrato: self.vibrato.value(),
-            preserve_formants: self.formant_correction.value(),
-            formant: throat_semitones(self.throat.value()),
+            // Con Formant spento Throat non agisce: timbro originale.
+            formant: if self.formant_correction.value() { throat_semitones(self.throat.value()) } else { 0.0 },
             tracking: self.tracking.value(),
             reference_hz: self.detune.value(),
             classic: self.style.value() == StyleChoice::Classic,
@@ -520,13 +522,18 @@ mod tests {
         let s = with(SosaTuneParams { vibrato: percent_param("Vibrato", -0.5, -1.0), ..Default::default() });
         assert_eq!(s.vibrato, -0.5);
         // Throat 100 = timbro originale; 50 = gola corta (formanti un'ottava su).
-        assert!(base.preserve_formants && base.formant.abs() < 1e-6);
+        assert!(base.formant.abs() < 1e-6);
         let s = with(SosaTuneParams { throat: throat_param(50.0), ..Default::default() });
         assert!((s.formant - 12.0).abs() < 1e-4);
         let s = with(SosaTuneParams { throat: throat_param(141.4), ..Default::default() });
         assert!((s.formant + 6.0).abs() < 0.01, "{}", s.formant);
-        let s = with(SosaTuneParams { formant_correction: BoolParam::new("Formant", false), ..Default::default() });
-        assert!(!s.preserve_formants);
+        // Formant spento: Throat non agisce.
+        let s = with(SosaTuneParams {
+            formant_correction: BoolParam::new("Formant", false),
+            throat: throat_param(50.0),
+            ..Default::default()
+        });
+        assert_eq!(s.formant, 0.0);
         let s = with(SosaTuneParams { tracking: percent_param("Sensibilità", 0.8, 0.0), ..Default::default() });
         assert!((s.tracking - 0.8).abs() < 1e-6);
 

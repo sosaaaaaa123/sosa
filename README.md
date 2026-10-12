@@ -16,7 +16,7 @@
 - **Humanize**: sulle note lunghe la correzione si ammorbidisce, così le note tenute non suonano "congelate".
 - **Flex-Tune**: corregge solo quando la voce è già vicina alla nota; scivolate e note volutamente "sporche" restano tue.
 - **Vibrato naturale**: lo riduce o lo aggiunge, anche sopra la correzione robotica.
-- **Formant e Throat**, come in Auto-Tune: con **Formant** acceso il timbro della voce resta naturale anche correggendo o trasponendo molto (niente "effetto scoiattolo"); **Throat** cambia la lunghezza della gola (da 50 a 180, 100 = voce originale) senza cambiare la nota. Funzionano in HQ e in Low Latency.
+- **Formant e Throat** (comandi disegnati come in Auto-Tune): **Throat** cambia il timbro, cioè la lunghezza della gola (da 50 a 180, 100 = voce originale), senza cambiare la nota; il tasto **Formant** lo accende e lo spegne. Agisce in HQ.
 - **Sensibilità** del rilevamento, per voci pulite o con molta aria.
 - **Preset pronti** (Factory): Default, Natural Vocal, Pop Polish, Hard Tune, Trap Lead, R&B Smooth, Soft Touch, Classic Robot, Retro Glide.
 - **Quantità** di correzione e **trasposizione** fino a ±12 semitoni.
@@ -29,7 +29,7 @@
 
 | Modalità | Latenza | Quando usarla |
 |---|---|---|
-| **Low Latency** | **0 ms** | Mentre registri: nessun ritardo in cuffia. Formant e Throat funzionano anche qui (con un filtro a latenza zero, un po' meno preciso di HQ) |
+| **Low Latency** | **0 ms** | Mentre registri: nessun ritardo in cuffia. Qualità da monitoraggio (le formanti seguono la nota, Throat non agisce) |
 | **HQ** | 64 ms (compensata dal DAW) | Per il mix: il suono più pulito, timbro preservato, intonazione più precisa |
 
 In bypass la latenza resta quella della modalità (come chiedono le regole VST3 e come fanno i plugin professionali): accendere e spegnere il plugin durante l'ascolto non sposta la traccia e non crea buchi; in bypass esce la voce originale identica, a tempo. Per registrare senza ritardo usa Low Latency, che è a 0 ms anche con il plugin acceso.
@@ -121,8 +121,8 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 | Humanize | Note lunghe corrette più dolcemente, note brevi come prima. Proporzionale: al 25% le note tenute rallentano di ~12 ms, al 50% di 50 ms, al 100% di 200 ms | 20-50% |
 | Flex-Tune | Corregge piena vicino alla nota e meno quando la voce è lontana. Proporzionale: al 25% le note lontane sono corrette al 75%, al 50% a metà, al 100% restano libere | 0% (pop), 25-50% (espressivo) |
 | Vibrato | Negativo lo riduce, positivo lo aggiunge (anche con il robotico) | 0% |
-| Formant | Acceso: il timbro resta quello della voce anche spostando la nota (come il tasto Formant di Auto-Tune). Spento: le formanti si spostano con la nota | acceso |
-| Throat | La lunghezza della gola (solo con Formant acceso): sotto 100 voce più piccola e chiara, sopra 100 più grande e scura. La nota non cambia | 100 |
+| Formant | Accende la manopola Throat (spento = timbro originale) | acceso |
+| Throat | Il timbro, cioè la lunghezza della gola (solo con Formant acceso, in HQ): sotto 100 voce più piccola e chiara, sopra 100 più grande e scura. La nota non cambia | 100 |
 | Sensibilità | Alzala per voci con molta aria o sussurrate, abbassala se senti salti strani | 30% |
 | Trasponi | Sposta tutta la voce di semitoni, mantenendo il timbro | 0 st |
 | Bypass | Il pulsante di bypass del DAW: esce la voce originale, identica, con lo stesso ritardo, così resta a tempo | spento |
@@ -168,7 +168,7 @@ cargo run --release -p sosatune_dsp --example demo
 cargo run --release -p sosatune_dsp --example process -- voce.wav voce_corretta.wav --tonalita La --scala minore --velocita 0
 ```
 
-Opzioni: `--tonalita` (C, C#, Db... oppure Do, Do#, Reb...), `--scala` (cromatica, maggiore, minore, minore-armonica, pentatonica-maggiore, pentatonica-minore, blues), `--velocita` in ms, `--quantita` in %, `--trasponi` in semitoni, `--voce` (soprano, alto, bassa), `--humanize` e `--flex` in %, `--vibrato` da -100 a 100, `--throat` da 50 a 180 (oppure `--formanti` in semitoni), `--correzione-formanti` si/no, `--sensibilita` in %.
+Opzioni: `--tonalita` (C, C#, Db... oppure Do, Do#, Reb...), `--scala` (cromatica, maggiore, minore, minore-armonica, pentatonica-maggiore, pentatonica-minore, blues), `--velocita` in ms, `--quantita` in %, `--trasponi` in semitoni, `--voce` (soprano, alto, bassa), `--humanize` e `--flex` in %, `--vibrato` da -100 a 100, `--formanti` in semitoni, `--sensibilita` in %.
 
 **Test automatici** (controllano rilevamento, correzione, qualità e stabilità):
 
@@ -190,7 +190,7 @@ voce ──► YIN ──────────► scala ───────
 - **YIN** (`dsp/src/yin.rs`): confronta il segnale con se stesso spostato nel tempo; quando la differenza è minima, lo spostamento è il periodo dell'onda, cioè la nota. Calcolato con la FFT (`dsp/src/fft.rs`) per essere veloce, più un controllo contro gli errori d'ottava.
 - **Scale** (`dsp/src/scale.rs`): sceglie la nota ammessa più vicina, con un po' di isteresi per non "tremolare" quando sei a metà tra due note.
 - **Correttore** (`dsp/src/corrector.rs`): decide di quanto spostare la nota e con che velocità (due filtri in fila che arrivano al bersaglio in "velocità" millisecondi con una curva a S: il passaggio tra due note parte e arriva morbido, senza scatti). Qui vivono anche Humanize (la velocità rallenta man mano che la nota dura), Flex-Tune (il peso della correzione cala con la distanza dalla nota) e il vibrato naturale (isolato con un filtro passa-banda centrato su 5,5 Hz, che non lo sfasa e permette quindi anche di toglierlo).
-- **Phase vocoder** (modalità HQ, `dsp/src/vocoder.rs`): ogni 5 ms prende una "fetta" di voce, la smussa con una finestra di Hann lunga **6 periodi della voce** (da 32 ms per le voci acute a 64 ms per i bassi: le armoniche fitte delle voci maschili restano separate) e la trasforma in frequenze (FFT). Trova le armoniche (i picchi), misura la loro frequenza esatta dalla rotazione della fase, e sposta ogni armonica con le righe vicine alla frequenza giusta (frequenza × rapporto, anche di frazioni di riga). La fase di ogni armonica continua a girare alla velocità della frequenza nuova e le righe vicine la seguono ("identity phase locking", Laroche e Dolson); in più le armoniche fino a 5 kHz restano in fase tra loro (l'armonica h gira di h volte la fondamentale), così la forma d'onda di ogni ciclo della voce si conserva: niente suono metallico o "phasey". Le armoniche vengono cercate fino a 100 dB sotto la più forte, così anche quelle deboli in alto finiscono al posto giusto. Il timbro (inviluppo spettrale) è misurato con il **true envelope**: un cepstrum lisciato e ripetuto finché passa sulle cime delle armoniche, prolungato in piano sotto la fondamentale; viene rimesso al suo posto (tasto Formant acceso), o spostato con Throat. Poi FFT inversa e somma sovrapposta (overlap-add) tenendo di ogni fetta solo i 16 ms centrali: nei passaggi tra le note non si sommano pezzi spostati in modo diverso (che darebbero una risonanza sui medio-alti). Consonanti, "s", respiri e attacchi passano identici (niente ronzio metallico sulle sibilanti).
+- **Phase vocoder** (modalità HQ, `dsp/src/vocoder.rs`): ogni 5 ms prende una "fetta" di voce, la smussa con una finestra di Hann lunga **6 periodi della voce** (da 32 ms per le voci acute a 64 ms per i bassi: le armoniche fitte delle voci maschili restano separate) e la trasforma in frequenze (FFT). Trova le armoniche (i picchi), misura la loro frequenza esatta dalla rotazione della fase, e sposta ogni armonica con le righe vicine alla frequenza giusta (frequenza × rapporto, anche di frazioni di riga). La fase di ogni armonica continua a girare alla velocità della frequenza nuova e le righe vicine la seguono ("identity phase locking", Laroche e Dolson); in più le armoniche fino a 5 kHz restano in fase tra loro (l'armonica h gira di h volte la fondamentale), così la forma d'onda di ogni ciclo della voce si conserva: niente suono metallico o "phasey". Le armoniche vengono cercate fino a 100 dB sotto la più forte, così anche quelle deboli in alto finiscono al posto giusto. Il timbro (inviluppo spettrale) è misurato con il **true envelope**: un cepstrum lisciato e ripetuto finché passa sulle cime delle armoniche, prolungato in piano sotto la fondamentale; viene rimesso al suo posto, o spostato con Throat. Poi FFT inversa e somma sovrapposta (overlap-add) tenendo di ogni fetta solo i 16 ms centrali: nei passaggi tra le note non si sommano pezzi spostati in modo diverso (che darebbero una risonanza sui medio-alti). Consonanti, "s", respiri e attacchi passano identici (niente ronzio metallico sulle sibilanti).
 - **Latenza zero** (modalità Low Latency, `dsp/src/zerolat.rs`): la voce viene letta da una "testina" che scorre sul segnale appena arrivato un po' più veloce (nota più acuta) o più lenta (più grave). Quando arriva al presente o resta troppo indietro salta di un ciclo esatto della voce, nel punto in cui la forma d'onda combacia, con una dissolvenza: il ritardo resta di pochi millesimi e il DAW riceve latenza zero. Le consonanti passano identiche.
 
 ### Qualità misurata
@@ -198,8 +198,7 @@ voce ──► YIN ──────────► scala ───────
 I test (`cargo test -p sosatune_dsp --release`, 38 in tutto) controllano anche la qualità del suono:
 
 - correzione robotica di una melodia: in media **0,3 centesimi** dalla nota giusta; su voci reali circa **2 centesimi**;
-- le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni); trasponendo di 5 semitoni con Formant acceso il timbro resta a ~1 dB da quello originale in HQ e a ~4-6 dB in Low Latency (spento: 7-8 dB, l'"effetto scoiattolo");
-- **Low Latency con Formant** (`dsp/src/formant.rs`): dopo la testina a latenza zero, il timbro viene misurato sulla voce spostata con la predizione lineare (LPC) e riportato dov'era (o dove vuole Throat) con due filtri a traliccio che guardano solo il passato; con la nota non spostata e Throat a 100 i filtri si annullano esattamente e il suono resta identico;
+- le **formanti** restano entro ~1 dB nelle correzioni tipiche (fino a un paio di semitoni);
 - l'**armonicità** della voce (quanto è "pulita", senza ruvidità) in uscita è pari a quella in ingresso, sia su voci sintetiche sia reali;
 - vibrato naturale: rimesso con la profondità originale, oppure ridotto del 60-99%;
 - Humanize e Flex-Tune proporzionali alla manopola; Low Latency a latenza zero, HQ con latenza fissa; nessun clic ai cambi di nota in entrambe le modalità.

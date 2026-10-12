@@ -187,6 +187,7 @@ fn spectral_centroid(signal: &[f32]) -> f32 {
 fn formant_shift_changes_timbre_not_pitch() {
     let input = voice(1.5, |_| 57.0);
     let plain = CorrectionSettings { amount: 0.0, ..Default::default() };
+    // Il comando Formant agisce in HQ (in Low Latency le formanti seguono la nota).
     let out_plain = run_hq(&input, &plain);
     let out_up = run_hq(&input, &CorrectionSettings { formant: 4.0, ..plain });
     let out_down = run_hq(&input, &CorrectionSettings { formant: -4.0, ..plain });
@@ -204,123 +205,6 @@ fn formant_shift_changes_timbre_not_pitch() {
         let est = yin.detect(&out[out.len() / 2..out.len() / 2 + len]);
         assert!(est.voiced);
         assert!((hz_to_note(SR / est.period) - 57.0).abs() < 0.05);
-    }
-}
-
-/// Il "timbro" di una vocale tenuta: energia relativa di ogni armonica di
-/// `f0` fino a 5 kHz, a meta' del segnale.
-fn harmonic_profile(signal: &[f32], f0: f32) -> Vec<f32> {
-    let n = 8192;
-    let fft = Fft::new(n);
-    let start = signal.len() / 2 - n / 2;
-    let mut data: Vec<Complex> = (0..n)
-        .map(|i| Complex::new(signal[start + i] * (0.5 - 0.5 * (2.0 * PI * i as f32 / n as f32).cos()), 0.0))
-        .collect();
-    fft.process(&mut data, false);
-    let power: Vec<f32> = data.iter().take(n / 2).map(|c| c.re * c.re + c.im * c.im).collect();
-    let mut profile = Vec::new();
-    let mut h = 1.0;
-    while h * f0 < 5000.0 {
-        let k = (h * f0 * n as f32 / SR).round() as usize;
-        profile.push(power[k - 2..=k + 2].iter().cloned().fold(0.0, f32::max));
-        h += 1.0;
-    }
-    let total: f32 = profile.iter().sum();
-    profile.iter().map(|p| p / total).collect()
-}
-
-/// Differenza media (dB) tra due timbri.
-fn timbre_distance(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b).map(|(x, y)| (10.0 * (x.max(1e-12) / y.max(1e-12)).log10()).abs()).sum::<f32>() / a.len() as f32
-}
-
-/// Elabora in Low Latency (`hq` = false) o in HQ, allineando l'uscita.
-fn process_mode(input: &[f32], settings: &CorrectionSettings, hq: bool) -> Vec<f32> {
-    let mut corrector = PitchCorrector::new(SR, 1);
-    corrector.set_quality(hq);
-    let latency = corrector.latency();
-    let mut out: Vec<f32> = input
-        .iter()
-        .chain(std::iter::repeat(&0.0).take(latency))
-        .map(|&x| {
-            let mut f = [x];
-            corrector.process_frame(&mut f, settings);
-            f[0]
-        })
-        .collect();
-    out.drain(..latency);
-    out
-}
-
-/// Il tasto Formant (come in Auto-Tune): trasponendo, con la correzione
-/// delle formanti il timbro resta quello della voce (le formanti restano
-/// dove sono e si spostano solo le armoniche); senza, le formanti si
-/// spostano con la nota ("effetto scoiattolo"). In tutte e due le modalita'.
-#[test]
-fn formant_correction_keeps_the_timbre_when_transposing() {
-    use sosatune_dsp::synth::steady_vowel_formants;
-    let len = (SR * 1.5) as usize;
-    let f0 = note_to_hz(50.0);
-    let input = steady_vowel_formants(f0, SR, len, 1.0);
-    for semitones in [5.0f32, -5.0] {
-        let f_out = note_to_hz(50.0 + semitones);
-        let r = f_out / f0;
-        // Ideale con le formanti al loro posto, e ideale "scoiattolo".
-        let same_timbre = harmonic_profile(&steady_vowel_formants(f_out, SR, len, 1.0), f_out);
-        let chipmunk = harmonic_profile(&steady_vowel_formants(f_out, SR, len, r), f_out);
-        for hq in [false, true] {
-            let mode = if hq { "HQ" } else { "Low Latency" };
-            let on = CorrectionSettings { transpose: semitones, preserve_formants: true, ..Default::default() };
-            let off = CorrectionSettings { preserve_formants: false, ..on };
-            let out_on = harmonic_profile(&process_mode(&input, &on, hq), f_out);
-            let out_off = harmonic_profile(&process_mode(&input, &off, hq), f_out);
-            let on_kept = timbre_distance(&out_on, &same_timbre);
-            let off_kept = timbre_distance(&out_off, &same_timbre);
-            let off_moved = timbre_distance(&out_off, &chipmunk);
-            println!(
-                "{mode}, {semitones:+} semitoni: dal timbro originale {on_kept:.1} dB (Formant acceso) / {off_kept:.1} dB (spento); \
-                 spento dal timbro \"scoiattolo\" {off_moved:.1} dB"
-            );
-            // HQ ricostruisce il timbro quasi esatto; Low Latency (filtro a
-            // latenza zero) lo avvicina molto, senza arrivare all'esattezza.
-            let needed = if hq { 0.5 } else { 0.8 };
-            assert!(on_kept < needed * off_kept, "{mode} {semitones:+}: {on_kept:.1} vs {off_kept:.1} dB");
-            assert!(off_moved < off_kept, "{mode} {semitones:+}: spento le formanti devono seguire la nota");
-        }
-    }
-}
-
-/// Throat (la lunghezza della gola) sposta le formanti senza cambiare la
-/// nota, anche in Low Latency; con la correzione delle formanti spenta non
-/// agisce (come in Auto-Tune).
-#[test]
-fn throat_moves_the_formants_in_both_modes() {
-    use sosatune_dsp::synth::steady_vowel_formants;
-    let len = (SR * 1.5) as usize;
-    let f0 = note_to_hz(50.0);
-    let input = steady_vowel_formants(f0, SR, len, 1.0);
-    let original = harmonic_profile(&input, f0);
-    for semitones in [4.0f32, -4.0] {
-        let ideal = harmonic_profile(&steady_vowel_formants(f0, SR, len, 2f32.powf(semitones / 12.0)), f0);
-        let before = timbre_distance(&original, &ideal);
-        for hq in [false, true] {
-            let mode = if hq { "HQ" } else { "Low Latency" };
-            let settings = CorrectionSettings { formant: semitones, ..Default::default() };
-            let out = process_mode(&input, &settings, hq);
-            let after = timbre_distance(&harmonic_profile(&out, f0), &ideal);
-            println!("{mode}, Throat {semitones:+} semitoni: distanza dal timbro voluto {before:.1} -> {after:.1} dB");
-            assert!(after < 0.75 * before, "{mode} {semitones:+}: {before:.1} -> {after:.1} dB");
-            // La nota resta quella.
-            let mut yin = YinDetector::new(SR, 60.0);
-            let n = yin.frame_len();
-            let est = yin.detect(&out[out.len() / 2..out.len() / 2 + n]);
-            assert!(est.voiced && (hz_to_note(SR / est.period) - 50.0).abs() < 0.1, "{mode}: nota spostata");
-
-            // Correzione delle formanti spenta: Throat non agisce.
-            let off = process_mode(&input, &CorrectionSettings { preserve_formants: false, ..settings }, hq);
-            let unchanged = timbre_distance(&harmonic_profile(&off, f0), &original);
-            assert!(unchanged < 1.0, "{mode}: Throat con Formant spento ha cambiato il timbro di {unchanged:.1} dB");
-        }
     }
 }
 

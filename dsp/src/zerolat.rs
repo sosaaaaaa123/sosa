@@ -11,10 +11,10 @@
 //! sente.
 //!
 //! Il ritardo resta tra 3 campioni e un periodo della voce (in media 2-5 ms),
-//! e il plugin dichiara al DAW latenza zero. La testina sposta le formanti
-//! insieme alla nota (l'"effetto scoiattolo" trasponendo molto): dopo, il
-//! filtro di `formant.rs` le riporta al loro posto (tasto Formant) o dove le
-//! vuole la manopola Throat.
+//! e il plugin dichiara al DAW latenza zero. Il prezzo: le formanti si
+//! spostano insieme alla nota (impercettibile nelle correzioni di pochi
+//! centesimi, si sente solo trasponendo molto) e il comando Formant non
+//! agisce. Per il mix c'e' la modalita' HQ (phase vocoder).
 
 use crate::vocoder::GrainPitch;
 use crate::MAX_CHANNELS;
@@ -86,12 +86,6 @@ impl DelayShifter {
         self.countdown = 1;
         self.pitch = GrainPitch { period: 0.0, ratio: 1.0, voiced: false, formant: 1.0 };
         self.ratio = 1.0;
-    }
-
-    /// Rapporto di velocita' attuale della testina (= di quanto sposta la
-    /// nota, e con lei le formanti).
-    pub fn current_ratio(&self) -> f64 {
-        self.ratio
     }
 
     /// Ritardo attuale della testina (campioni).

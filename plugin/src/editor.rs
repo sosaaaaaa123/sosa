@@ -2290,7 +2290,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         format!("{throat:.0}"),
         ("throat", 1.0),
         ArcStyle::Cyan,
-        "Throat (come in Auto-Tune): la lunghezza della gola, senza cambiare la nota. \
+        "Throat: la lunghezza della gola, senza cambiare la nota (in modalità HQ). \
          100 = voce originale; meno di 100 = gola più corta, voce più piccola e chiara; \
          più di 100 = gola più lunga, voce più grande e scura (da 50 a 180). \
          Agisce solo con Formant acceso. Doppio clic = 100.",
@@ -2300,9 +2300,8 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     );
     // Il tasto dopo la manopola: sta "sopra" la sua zona di trascinamento.
     if small_toggle(ui, painter, g, FORMANT_TOGGLE, "Formant", formant_on,
-        "Formant (come in Auto-Tune): acceso, il timbro della voce resta naturale anche \
-         correggendo o trasponendo molto (niente \"effetto scoiattolo\"). Spento, le \
-         formanti si spostano insieme alla nota. Funziona in HQ e in Low Latency.") {
+        "Formant: acceso, la manopola Throat cambia il timbro della voce (in HQ). \
+         Spento: timbro originale, Throat non agisce.") {
         set_param(setter, &params.formant_correction, !formant_on);
     }
 }
@@ -2525,8 +2524,8 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
         ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
         ("Humanize / Flex Tune", "note lunghe più libere / corregge di più vicino alla nota."),
-        ("Vibrato / Throat", "toglie o aggiunge vibrato / lunghezza della gola (100 = voce originale)."),
-        ("Formant", "acceso: timbro naturale anche trasponendo (come in Auto-Tune); spento: segue la nota."),
+        ("Vibrato / Throat", "toglie o aggiunge vibrato / lunghezza della gola, in HQ (100 = voce originale)."),
+        ("Formant", "accende la manopola Throat; spento = timbro originale."),
         ("Detune", "accordatura del La4: 440 Hz, o quella della base (es. 432 Hz)."),
         ("☰  /  ⚙", "preset e Save as Default / misura della finestra e altre impostazioni."),
         ("Annulla, accensione", "frecce tonde: annulla e ripeti / tasto blu: bypass (voce originale, a tempo)."),
