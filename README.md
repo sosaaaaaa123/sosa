@@ -129,10 +129,10 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 
 - **Vocal Range** e **Key & Scale** (in alto): menu a tendina per tipo di voce, tonalità e scala. **AutoKey Listen**: accendilo e fai suonare la voce, la tonalità si imposta da sola.
 - **Nota al centro**: la nota che stai cantando; l'indicatore dice di quanti **centesimi** sei calante (−) o crescente (+).
-- **Manopole** Retune Speed, Humanize, Flex Tune e Detune: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. Passandoci sopra col mouse compare la spiegazione.
-- **Mode**: Low Latency (0 ms, per registrare) o HQ (per il mix). **Modern / Classic**: note già intonate oppure ogni nota che scivola sulla nota giusta.
+- **Manopole** Detune, Retune Speed, Humanize, Flex Tune e Formant: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. Passandoci sopra col mouse compare la spiegazione.
+- **Low Latency / HQ** (in alto, accanto al preset): 0 ms per registrare, HQ per il mix. **Modern / Classic** (in basso a destra): note già intonate oppure ogni nota che scivola sulla nota giusta.
 - **Edit Notes** (in basso): clic su una nota per includerla o escluderla dalla scala.
-- **⚙**: Amount, Transpose, Vibrato, Formant, Sensitivity e la latenza attuale. **↶ ↷**: annulla e ripeti.
+- **⚙**: Amount, Transpose, Vibrato, Sensitivity e la latenza attuale. **↶ ↷**: annulla e ripeti.
 
 ---
 

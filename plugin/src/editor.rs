@@ -710,22 +710,38 @@ fn arrow(painter: &Painter, g: Geo, x: f32, y: f32, dir: f32, color: Color32) {
     painter.add(Shape::line(vec![g.p(tip - 10.0 * dir, y - 10.0), g.p(tip, y), g.p(tip - 10.0 * dir, y + 10.0)], stroke));
 }
 
+// Intestazione (coordinate dell'immagine di riferimento). La seconda versione
+// dell'immagine ha i tasti Low Latency / HQ dentro il riquadro dei preset:
+// le colonne Vocal Range e Key & Scale si sono strette verso sinistra.
+const VOICE_LABEL_X: f32 = 432.0;
+const KEY_LABEL_X: f32 = 674.0;
+/// Riquadro dei preset (x0, y0, x1, y1).
+const PRESET_BOX: (f32, f32, f32, f32) = (873.5, 89.0, 1398.0, 182.5);
+/// Tasti della modalita' nel riquadro dei preset.
+const MODE_LOW: (f32, f32, f32, f32) = (996.5, 115.5, 1135.5, 164.0);
+const MODE_HQ: (f32, f32, f32, f32) = (1141.5, 115.5, 1222.0, 164.0);
+/// Frecce e lista dei preset (centri x, y comune).
+const PRESET_PREV_X: f32 = 1258.5;
+const PRESET_NEXT_X: f32 = 1310.5;
+const PRESET_LIST_X: f32 = 1364.0;
+const PRESET_ICONS_Y: f32 = 135.0;
+
 fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState) {
     // Marchio.
     spaced_text(painter, g.p(80.0, 120.0), g.d(300.0), "SOSA TUNE", font(48.0, Weight::Light), TEXT);
     spaced_text(painter, g.p(85.0, 163.0), g.d(214.0), "AUTOTUNE", font(18.0, Weight::Medium), Color32::from_rgb(0xdc, 0xe3, 0xee));
 
     // Separatori.
-    for x in [407.0, 672.0] {
+    for x in [405.0, 647.0, 860.0] {
         painter.line_segment([g.p(x, 92.0), g.p(x, 180.0)], Stroke::new(g.d(1.5), SEPARATOR));
     }
     painter.line_segment([g.p(PANEL.0 + 2.0, 188.0), g.p(PANEL.2 - 2.0, 188.0)], Stroke::new(g.d(1.5), Color32::from_rgb(0x15, 0x22, 0x31)));
 
     // Vocal Range e Key & Scale: menu a tendina.
     let fields = [
-        (Menu::Voice, 441.0, 632.0, "Vocal Range", voice_label(params.voice.value()).to_owned(), g.r(415.0, 92.0, 664.0, 182.0),
+        (Menu::Voice, VOICE_LABEL_X, 610.0, "Vocal Range", voice_label(params.voice.value()).to_owned(), g.r(411.0, 92.0, 642.0, 182.0),
             "Il tipo di voce: decide la nota più grave riconosciuta. Per le voci maschili scegli Alto/Tenor o Low Male."),
-        (Menu::KeyScale, 706.0, 878.0, "Key & Scale", key_scale_label(params), g.r(680.0, 92.0, 905.0, 182.0),
+        (Menu::KeyScale, KEY_LABEL_X, 832.0, "Key & Scale", key_scale_label(params), g.r(652.0, 92.0, 856.0, 182.0),
             "Tonalità e scala: la voce viene portata sulle note di questa scala."),
     ];
     for (menu, x, chevron_x, label, value, hit, help) in fields {
@@ -735,7 +751,7 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
             painter.rect_filled(hit.shrink(g.d(4.0)), CornerRadius::same(g.d(10.0) as u8), Color32::from_white_alpha(6));
         }
         txt(painter, g.p(x, 113.0), Align2::LEFT_CENTER, label, font(21.0, Weight::Regular), TEXT_DIM);
-        txt(painter, g.p(x, 148.0), Align2::LEFT_CENTER, value, font(25.0, Weight::Medium), TEXT);
+        txt(painter, g.p(x, 149.0), Align2::LEFT_CENTER, value, font(25.0, Weight::Medium), TEXT);
         chevron(painter, g, chevron_x, 134.0);
         if response.clicked() {
             state.menu = if open { None } else { Some((menu, hit)) };
@@ -743,7 +759,7 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     }
 
     // Preset.
-    let preset_box = g.r(930.0, 89.0, 1398.0, 183.0);
+    let preset_box = g.r(PRESET_BOX.0, PRESET_BOX.1, PRESET_BOX.2, PRESET_BOX.3);
     painter.rect(
         preset_box,
         CornerRadius::same(g.d(14.0) as u8),
@@ -755,12 +771,37 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     let preset = &FACTORY[index];
     let modified = !preset.matches(params);
     let name = if modified { format!("{}*", preset.name) } else { preset.name.to_owned() };
-    let name_hit = g.r(936.0, 94.0, 1180.0, 178.0);
+    let name_hit = g.r(PRESET_BOX.0 + 6.0, 94.0, MODE_LOW.0 - 6.0, 178.0);
     let name_response = ui
         .interact(name_hit, Id::new("preset-nome"), Sense::click())
         .on_hover_text(format!("{}\n(* = modificato. Clic per la lista dei preset.)", preset.help));
-    txt(painter, g.p(948.0, 118.0), Align2::LEFT_CENTER, name, font(26.0, Weight::Medium), TEXT);
-    txt(painter, g.p(948.0, 152.0), Align2::LEFT_CENTER, presets::BANK, font(24.5, Weight::Regular), Color32::from_rgb(0x9a, 0xab, 0xc4));
+    txt(painter, g.p(889.0, 118.0), Align2::LEFT_CENTER, name, font(26.0, Weight::Medium), TEXT);
+    txt(painter, g.p(889.0, 153.0), Align2::LEFT_CENTER, presets::BANK, font(24.5, Weight::Regular), Color32::from_rgb(0x9a, 0xab, 0xc4));
+
+    // Modalita': Low Latency / HQ.
+    let quality = params.quality.value();
+    let modes = [
+        (QualityChoice::LowLatency, "Low Latency", MODE_LOW, "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Qualità da monitoraggio: per il mix passa a HQ."),
+        (QualityChoice::Hq, "HQ", MODE_HQ, "Qualità alta: phase vocoder con finestra adattata alla voce e timbro (formanti) preservato, il suono più pulito e l'intonazione più precisa. Latenza 64 ms, compensata dal DAW: ideale per il mix."),
+    ];
+    for (choice, label, r, help) in modes {
+        let rect = g.r(r.0, r.1, r.2, r.3);
+        let response = ui.interact(rect, Id::new(("modo", label)), Sense::click()).on_hover_text(help);
+        let selected = quality == choice;
+        let radius = CornerRadius::same(g.d(10.0) as u8);
+        if selected {
+            rounded_gradient(painter, rect, [g.d(10.0); 4], Color32::from_rgb(0x08, 0x2c, 0x50), Color32::from_rgb(0x04, 0x3a, 0x6a));
+            glow_rect(painter, rect, g.d(10.0), Color32::from_rgb(0x4c, 0xd8, 0xff), g.d(10.0), 0.55);
+            painter.rect_stroke(rect, radius, Stroke::new(g.d(2.2), Color32::from_rgb(0xae, 0xf5, 0xff)), StrokeKind::Inside);
+        } else {
+            let edge = if response.hovered() { Color32::from_rgb(0x34, 0x44, 0x58) } else { Color32::from_rgb(0x1d, 0x28, 0x38) };
+            painter.rect(rect, radius, Color32::from_rgb(0x02, 0x09, 0x13), Stroke::new(g.d(1.5), edge), StrokeKind::Inside);
+        }
+        txt(painter, rect.center(), Align2::CENTER_CENTER, label, font(21.0, Weight::Regular), TEXT);
+        if response.clicked() && !selected {
+            set_param(setter, &params.quality, choice);
+        }
+    }
 
     let clicked = |id: &str, center: Pos2, help: &str| {
         let hit = Rect::from_center_size(center, Vec2::splat(g.d(56.0)));
@@ -771,13 +812,14 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
         response.clicked()
     };
     let icon = Color32::from_rgb(0xd2, 0xda, 0xe6);
-    let prev = clicked("preset-prec", g.p(1216.0, 135.0), "Preset precedente");
-    let next = clicked("preset-succ", g.p(1288.0, 135.0), "Preset successivo");
-    let list = clicked("preset-lista", g.p(1356.0, 135.0), "Tutti i preset");
-    arrow(painter, g, 1216.0, 135.0, -1.0, icon);
-    arrow(painter, g, 1288.0, 135.0, 1.0, icon);
-    for dy in [-10.0, 0.0, 10.0] {
-        painter.line_segment([g.p(1343.0, 135.0 + dy), g.p(1369.0, 135.0 + dy)], Stroke::new(g.d(2.4), icon));
+    let y = PRESET_ICONS_Y;
+    let prev = clicked("preset-prec", g.p(PRESET_PREV_X, y), "Preset precedente");
+    let next = clicked("preset-succ", g.p(PRESET_NEXT_X, y), "Preset successivo");
+    let list = clicked("preset-lista", g.p(PRESET_LIST_X, y), "Tutti i preset");
+    arrow(painter, g, PRESET_PREV_X, y, -1.0, icon);
+    arrow(painter, g, PRESET_NEXT_X, y, 1.0, icon);
+    for dy in [-10.5, 0.0, 10.5] {
+        painter.line_segment([g.p(PRESET_LIST_X - 13.5, y + dy), g.p(PRESET_LIST_X + 13.5, y + dy)], Stroke::new(g.d(2.4), icon));
     }
     if prev {
         apply_preset(params, setter, (index + FACTORY.len() - 1) % FACTORY.len());
@@ -1394,7 +1436,7 @@ fn side_buttons(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, set
         ("annulla", 245.0, "Annulla l'ultima modifica"),
         ("ripeti", 328.0, "Ripeti la modifica annullata"),
         ("aiuto", 412.0, "Guida ai comandi"),
-        ("impostazioni", 495.0, "Altre impostazioni: quantità, trasposizione, vibrato, formanti, sensibilità"),
+        ("impostazioni", 495.0, "Altre impostazioni: quantità, trasposizione, vibrato, sensibilità"),
     ];
     for (id, y, help) in buttons {
         let center = g.p(1338.0, y);
@@ -1547,6 +1589,7 @@ fn knob_with_box<P: Param>(
     knob: (f32, f32),
     value_box: (f32, f32),
     text: String,
+    text_at: Option<f32>,
     style: ArcStyle,
     help: &str,
 ) {
@@ -1554,7 +1597,7 @@ fn knob_with_box<P: Param>(
     let rect = g.r(value_box.0, 909.0, value_box.1, 976.0);
     painter.rect(rect, CornerRadius::same(g.d(9.0) as u8), BOX_BG, Stroke::new(g.d(1.4), BOX_EDGE), StrokeKind::Inside);
     // Il numero sta al centro della parte del riquadro non coperta dalla manopola.
-    let text_x = 0.5 * (knob.0 + 34.0 + value_box.1);
+    let text_x = text_at.unwrap_or(0.5 * (knob.0 + 34.0 + value_box.1));
     text_tracked(painter, g.p(text_x + 2.0, 943.0), Align2::CENTER_CENTER, text, font(30.0, Weight::Medium), TEXT, -0.07);
     let center = g.p(knob.0, knob.1);
     knob_visual(painter, g, center, g.d(34.0), param.unmodulated_normalized_value(), style);
@@ -1569,7 +1612,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
     rounded_stroke(painter, bar, radii, Stroke::new(g.d(1.6), Color32::from_rgb(0x1a, 0x30, 0x4c)));
     // Riflesso sul bordo in alto.
     painter.line_segment([g.p(120.0, 844.5), g.p(1330.0, 844.5)], Stroke::new(g.d(1.2), light(Color32::from_rgb(0x5a, 0x8c, 0xd0), 0.35)));
-    for x in [302.0, 512.0, 724.0, 926.0] {
+    for x in [302.0, 512.0, 724.0, 926.0, 1181.0] {
         painter.line_segment([g.p(x, 862.0), g.p(x, 990.0)], Stroke::new(g.d(1.4), SEPARATOR));
     }
 
@@ -1597,6 +1640,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         (367.0, 943.0),
         (392.0, 484.0),
         format!("{:.0}", params.retune_speed.value()),
+        None,
         ArcStyle::Cyan,
         "Quanto in fretta la voce viene portata sulla nota giusta (ms).\n\
          0 = effetto robotico, 10-30 = pop, 50-150 = naturale.",
@@ -1611,6 +1655,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         (573.0, 943.0),
         (598.0, 692.0),
         format!("{:.0}", params.humanize.value() * 100.0),
+        None,
         ArcStyle::Violet,
         "Sulle note lunghe la correzione diventa più morbida, così le note tenute \
          non suonano \"congelate\"; quelle brevi restano corrette.",
@@ -1625,35 +1670,30 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         (787.0, 943.0),
         (812.0, 904.0),
         format!("{:.0}", params.flex_tune.value() * 100.0),
+        None,
         ArcStyle::White,
         "Corregge solo quando la voce è già vicina alla nota: scivolate e note \
          volutamente \"sporche\" restano come le hai cantate.",
     );
 
-    // Mode.
-    txt(painter, g.p(958.0, 894.0), Align2::LEFT_CENTER, "Mode", font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec));
-    let quality = params.quality.value();
-    let modes = [
-        (QualityChoice::LowLatency, "Low Latency", g.r(958.0, 918.0, 1102.0, 968.0), "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Qualità da monitoraggio: per il mix passa a HQ."),
-        (QualityChoice::Hq, "HQ", g.r(1112.0, 918.0, 1196.0, 968.0), "Qualità alta: phase vocoder con finestra adattata alla voce e timbro (formanti) preservato, il suono più pulito e l'intonazione più precisa. Latenza 64 ms, compensata dal DAW: ideale per il mix."),
-    ];
-    for (choice, label, rect, help) in modes {
-        let response = ui.interact(rect, Id::new(("modo", label)), Sense::click()).on_hover_text(help);
-        let selected = quality == choice;
-        let radius = CornerRadius::same(g.d(9.0) as u8);
-        if selected {
-            rounded_gradient(painter, rect, [g.d(9.0); 4], Color32::from_rgb(0x08, 0x2c, 0x50), Color32::from_rgb(0x04, 0x3a, 0x6a));
-            glow_rect(painter, rect, g.d(9.0), Color32::from_rgb(0x4c, 0xd8, 0xff), g.d(10.0), 0.55);
-            painter.rect_stroke(rect, radius, Stroke::new(g.d(2.2), Color32::from_rgb(0xae, 0xf5, 0xff)), StrokeKind::Inside);
-        } else {
-            let edge = if response.hovered() { Color32::from_rgb(0x34, 0x44, 0x58) } else { Color32::from_rgb(0x1d, 0x28, 0x38) };
-            painter.rect(rect, radius, Color32::from_rgb(0x02, 0x09, 0x13), Stroke::new(g.d(1.5), edge), StrokeKind::Inside);
-        }
-        txt(painter, rect.center(), Align2::CENTER_CENTER, label, font(21.0, Weight::Regular), TEXT);
-        if response.clicked() && !selected {
-            set_param(setter, &params.quality, choice);
-        }
-    }
+    // Formant (come nella seconda versione dell'immagine: al posto dei tasti
+    // della modalita', che sono passati nell'intestazione).
+    let formant = params.formant.value();
+    knob_with_box(
+        ui,
+        painter,
+        g,
+        setter,
+        &params.formant,
+        ("Formant", 957.0),
+        (992.0, 943.0),
+        (1022.0, 1154.0),
+        if formant.abs() < 0.05 { "0".to_owned() } else { format!("{formant:+.1}") },
+        Some(1105.0),
+        ArcStyle::Cyan,
+        "Il timbro della voce, senza cambiare la nota (in modalità HQ): a destra più \
+         piccola e chiara, a sinistra più grande e scura. Doppio clic = 0.",
+    );
 
     // Modern / Classic.
     let style = params.style.value();
@@ -1709,9 +1749,12 @@ fn menu_frame(painter: &Painter, rect: Rect) {
 fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState) {
     let Some((menu, trigger)) = state.menu else { return };
     let (pos, size) = match menu {
-        Menu::Voice => (g.p(420.0, 186.0), Vec2::new(g.d(250.0), g.d(170.0))),
-        Menu::KeyScale => (g.p(684.0, 186.0), Vec2::new(g.d(430.0), g.d(420.0))),
-        Menu::Preset => (g.p(930.0, 188.0), Vec2::new(g.d(468.0), g.d(30.0 + 52.0 * FACTORY.len() as f32))),
+        Menu::Voice => (g.p(VOICE_LABEL_X - 21.0, 186.0), Vec2::new(g.d(250.0), g.d(170.0))),
+        Menu::KeyScale => (g.p(KEY_LABEL_X - 22.0, 186.0), Vec2::new(g.d(430.0), g.d(420.0))),
+        Menu::Preset => (
+            g.p(PRESET_BOX.0, 188.0),
+            Vec2::new(g.d(PRESET_BOX.2 - PRESET_BOX.0), g.d(30.0 + 52.0 * FACTORY.len() as f32)),
+        ),
     };
     let popup = Rect::from_min_size(pos, size);
     let mut close = false;
@@ -1852,7 +1895,7 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Indicatore", "di quanti centesimi la voce è calante (−) o crescente (+)."),
         ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
         ("Humanize / Flex Tune", "note lunghe più libere / corregge solo vicino alla nota."),
-        ("Detune", "accordatura del La4 (440 Hz standard)."),
+        ("Detune / Formant", "accordatura del La4 (440 Hz) / timbro della voce (in HQ)."),
         ("Mode", "Low Latency (0 ms) per registrare in diretta, HQ (64 ms) per il mix."),
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
         ("↶ ↷  ⚙  ⏻", "annulla e ripeti, altre impostazioni, accensione."),
@@ -1871,17 +1914,19 @@ fn help_page(painter: &Painter, g: Geo) {
     );
 }
 
+/// Prima manopola del pannello impostazioni (quattro, centrate nel pannello).
+const SETTINGS_KNOB_X0: f32 = 367.5;
+
 fn settings_page(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter) {
     painter.text(g.p(110.0, 250.0), Align2::LEFT_CENTER, "Impostazioni", font(30.0, Weight::Medium), TEXT);
-    let knobs: [(&str, String, f32, &str); 5] = [
+    let knobs: [(&str, String, f32, &str); 4] = [
         ("Amount", format!("{:.0}%", params.amount.value() * 100.0), params.amount.unmodulated_normalized_value(), "Quanta correzione applicare: 100% = completa."),
         ("Transpose", format!("{:+} st", params.transpose.value()), params.transpose.unmodulated_normalized_value(), "Sposta tutta la voce di un certo numero di semitoni."),
         ("Vibrato", format!("{:+.0}%", params.vibrato.value() * 100.0), params.vibrato.unmodulated_normalized_value(), "Vibrato naturale: a sinistra lo riduce, a destra lo aggiunge."),
-        ("Formant", format!("{:+.1} st", params.formant.value()), params.formant.unmodulated_normalized_value(), "Il timbro della voce, senza cambiare la nota (in modalità HQ): a destra più piccola e chiara, a sinistra più grande e scura."),
         ("Sensitivity", format!("{:.0}%", params.tracking.value() * 100.0), params.tracking.unmodulated_normalized_value(), "Quanto il plugin è disposto a riconoscere una nota: alzala per voci con molta aria."),
     ];
     for (i, (label, text, value, help)) in knobs.iter().enumerate() {
-        let x = 230.0 + i as f32 * 205.0;
+        let x = SETTINGS_KNOB_X0 + i as f32 * 205.0;
         let center = g.p(x, 400.0);
         painter.text(g.p(x, 320.0), Align2::CENTER_CENTER, *label, font(22.0, Weight::Regular), Color32::from_rgb(0xdc, 0xe2, 0xec));
         let style = match i {
@@ -1896,7 +1941,6 @@ fn settings_page(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, di
             0 => drag_param(ui, setter, &params.amount, hit, "amount", help),
             1 => drag_param(ui, setter, &params.transpose, hit, "transpose", help),
             2 => drag_param(ui, setter, &params.vibrato, hit, "vibrato", help),
-            3 => drag_param(ui, setter, &params.formant, hit, "formant", help),
             _ => drag_param(ui, setter, &params.tracking, hit, "tracking", help),
         };
     }
@@ -2048,11 +2092,14 @@ pub(crate) mod layout {
     pub fn detune() -> Pos2 {
         at(243.0, 928.0)
     }
+    pub fn formant() -> Pos2 {
+        at(992.0, 943.0)
+    }
     pub fn mode_hq() -> Pos2 {
-        at(1154.0, 943.0)
+        at(0.5 * (MODE_HQ.0 + MODE_HQ.2), 0.5 * (MODE_HQ.1 + MODE_HQ.3))
     }
     pub fn mode_low() -> Pos2 {
-        at(1030.0, 943.0)
+        at(0.5 * (MODE_LOW.0 + MODE_LOW.2), 0.5 * (MODE_LOW.1 + MODE_LOW.3))
     }
     pub fn classic() -> Pos2 {
         at(1258.0, 953.0)
@@ -2079,13 +2126,13 @@ pub(crate) mod layout {
         note_center(Geo { origin: Pos2::ZERO }, pc)
     }
     pub fn preset_next() -> Pos2 {
-        at(1288.0, 135.0)
+        at(PRESET_NEXT_X, PRESET_ICONS_Y)
     }
     pub fn preset_prev() -> Pos2 {
-        at(1216.0, 135.0)
+        at(PRESET_PREV_X, PRESET_ICONS_Y)
     }
     pub fn preset_list() -> Pos2 {
-        at(1356.0, 135.0)
+        at(PRESET_LIST_X, PRESET_ICONS_Y)
     }
     pub fn voice_field() -> Pos2 {
         at(520.0, 140.0)
@@ -2103,18 +2150,18 @@ pub(crate) mod layout {
     /// Una tonalita' (0 = C ... 11 = B) nel menu Key & Scale.
     pub fn key_item(i: usize) -> Pos2 {
         let (col, row) = (i % 6, i / 6);
-        at(684.0 + 14.0 + 67.0 * col as f32 + 31.0, 186.0 + 44.0 + 54.0 * row as f32 + 24.0)
+        at(KEY_LABEL_X - 22.0 + 14.0 + 67.0 * col as f32 + 31.0, 186.0 + 44.0 + 54.0 * row as f32 + 24.0)
     }
     /// Una scala nel menu Key & Scale (0 = Major, 1 = Minor, ...).
     pub fn scale_item(i: usize) -> Pos2 {
         let (col, row) = (i % 2, i / 2);
-        at(684.0 + 14.0 + 203.0 * col as f32 + 99.0, 186.0 + 194.0 + 54.0 * row as f32 + 24.0)
+        at(KEY_LABEL_X - 22.0 + 14.0 + 203.0 * col as f32 + 99.0, 186.0 + 194.0 + 54.0 * row as f32 + 24.0)
     }
     pub fn preset_item(i: usize) -> Pos2 {
         at(1164.0, 188.0 + 15.0 + 52.0 * i as f32 + 23.0)
     }
-    /// Le manopole del pannello impostazioni (0 = Amount ... 4 = Sensitivity).
+    /// Le manopole del pannello impostazioni (0 = Amount ... 3 = Sensitivity).
     pub fn settings_knob(i: usize) -> Pos2 {
-        at(230.0 + i as f32 * 205.0, 400.0)
+        at(SETTINGS_KNOB_X0 + i as f32 * 205.0, 400.0)
     }
 }

@@ -368,6 +368,7 @@ mod tests {
             (layout::humanize(), params.humanize.as_ptr(), params.humanize.unmodulated_normalized_value()),
             (layout::flex(), params.flex_tune.as_ptr(), params.flex_tune.unmodulated_normalized_value()),
             (layout::detune(), params.detune.as_ptr(), params.detune.unmodulated_normalized_value()),
+            (layout::formant(), params.formant.as_ptr(), params.formant.unmodulated_normalized_value()),
         ];
         for (i, &(pos, ptr, start)) in knobs.iter().enumerate() {
             let changes = run(&params, drag_up(pos, 40.0));
