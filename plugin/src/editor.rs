@@ -872,7 +872,7 @@ fn value_entry<P: Param>(
     }
     let ctx = ui.ctx().clone();
     let Some(edit) = state.editing.as_mut() else { return };
-    painter.rect_stroke(rect.shrink(1.0), CornerRadius::same(6), Stroke::new(1.4, CYAN), StrokeKind::Inside);
+    painter.rect_stroke(rect.shrink(1.0), CornerRadius::same(6), Stroke::new(1.4_f32, CYAN), StrokeKind::Inside);
     let response = egui::Area::new(Id::new(("scrivi", id)))
         .order(Order::Foreground)
         .fixed_pos(rect.min)
@@ -943,7 +943,7 @@ fn resize_grip(ui: &Ui, painter: &Painter, screen: Rect, params: &SosaTuneParams
         .on_hover_text("Trascina per ingrandire o rimpicciolire la finestra");
     let color = if response.hovered() || response.dragged() { TEXT_DIM } else { Color32::from_rgb(0x2c, 0x3c, 0x50) };
     for k in [4.0, 9.0, 14.0] {
-        painter.line_segment([Pos2::new(screen.max.x - k, screen.max.y - 2.0), Pos2::new(screen.max.x - 2.0, screen.max.y - k)], Stroke::new(1.2, color));
+        painter.line_segment([Pos2::new(screen.max.x - k, screen.max.y - 2.0), Pos2::new(screen.max.x - 2.0, screen.max.y - k)], Stroke::new(1.2_f32, color));
     }
     if response.dragged() {
         if let Some(pointer) = response.interact_pointer_pos() {
@@ -1913,8 +1913,10 @@ enum ArcStyle {
 }
 
 /// Una manopola come nell'immagine: corpo scuro, linea dell'indice, arco
-/// colorato del valore.
-fn knob_visual(painter: &Painter, g: Geo, center: Pos2, r: f32, value: f32, style: ArcStyle) {
+/// colorato del valore. L'arco parte da `origin` (0 = tutto a sinistra; 0,5
+/// = in alto, per i comandi con lo zero al centro come Vibrato e Formant).
+#[allow(clippy::too_many_arguments)]
+fn knob_visual(painter: &Painter, g: Geo, center: Pos2, r: f32, value: f32, origin: f32, style: ArcStyle) {
     // Ombra.
     radial(painter, center + Vec2::new(0.0, g.d(4.0)), r * 0.9, r * 1.35, Color32::from_black_alpha(150), Color32::TRANSPARENT);
     radial(painter, center, 0.0, r, Color32::from_rgb(0x15, 0x1d, 0x28), Color32::from_rgb(0x07, 0x0c, 0x14));
@@ -1936,13 +1938,14 @@ fn knob_visual(painter: &Painter, g: Geo, center: Pos2, r: f32, value: f32, styl
                 ArcStyle::Violet => (Color32::from_rgb(0x4a, 0x2a, 0xc8), Color32::from_rgb(0xc4, 0xb0, 0xff)),
                 _ => (Color32::from_rgb(0x9a, 0xa4, 0xb4), Color32::WHITE),
             };
-            if value > 0.002 {
+            let base = start + sweep * origin.clamp(0.0, 1.0);
+            if (value - origin).abs() > 0.002 {
                 let steps = 40;
                 for i in 0..steps {
                     let t0 = i as f32 / steps as f32;
                     let t1 = (i + 1) as f32 / steps as f32;
-                    let a0 = start + (angle - start) * t0;
-                    let a1 = start + (angle - start) * t1;
+                    let a0 = base + (angle - base) * t0;
+                    let a1 = base + (angle - base) * t1;
                     let color = lerp_color(from, to, t1);
                     painter.line_segment([polar(center, arc_r, a0), polar(center, arc_r, a1)], Stroke::new(g.d(16.0), light(color, 0.10)));
                     painter.line_segment([polar(center, arc_r, a0), polar(center, arc_r, a1)], Stroke::new(g.d(8.0), light(color, 0.22)));
@@ -1976,7 +1979,9 @@ fn knob_with_box(
     // Il numero sta al centro della parte del riquadro non coperta dalla manopola.
     let text_x = 0.5 * (knob.0 + 34.0 + value_box.1);
     let center = g.p(knob.0, knob.1);
-    knob_visual(painter, g, center, g.d(34.0), param.unmodulated_normalized_value(), style);
+    // Lo zero dei comandi bipolari (Vibrato, Formant) sta in alto.
+    let origin = param.preview_normalized(0.0);
+    knob_visual(painter, g, center, g.d(34.0), param.unmodulated_normalized_value(), origin, style);
     let hit = g.r(knob.0 - 46.0, 860.0, value_box.1, 985.0);
     drag_param(ui, setter, param, hit, label.0, help);
     // Il numero: cliccandolo si scrive il valore (trascinando si gira la manopola).
@@ -2009,7 +2014,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
 
     // Detune.
     text_tracked(painter, g.p(74.0, 899.0), Align2::LEFT_CENTER, "Detune", font(21.0, Weight::Regular), Color32::from_rgb(0xc8, 0xd0, 0xdc), -0.06);
-    knob_visual(painter, g, g.p(243.0, 928.0), g.d(32.0), params.detune.unmodulated_normalized_value(), ArcStyle::None);
+    knob_visual(painter, g, g.p(243.0, 928.0), g.d(32.0), params.detune.unmodulated_normalized_value(), 0.0, ArcStyle::None);
     drag_param(
         ui,
         setter,
@@ -2126,7 +2131,7 @@ fn menu_item(ui: &Ui, painter: &Painter, rect: Rect, id: Id, text: &str, selecte
     let response = ui.interact(rect, id, Sense::click());
     if selected {
         painter.rect_filled(rect, CornerRadius::same(6), Color32::from_rgb(0x0b, 0x3a, 0x62));
-        painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0, Color32::from_rgb(0x4c, 0xc8, 0xf0)), StrokeKind::Inside);
+        painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0_f32, Color32::from_rgb(0x4c, 0xc8, 0xf0)), StrokeKind::Inside);
     } else if response.hovered() {
         painter.rect_filled(rect, CornerRadius::same(6), Color32::from_white_alpha(10));
     }
@@ -2136,7 +2141,7 @@ fn menu_item(ui: &Ui, painter: &Painter, rect: Rect, id: Id, text: &str, selecte
 
 fn menu_frame(painter: &Painter, rect: Rect) {
     painter.rect_filled(rect.translate(Vec2::new(0.0, 6.0)), CornerRadius::same(12), Color32::from_black_alpha(120));
-    painter.rect(rect, CornerRadius::same(12), MENU_BG, Stroke::new(1.2, Color32::from_rgb(0x24, 0x3a, 0x56)), StrokeKind::Inside);
+    painter.rect(rect, CornerRadius::same(12), MENU_BG, Stroke::new(1.2_f32, Color32::from_rgb(0x24, 0x3a, 0x56)), StrokeKind::Inside);
 }
 
 fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState, now: f64) {
@@ -2195,7 +2200,7 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
                         let selected = i == current_key;
                         if selected {
                             painter.rect_filled(rect, CornerRadius::same(6), Color32::from_rgb(0x0b, 0x3a, 0x62));
-                            painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0, Color32::from_rgb(0x4c, 0xc8, 0xf0)), StrokeKind::Inside);
+                            painter.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0_f32, Color32::from_rgb(0x4c, 0xc8, 0xf0)), StrokeKind::Inside);
                         } else if response.hovered() {
                             painter.rect_filled(rect, CornerRadius::same(6), Color32::from_white_alpha(10));
                         }
@@ -2245,7 +2250,7 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
                     let y = 15.0 + 52.0 * n as f32;
                     painter.line_segment(
                         [pos + Vec2::new(g.d(24.0), g.d(y - 3.0)), pos + Vec2::new(size.x - g.d(24.0), g.d(y - 3.0))],
-                        Stroke::new(1.0, Color32::from_rgb(0x22, 0x34, 0x4a)),
+                        Stroke::new(1.0_f32, Color32::from_rgb(0x22, 0x34, 0x4a)),
                     );
                     let rect = Rect::from_min_size(pos + Vec2::new(g.d(12.0), g.d(y)), Vec2::new(size.x - g.d(24.0), g.d(46.0)));
                     if menu_item(ui, &painter, rect, Id::new(("preset", n)), "Save as Default", false, 22.0) {
@@ -2286,7 +2291,7 @@ fn overlays(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, display: &Pitc
             let _ = ui.interact(rect, Id::new("pannello-sfondo"), Sense::click());
             painter.rect_filled(rect.translate(Vec2::new(0.0, 8.0)), CornerRadius::same(18), Color32::from_black_alpha(140));
             rounded_gradient(&painter, rect, [g.d(22.0); 4], Color32::from_rgb(0x0a, 0x16, 0x26), Color32::from_rgb(0x05, 0x0c, 0x16));
-            rounded_stroke(&painter, rect, [g.d(22.0); 4], Stroke::new(1.4, Color32::from_rgb(0x2a, 0x48, 0x6c)));
+            rounded_stroke(&painter, rect, [g.d(22.0); 4], Stroke::new(1.4_f32, Color32::from_rgb(0x2a, 0x48, 0x6c)));
 
             // Chiudi.
             let x_center = g.p(1240.0, 245.0);
@@ -2323,10 +2328,11 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Humanize / Flex Tune", "note lunghe più libere / corregge di più vicino alla nota."),
         ("Vibrato / Formant", "toglie o aggiunge vibrato / timbro della voce (in HQ)."),
         ("Detune", "accordatura del La4: 440 Hz, o quella della base (es. 432 Hz)."),
-        ("☰  ⚙  ⏻", "preset e Save as Default, misura della finestra, accensione."),
+        ("☰  /  ⚙", "preset e Save as Default / misura della finestra e altre impostazioni."),
+        ("Annulla, accensione", "frecce tonde: annulla e ripeti / tasto blu: bypass (voce originale, a tempo)."),
     ];
     for (i, (name, text)) in lines.iter().enumerate() {
-        let y = 296.0 + i as f32 * 30.0;
+        let y = 294.0 + i as f32 * 28.5;
         painter.text(g.p(110.0, y), Align2::LEFT_CENTER, *name, font(20.0, Weight::Medium), CYAN);
         painter.text(g.p(390.0, y), Align2::LEFT_CENTER, *text, font(20.0, Weight::Regular), TEXT);
     }
@@ -2363,7 +2369,7 @@ fn settings_page(
     painter.text(g.p(110.0, 250.0), Align2::LEFT_CENTER, "Impostazioni", font(30.0, Weight::Medium), TEXT);
     let knobs: [(&str, String, f32, &str); 3] = [
         ("Amount", format!("{:.0}%", params.amount.value() * 100.0), params.amount.unmodulated_normalized_value(), "Quanta correzione applicare: 100% = completa."),
-        ("Transpose", format!("{:+} st", params.transpose.value()), params.transpose.unmodulated_normalized_value(), "Sposta tutta la voce di un certo numero di semitoni."),
+        ("Transpose", match params.transpose.value() { 0 => "0 st".to_owned(), t => format!("{t:+} st") }, params.transpose.unmodulated_normalized_value(), "Sposta tutta la voce di un certo numero di semitoni."),
         ("Sensitivity", format!("{:.0}%", params.tracking.value() * 100.0), params.tracking.unmodulated_normalized_value(), "Quanto il plugin è disposto a riconoscere una nota: alzala per voci con molta aria."),
     ];
     for (i, (label, text, value, help)) in knobs.iter().enumerate() {
@@ -2374,7 +2380,9 @@ fn settings_page(
             0 => ArcStyle::Cyan,
             _ => ArcStyle::White,
         };
-        knob_visual(painter, g, center, g.d(40.0), *value, style);
+        // Transpose: lo zero sta in alto.
+        let origin = if i == 1 { 0.5 } else { 0.0 };
+        knob_visual(painter, g, center, g.d(40.0), *value, origin, style);
         let hit = g.r(x - 70.0, 300.0, x + 70.0, 500.0);
         // Il numero sotto la manopola: cliccandolo si scrive il valore.
         let number = g.r(x - 70.0, 462.0, x + 70.0, 498.0);
