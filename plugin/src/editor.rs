@@ -36,7 +36,7 @@ use crate::params::{
     Key, QualityChoice, ScaleChoice, SosaTuneParams, StyleChoice, VoiceChoice, EDITOR_HEIGHT, EDITOR_WIDTH,
 };
 use crate::presets::{self, FACTORY};
-use crate::shared::{KeySource, PitchDisplay};
+use crate::shared::{KeyListen, KeySource, PitchDisplay, MIN_MUSIC_S};
 use nih_plug::prelude::*;
 use std::f32::consts::{PI, TAU};
 use std::sync::atomic::Ordering;
@@ -566,6 +566,8 @@ enum Menu {
     Voice,
     KeyScale,
     Preset,
+    /// Cosa ascolta AutoKey (voce, traccia, sidechain...).
+    Listen,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -738,7 +740,7 @@ fn draw(ctx: &egui::Context, params: &SosaTuneParams, display: &PitchDisplay, se
     });
 
     let g = Geo { origin: ctx.screen_rect().min };
-    menus(ctx, g, params, setter, state, now);
+    menus(ctx, g, params, display, setter, state, now);
     overlays(ctx, g, params, display, setter, state, now);
 }
 
@@ -962,6 +964,7 @@ fn save_as_default(params: &SosaTuneParams, state: &mut GuiState, now: f64) {
         .filter(|(id, _, _)| id != "bypass")
         // SAFETY: vedi `snapshot_params`.
         .map(|(id, ptr, _)| (id, unsafe { ptr.unmodulated_plain_value() }))
+        .chain(std::iter::once(("autokey-source".to_owned(), params.autokey_source.load(Ordering::Relaxed) as f32)))
         .collect();
     let text = match crate::defaults::save(&values) {
         Ok(()) => "Salvato come predefinito: le nuove istanze partono così".to_owned(),
@@ -1202,6 +1205,112 @@ pub(crate) fn split_name(name: &str) -> (&str, &str) {
         Some(i) => (&name[..i], &name[i + 1..]),
         None => (name, ""),
     }
+}
+
+// --- AutoKey: cosa ascoltare ---------------------------------------------------------
+
+/// Il campo "Ascolta: ..." sotto AutoKey Listen (apre il menu delle fonti).
+const LISTEN_FIELD: (f32, f32, f32, f32) = (84.0, 283.0, 330.0, 315.0);
+/// La spia del segnale del sidechain, a destra del campo.
+const SIDE_LED: (f32, f32) = (348.0, 299.0);
+/// Il menu delle fonti: posizione e altezza di una voce.
+const LISTEN_MENU_Y: f32 = 321.0;
+const LISTEN_ITEM_H: f32 = 44.0;
+
+const LISTEN_HELP: &str = "Cosa ascolta AutoKey per trovare la tonalità:\n\
+    • Auto: la base nel sidechain se c'è, altrimenti gli accordi della traccia o la voce.\n\
+    • Voce: solo la voce, nota per nota.\n\
+    • Traccia (accordi): l'audio di questa traccia letto come accordi.\n\
+    • Sidechain L+R / L / R: solo la base mandata al sidechain del plugin \
+    (tutti e due i canali, solo il sinistro o solo il destro).\n\n\
+    Come mandare la base al sidechain di Sosa Tune:\n\
+    • Logic Pro: menu \"Side Chain\" in alto nella finestra del plugin, scegli la traccia della base.\n\
+    • Ableton Live: apri la sezione Sidechain del plugin e scegli la base in \"Audio From\".\n\
+    • FL Studio: dal canale mixer della base, clic destro sulla freccia verso il canale della voce → \
+    \"Sidechain to this track\", poi negli ingressi del plugin assegna quel canale al sidechain.\n\
+    • Cubase / Studio One: attiva il sidechain del plugin e crea una mandata dalla base.\n\
+    • Reaper: mandata dalla base ai canali 3/4 della traccia della voce.";
+
+/// La riga sotto il campo: tonalita' trovata, oppure a che punto e' l'ascolto.
+fn listen_status(listen: KeyListen, listening: bool, display: &PitchDisplay, state: &GuiState, now: f64) -> Option<(String, Color32)> {
+    if let Some((found, when)) = &state.autokey_found {
+        if now - when < 4.0 {
+            return Some((format!("→ {found}"), CYAN));
+        }
+    }
+    if !listening {
+        return None;
+    }
+    let (track_s, side_s) = display.music_seconds();
+    match listen {
+        KeyListen::SideBoth | KeyListen::SideLeft | KeyListen::SideRight if side_s < MIN_MUSIC_S => {
+            if display.side_peak() < 1e-4 {
+                Some(("Nessuna base sul sidechain".to_owned(), Color32::from_rgb(0xff, 0xc0, 0x5a)))
+            } else {
+                Some((format!("Ascolto la base… {:.0} s", side_s), TEXT_DIM))
+            }
+        }
+        KeyListen::Track if track_s < MIN_MUSIC_S => Some((format!("Ascolto la traccia… {:.0} s", track_s), TEXT_DIM)),
+        _ => None,
+    }
+}
+
+fn autokey_listen_field(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, state: &mut GuiState, now: f64) {
+    let listen = KeyListen::from_index(params.autokey_source.load(Ordering::Relaxed));
+    let rect = g.r(LISTEN_FIELD.0, LISTEN_FIELD.1, LISTEN_FIELD.2, LISTEN_FIELD.3);
+    let open = state.menu.map(|(m, _)| m) == Some(Menu::Listen);
+    let response = ui.interact(rect, Id::new("autokey-ascolta"), Sense::click()).on_hover_text(LISTEN_HELP);
+    let edge = if response.hovered() || open { Color32::from_rgb(0x4a, 0x64, 0x84) } else { Color32::from_rgb(0x22, 0x32, 0x46) };
+    painter.rect(rect, CornerRadius::same(g.d(8.0) as u8), Color32::from_rgb(0x03, 0x0a, 0x14), Stroke::new(g.d(1.4), edge), StrokeKind::Inside);
+    let y = 0.5 * (LISTEN_FIELD.1 + LISTEN_FIELD.3);
+    let label = format!("Ascolta: {}", listen.label());
+    let size = fitted_size(painter, &label, 16.0, Weight::Regular, -0.03, LISTEN_FIELD.2 - LISTEN_FIELD.0 - 40.0);
+    text_tracked(painter, g.p(LISTEN_FIELD.0 + 12.0, y), Align2::LEFT_CENTER, label, font(size, Weight::Regular), TEXT_DIM, -0.03);
+    let cx = LISTEN_FIELD.2 - 16.0;
+    painter.add(Shape::line(
+        vec![g.p(cx - 5.0, y - 3.0), g.p(cx, y + 3.0), g.p(cx + 5.0, y - 3.0)],
+        Stroke::new(g.d(1.8), Color32::from_rgb(0xc4, 0xcc, 0xd8)),
+    ));
+    if response.clicked() {
+        state.menu = if open { None } else { Some((Menu::Listen, rect)) };
+    }
+
+    // Spia del sidechain: accesa quando la base arriva davvero al plugin.
+    if listen.uses_sidechain() {
+        let center = g.p(SIDE_LED.0, SIDE_LED.1);
+        let lit = display.side_peak() > 1e-4;
+        if lit {
+            glow_ring(painter, center, g.d(5.0), g.d(8.0), TEAL, 0.5);
+            painter.circle_filled(center, g.d(5.5), Color32::from_rgb(0x7c, 0xf0, 0xe0));
+        } else {
+            painter.circle_stroke(center, g.d(5.5), Stroke::new(g.d(1.4), Color32::from_rgb(0x2c, 0x4c, 0x60)));
+        }
+        let hit = Rect::from_center_size(center, Vec2::splat(g.d(24.0)));
+        let help = if lit {
+            "La base arriva al sidechain del plugin."
+        } else {
+            "Nessun segnale sul sidechain: manda la base al sidechain di Sosa Tune nel DAW \
+             (passa sul campo \"Ascolta\" per vedere come)."
+        };
+        ui.interact(hit, Id::new("spia-sidechain"), Sense::hover()).on_hover_text(help);
+    }
+
+    if let Some((text, color)) = listen_status(listen, params.autokey.load(Ordering::Relaxed), display, state, now) {
+        txt(painter, g.p(LISTEN_FIELD.0 + 4.0, 334.0), Align2::LEFT_CENTER, text, font(18.0, Weight::Regular), color);
+    }
+}
+
+/// Sceglie la fonte di AutoKey (dal menu "Ascolta"): se AutoKey era spento
+/// si accende, e la ricerca riparte subito.
+fn choose_listen(params: &SosaTuneParams, display: &PitchDisplay, state: &mut GuiState, listen: KeyListen, now: f64) {
+    params.autokey_source.store(listen.index(), Ordering::Relaxed);
+    if !params.autokey.load(Ordering::Relaxed) {
+        params.autokey.store(true, Ordering::Relaxed);
+        display.reset_notes();
+    }
+    state.autokey_found = None;
+    state.autokey_checked = now - 1.0;
+    state.toast = Some((format!("AutoKey ascolta: {}", listen.label()), now));
 }
 
 // --- La scena centrale: sfera, onde, indicatore -------------------------------------
@@ -1532,8 +1641,8 @@ fn stage(
         ),
         None => "Riconoscimento automatico della tonalità: accendilo e fai suonare la traccia \
                  per qualche secondo, Key & Scale si imposta da solo.\n\
-                 Ascolta anche gli accordi (polifonia) e, se mandi la base al sidechain \
-                 del plugin, segue la base."
+                 Sotto, in \"Ascolta\", scegli cosa ascoltare: la voce, gli accordi della \
+                 traccia o la base mandata al sidechain del plugin."
             .to_owned(),
     };
     let response = ui.interact(hit, Id::new("autokey"), Sense::click()).on_hover_text(help);
@@ -1546,11 +1655,7 @@ fn stage(
             state.autokey_found = None;
         }
     }
-    if let Some((found, when)) = &state.autokey_found {
-        if now - when < 4.0 {
-            txt(painter, g.p(137.0, 289.0), Align2::LEFT_CENTER, format!("→ {found}"), font(20.0, Weight::Regular), CYAN);
-        }
-    }
+    autokey_listen_field(ui, painter, g, params, display, state, now);
 
     tuning_meter(ui, painter, g, state);
     let _ = setter;
@@ -2144,7 +2249,7 @@ fn menu_frame(painter: &Painter, rect: Rect) {
     painter.rect(rect, CornerRadius::same(12), MENU_BG, Stroke::new(1.2_f32, Color32::from_rgb(0x24, 0x3a, 0x56)), StrokeKind::Inside);
 }
 
-fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState, now: f64) {
+fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState, now: f64) {
     let Some((menu, trigger)) = state.menu else { return };
     let (pos, size) = match menu {
         Menu::Voice => (g.p(VOICE_LABEL_X - 21.0, 186.0), Vec2::new(g.d(250.0), g.d(220.0))),
@@ -2152,6 +2257,10 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
         Menu::Preset => (
             g.p(PRESET_BOX.0, 188.0),
             Vec2::new(g.d(PRESET_BOX.2 - PRESET_BOX.0), g.d(30.0 + 52.0 * (FACTORY.len() + 2) as f32)),
+        ),
+        Menu::Listen => (
+            g.p(LISTEN_FIELD.0, LISTEN_MENU_Y),
+            Vec2::new(g.d(270.0), g.d(20.0 + LISTEN_ITEM_H * KeyListen::ALL.len() as f32)),
         ),
     };
     let popup = Rect::from_min_size(pos, size);
@@ -2231,6 +2340,19 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
                         );
                         if menu_item(ui, &painter, rect, Id::new(("scala", i)), scale_label(scale), params.scale.value() == scale, 21.0) {
                             set_param(setter, &params.scale, scale);
+                            close = true;
+                        }
+                    }
+                }
+                Menu::Listen => {
+                    let current = KeyListen::from_index(params.autokey_source.load(Ordering::Relaxed));
+                    for (i, listen) in KeyListen::ALL.into_iter().enumerate() {
+                        let rect = Rect::from_min_size(
+                            pos + Vec2::new(g.d(10.0), g.d(10.0 + LISTEN_ITEM_H * i as f32)),
+                            Vec2::new(size.x - g.d(20.0), g.d(LISTEN_ITEM_H - 4.0)),
+                        );
+                        if menu_item(ui, &painter, rect, Id::new(("ascolta", i)), listen.label(), listen == current, 19.0) {
+                            choose_listen(params, display, state, listen, now);
                             close = true;
                         }
                     }
@@ -2320,7 +2442,7 @@ fn help_page(painter: &Painter, g: Geo) {
         ("A / B / Copy", "due impostazioni da confrontare; Copy copia quella attiva sull'altra."),
         ("Vocal Range", "tipo di voce (la nota più grave riconosciuta); Auto la sceglie da solo."),
         ("Key & Scale", "tonalità e scala: la voce va solo sulle note illuminate."),
-        ("AutoKey Listen", "riconosce la tonalità dalla voce, dagli accordi o dalla base (sidechain)."),
+        ("AutoKey Listen", "tonalità automatica; in \"Ascolta\" scegli voce, accordi o base nel sidechain."),
         ("Edit Notes", "clic su una nota per includerla o escluderla dalla scala."),
         ("Low Latency / HQ", "0 ms per registrare in diretta / qualità piena per il mix."),
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
@@ -2452,7 +2574,8 @@ fn settings_page(
 // --- AutoKey ----------------------------------------------------------------------------
 
 /// "AutoKey Listen": una volta al secondo cerca la tonalita' e, se e' chiara,
-/// imposta Key & Scale. Ascolta, nell'ordine:
+/// imposta Key & Scale. Ascolta la fonte scelta in "Ascolta"; in Auto,
+/// nell'ordine:
 /// 1. il **sidechain** (la base della canzone mandata al plugin), se c'e';
 /// 2. l'audio della traccia, anche **polifonico** (accordi, una base), se
 ///    sulla traccia c'e' piu' musica che voce;
@@ -2462,7 +2585,8 @@ fn autokey(params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter
         return;
     }
     state.autokey_checked = now;
-    let Some((tonic, minor, confidence, source)) = display.detect_key_all() else { return };
+    let listen = KeyListen::from_index(params.autokey_source.load(Ordering::Relaxed));
+    let Some((tonic, minor, confidence, source)) = display.detect_key_all(listen) else { return };
     if confidence < 0.5 {
         return;
     }
@@ -2664,6 +2788,14 @@ pub(crate) mod layout {
     }
     pub fn autokey() -> Pos2 {
         at(200.0, 253.0)
+    }
+    /// Il campo "Ascolta" di AutoKey.
+    pub fn listen_field() -> Pos2 {
+        center(LISTEN_FIELD)
+    }
+    /// Una voce del menu "Ascolta" (indice in `KeyListen::ALL`).
+    pub fn listen_item(i: usize) -> Pos2 {
+        at(LISTEN_FIELD.0 + 135.0, LISTEN_MENU_Y + 10.0 + LISTEN_ITEM_H * i as f32 + 0.5 * (LISTEN_ITEM_H - 4.0))
     }
     /// Una voce del menu Vocal Range (0 = Soprano, 1 = Alto/Tenor, 2 = Low Male, 3 = Auto).
     pub fn voice_item(i: usize) -> Pos2 {

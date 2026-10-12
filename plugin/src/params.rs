@@ -265,6 +265,10 @@ pub struct SosaTuneParams {
     /// impostata da sola.
     #[persist = "autokey"]
     pub autokey: Arc<AtomicBool>,
+    /// Cosa ascolta AutoKey: indice in `shared::KeyListen::ALL` (0 = Auto,
+    /// 1 = voce, 2 = traccia, 3-5 = sidechain L+R / L / R).
+    #[persist = "autokey-source"]
+    pub autokey_source: Arc<AtomicUsize>,
 
     #[id = "key"]
     pub key: EnumParam<Key>,
@@ -381,6 +385,15 @@ impl SosaTuneParams {
             custom: CustomNotes::with_defaults(saved),
             preset: Arc::new(AtomicUsize::new(0)),
             autokey: Arc::new(AtomicBool::new(false)),
+            // Anche la fonte di AutoKey fa parte di "Save as Default".
+            autokey_source: Arc::new(AtomicUsize::new(
+                saved
+                    .get("autokey-source")
+                    .filter(|v| v.is_finite() && **v >= 0.0)
+                    .map(|&v| v as usize)
+                    .filter(|&i| i < crate::shared::KeyListen::ALL.len())
+                    .unwrap_or(0),
+            )),
             ab_slot: Arc::new(AtomicUsize::new(0)),
             ab_other: Arc::new(RwLock::new(Vec::new())),
         }

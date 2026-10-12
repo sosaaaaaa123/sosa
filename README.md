@@ -131,7 +131,13 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 ### L'interfaccia
 
 - **Vocal Range** e **Key & Scale** (in alto): menu a tendina per tipo di voce, tonalità e scala. In Vocal Range, **Auto (ascolta)**: canta qualche secondo e il tipo di voce si sceglie da solo.
-- **AutoKey Listen**: accendilo e fai suonare la traccia, la tonalità si imposta da sola. Ascolta la voce, ma anche gli **accordi** (pianoforte, chitarra, una base sulla traccia). Per seguire **la base della canzone**, mandala all'ingresso **sidechain** del plugin ("Sidechain (base per AutoKey)"): quando c'è, AutoKey usa quella. Sotto compare la tonalità trovata e da dove (voce, accordi o sidechain).
+- **AutoKey Listen**: accendilo e fai suonare la traccia, la tonalità si imposta da sola. Sotto, nel campo **Ascolta**, scegli cosa ascoltare:
+  - **Auto**: la base nel sidechain se c'è, altrimenti gli accordi della traccia o la voce;
+  - **Voce**: solo la voce, nota per nota;
+  - **Traccia (accordi)**: l'audio di questa traccia letto come accordi (pianoforte, chitarra, una base sulla traccia);
+  - **Sidechain L+R / L / R**: solo **la base mandata al sidechain** del plugin ("Sidechain (base per AutoKey)"), con tutti e due i canali o uno solo. Accanto al campo una spia si accende quando la base arriva davvero; finché non arriva compare "Nessuna base sul sidechain".
+
+  Sotto compare la tonalità trovata e da dove (voce, accordi o sidechain). Per mandare la base al sidechain: **Logic** → menu "Side Chain" in alto nella finestra del plugin; **Ableton Live** → sezione Sidechain del plugin, "Audio From"; **FL Studio** → dal canale mixer della base "Sidechain to this track" verso il canale della voce, poi negli ingressi del plugin assegna quel canale al sidechain; **Cubase / Studio One** → attiva il sidechain del plugin e crea una mandata dalla base; **Reaper** → mandata dalla base ai canali 3/4 della traccia della voce.
 - **A / B / Copy** (in alto a sinistra): due impostazioni complete da confrontare. Clic su A o B per passare dall'una all'altra; **Copy** copia quella attiva sull'altra. Le due impostazioni vengono salvate con il progetto.
 - **Nota al centro**: la nota che stai cantando; l'indicatore dice di quanti **centesimi** sei calante (−) o crescente (+).
 - **Manopole** Detune, Retune Speed, Humanize, Flex Tune, Vibrato e Formant: trascinale in su o in giù. Tieni premuto **Maiusc** per i ritocchi fini, fai **doppio clic** per tornare al valore iniziale. **Clic sul numero** per scrivere il valore con la tastiera (Invio conferma, Esc annulla). Passandoci sopra col mouse compare la spiegazione.

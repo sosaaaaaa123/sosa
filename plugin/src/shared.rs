@@ -56,11 +56,72 @@ pub struct PitchDisplay {
     music_side: AtomicF32,
     /// L'interfaccia chiede al thread audio di ricominciare il cromagramma.
     chroma_reset: AtomicBool,
+    /// Picco dell'ingresso sidechain nell'ultimo blocco (per vedere se la
+    /// base arriva davvero al plugin).
+    side_peak: AtomicF32,
 }
+
+/// Secondi di musica (traccia o sidechain) che servono ad AutoKey prima di
+/// fidarsi del cromagramma.
+pub const MIN_MUSIC_S: f32 = 4.0;
 
 /// Prima nota MIDI dell'istogramma (Do1) e numero di note (fino a Mi6).
 pub const HIST_LOW: i32 = 24;
 pub const HIST_LEN: usize = 65;
+
+/// Cosa ascolta AutoKey (scelto dal menu accanto ad "AutoKey Listen").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyListen {
+    /// Sceglie da solo: sidechain se c'e', poi accordi, poi voce.
+    Auto,
+    /// Solo la voce (una nota alla volta).
+    Voice,
+    /// L'audio della traccia letto in modo polifonico (accordi, una base).
+    Track,
+    /// L'ingresso sidechain: entrambi i canali, solo il sinistro, solo il destro.
+    SideBoth,
+    SideLeft,
+    SideRight,
+}
+
+impl KeyListen {
+    pub const ALL: [KeyListen; 6] =
+        [KeyListen::Auto, KeyListen::Voice, KeyListen::Track, KeyListen::SideBoth, KeyListen::SideLeft, KeyListen::SideRight];
+
+    pub fn from_index(i: usize) -> Self {
+        Self::ALL.get(i).copied().unwrap_or(KeyListen::Auto)
+    }
+
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|&l| l == self).unwrap_or(0)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            KeyListen::Auto => "Auto",
+            KeyListen::Voice => "Voce",
+            KeyListen::Track => "Traccia (accordi)",
+            KeyListen::SideBoth => "Sidechain L+R",
+            KeyListen::SideLeft => "Sidechain L",
+            KeyListen::SideRight => "Sidechain R",
+        }
+    }
+
+    /// Ascolta (anche) il sidechain?
+    pub fn uses_sidechain(self) -> bool {
+        matches!(self, KeyListen::Auto | KeyListen::SideBoth | KeyListen::SideLeft | KeyListen::SideRight)
+    }
+
+    /// Il segnale del sidechain da analizzare, dai suoi canali in un istante.
+    pub fn side_sample(self, channels: &[f32]) -> f32 {
+        match (self, channels.len()) {
+            (_, 0) => 0.0,
+            (KeyListen::SideLeft, _) => channels[0],
+            (KeyListen::SideRight, n) => channels[n.min(2) - 1],
+            (_, n) => channels.iter().sum::<f32>() / n as f32,
+        }
+    }
+}
 
 /// Da dove arriva la tonalita' riconosciuta da AutoKey.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +156,7 @@ impl Default for PitchDisplay {
             music_main: AtomicF32::new(0.0),
             music_side: AtomicF32::new(0.0),
             chroma_reset: AtomicBool::new(false),
+            side_peak: AtomicF32::new(0.0),
         }
     }
 }
@@ -176,10 +238,25 @@ impl PitchDisplay {
         std::array::from_fn(|i| self.note_histogram[i].load(Ordering::Relaxed))
     }
 
-    /// La tonalita' secondo tutte le fonti disponibili (vedi [`choose_key`]).
-    pub fn detect_key_all(&self) -> Option<(usize, bool, f32, KeySource)> {
+    /// Il thread audio: picco del sidechain nell'ultimo blocco.
+    pub fn set_side_peak(&self, peak: f32) {
+        self.side_peak.store(peak, Ordering::Relaxed);
+    }
+
+    pub fn side_peak(&self) -> f32 {
+        self.side_peak.load(Ordering::Relaxed)
+    }
+
+    /// Secondi di musica ascoltati da AutoKey: (traccia, sidechain).
+    pub fn music_seconds(&self) -> (f32, f32) {
+        (self.music_main.load(Ordering::Relaxed), self.music_side.load(Ordering::Relaxed))
+    }
+
+    /// La tonalita' dalla fonte scelta (vedi [`choose_key`]).
+    pub fn detect_key_all(&self, listen: KeyListen) -> Option<(usize, bool, f32, KeySource)> {
         let load = |a: &[AtomicF32; 12]| -> [f32; 12] { std::array::from_fn(|i| a[i].load(Ordering::Relaxed)) };
         choose_key(
+            listen,
             &self.note_profile(),
             self.voiced_seconds.load(Ordering::Relaxed),
             &load(&self.chroma_main),
@@ -272,7 +349,8 @@ pub fn detect_key(profile: &[f32; 12]) -> Option<(usize, bool, f32)> {
     Some((best.0, best.1, confidence))
 }
 
-/// Sceglie la tonalita' tra le fonti di AutoKey:
+/// Sceglie la tonalita' tra le fonti di AutoKey. Con una fonte scelta a mano
+/// (`listen` diverso da `Auto`) si usa solo quella. In `Auto`, nell'ordine:
 /// 1. il **sidechain** (la base della canzone), se ha suonato per almeno 4 s:
 ///    e' la fonte piu' sicura;
 /// 2. l'**audio della traccia letto in modo polifonico**, quando non e' una
@@ -284,6 +362,7 @@ pub fn detect_key(profile: &[f32; 12]) -> Option<(usize, bool, f32)> {
 ///    piu' affidabile del cromagramma, che sente soprattutto le note tenute
 ///    (spesso la quinta, non la tonica).
 pub fn choose_key(
+    listen: KeyListen,
     voice: &[f32; 12],
     voiced_seconds: f32,
     main: &[f32; 12],
@@ -291,7 +370,23 @@ pub fn choose_key(
     side: &[f32; 12],
     side_seconds: f32,
 ) -> Option<(usize, bool, f32, KeySource)> {
-    const MIN_MUSIC_S: f32 = 4.0;
+    let from_chroma = |chroma: &[f32; 12], seconds: f32, source: KeySource| {
+        if seconds >= MIN_MUSIC_S {
+            key_from_chroma(chroma).map(|(tonic, minor, confidence)| (tonic, minor, confidence, source))
+        } else {
+            None
+        }
+    };
+    match listen {
+        KeyListen::Voice => {
+            return detect_key(voice).map(|(tonic, minor, confidence)| (tonic, minor, confidence, KeySource::Voice))
+        }
+        KeyListen::Track => return from_chroma(main, main_seconds, KeySource::Polyphonic),
+        KeyListen::SideBoth | KeyListen::SideLeft | KeyListen::SideRight => {
+            return from_chroma(side, side_seconds, KeySource::Sidechain)
+        }
+        KeyListen::Auto => {}
+    }
     if side_seconds >= MIN_MUSIC_S {
         if let Some((tonic, minor, confidence)) = key_from_chroma(side) {
             return Some((tonic, minor, confidence, KeySource::Sidechain));
@@ -344,19 +439,47 @@ mod tests {
         let voice = [11.0, 7.0, 42.0, 15.0, 3.0, 8.0, 0.0, 1.0, 0.0, 3.0, 5.0, 4.0];
         let c_major = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
         let none = [0.0; 12];
-        let k = choose_key(&voice, 90.0, &none, 0.0, &c_major, 10.0).unwrap();
+        let k = choose_key(KeyListen::Auto, &voice, 90.0, &none, 0.0, &c_major, 10.0).unwrap();
         assert_eq!((k.0, k.1, k.3), (0, false, KeySource::Sidechain));
         // Senza sidechain, su una voce vera (misurata: 44 s di nota singola su
         // 69 s di musica, ma solo 24 s "pesati" perche' non intonata): la voce.
-        let k = choose_key(&voice, 44.0, &c_major, 69.0, &none, 0.0).unwrap();
+        let k = choose_key(KeyListen::Auto, &voice, 44.0, &c_major, 69.0, &none, 0.0).unwrap();
         assert_eq!((k.0, k.1, k.3), (7, true, KeySource::Voice));
         // Traccia polifonica (accordi: quasi mai una nota singola): il cromagramma.
         let little = [0.2; 12];
-        let k = choose_key(&little, 2.4, &c_major, 20.0, &none, 0.0).unwrap();
+        let k = choose_key(KeyListen::Auto, &little, 2.4, &c_major, 20.0, &none, 0.0).unwrap();
         assert_eq!((k.0, k.1, k.3), (0, false, KeySource::Polyphonic));
         // Sidechain troppo breve: non conta ancora.
-        let k = choose_key(&voice, 90.0, &none, 0.0, &c_major, 2.0).unwrap();
+        let k = choose_key(KeyListen::Auto, &voice, 90.0, &none, 0.0, &c_major, 2.0).unwrap();
         assert_eq!(k.3, KeySource::Voice);
+
+        // Fonte scelta a mano: si usa solo quella.
+        let k = choose_key(KeyListen::Voice, &voice, 90.0, &none, 0.0, &c_major, 10.0).unwrap();
+        assert_eq!((k.0, k.1, k.3), (7, true, KeySource::Voice), "solo voce: il sidechain non conta");
+        let k = choose_key(KeyListen::Track, &voice, 90.0, &c_major, 20.0, &none, 0.0).unwrap();
+        assert_eq!((k.0, k.1, k.3), (0, false, KeySource::Polyphonic), "traccia anche se c'e' una voce");
+        for side in [KeyListen::SideBoth, KeyListen::SideLeft, KeyListen::SideRight] {
+            let k = choose_key(side, &voice, 90.0, &none, 0.0, &c_major, 10.0).unwrap();
+            assert_eq!(k.3, KeySource::Sidechain);
+            // Sidechain scelto ma ancora troppo poco ascoltato: si aspetta (niente voce).
+            assert!(choose_key(side, &voice, 90.0, &none, 0.0, &c_major, 2.0).is_none());
+        }
+    }
+
+    #[test]
+    fn sidechain_channels_can_be_picked() {
+        let stereo = [0.2, -0.6];
+        assert_eq!(KeyListen::SideLeft.side_sample(&stereo), 0.2);
+        assert_eq!(KeyListen::SideRight.side_sample(&stereo), -0.6);
+        assert!((KeyListen::SideBoth.side_sample(&stereo) + 0.2).abs() < 1e-6);
+        // Sidechain mono: L e R sono lo stesso canale.
+        assert_eq!(KeyListen::SideRight.side_sample(&[0.5]), 0.5);
+        assert_eq!(KeyListen::SideLeft.side_sample(&[]), 0.0);
+        for (i, l) in KeyListen::ALL.iter().enumerate() {
+            assert_eq!(KeyListen::from_index(i), *l);
+            assert_eq!(l.index(), i);
+        }
+        assert_eq!(KeyListen::from_index(99), KeyListen::Auto);
     }
 
     #[test]
