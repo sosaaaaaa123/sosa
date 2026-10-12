@@ -72,10 +72,10 @@ use std::mem;
 use std::num::NonZeroU32;
 use std::os::raw::c_char;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::thread::{self, ThreadId};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::context::{WrapperGuiContext, WrapperInitContext, WrapperProcessContext};
 use super::descriptor::PluginDescriptor;
@@ -131,6 +131,13 @@ pub struct Wrapper<P: ClapPlugin> {
     is_activating: AtomicBool,
     /// SosaTune: `true` between a successful `activate()` and `deactivate()`.
     is_active: AtomicBool,
+    /// SosaTune: reference point for `last_process_ns`.
+    created_at: Instant,
+    /// SosaTune: when the host last called `process()`, in nanoseconds since `created_at`. Some
+    /// hosts stay "processing" but stop calling `process()` (Logic Pro with an empty track, through
+    /// the AU wrapper, whose `request_flush()` does nothing): editor changes are then applied
+    /// right away instead of waiting for a process call that never comes.
+    last_process_ns: AtomicU64,
     /// The current IO configuration, modified through the `clap_plugin_audio_ports_config`
     /// extension. Initialized to the plugin's first audio IO configuration.
     current_audio_io_layout: AtomicCell<AudioIOLayout>,
@@ -552,6 +559,8 @@ impl<P: ClapPlugin> Wrapper<P> {
             is_processing: AtomicBool::new(false),
             is_activating: AtomicBool::new(false),
             is_active: AtomicBool::new(false),
+            created_at: Instant::now(),
+            last_process_ns: AtomicU64::new(0),
             current_audio_io_layout: AtomicCell::new(
                 P::AUDIO_IO_LAYOUTS.first().copied().unwrap_or_default(),
             ),
@@ -780,6 +789,22 @@ impl<P: ClapPlugin> Wrapper<P> {
     ///
     /// Returns `false` if the parameter value queue was full and the update will not be sent to the
     /// host (it will still be set on the plugin either way).
+    /// SosaTune: `true` when the host is really calling `process()` (processing, with a call in
+    /// the last 150 ms). Otherwise parameter changes from the editor are applied immediately.
+    pub fn host_is_processing(&self) -> bool {
+        if !self.is_processing.load(Ordering::SeqCst) {
+            return false;
+        }
+        let now_ns = self.created_at.elapsed().as_nanos() as u64;
+        let last_ns = self.last_process_ns.load(Ordering::SeqCst);
+        now_ns.saturating_sub(last_ns) <= 150_000_000
+    }
+
+    /// SosaTune: the current sample rate, if the plugin has been activated.
+    pub fn current_sample_rate(&self) -> Option<f32> {
+        self.current_buffer_config.load().map(|c| c.sample_rate)
+    }
+
     pub fn queue_parameter_event(&self, event: OutputParamEvent) -> bool {
         let result = self.output_parameter_events.push(event).is_ok();
 
@@ -1975,6 +2000,10 @@ impl<P: ClapPlugin> Wrapper<P> {
     ) -> clap_process_status {
         check_null_ptr!(CLAP_PROCESS_ERROR, plugin, (*plugin).plugin_data, process);
         let wrapper = &*((*plugin).plugin_data as *const Self);
+        wrapper.last_process_ns.store(
+            wrapper.created_at.elapsed().as_nanos() as u64,
+            Ordering::SeqCst,
+        );
 
         // Panic on allocations if the `assert_process_allocs` feature has been enabled, and make
         // sure that FTZ is set up correctly

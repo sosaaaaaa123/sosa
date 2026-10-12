@@ -1,7 +1,164 @@
-diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/clap/wrapper.rs
---- nih/src/wrapper/clap/wrapper.rs	2026-10-10 18:58:27.550480639 +0200
-+++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/clap/wrapper.rs	2026-10-10 19:01:19.079431795 +0200
-@@ -126,6 +126,11 @@
+--- nih/Cargo.toml	2026-10-12 06:48:40.399182359 +0000
++++ sosa/vendor/nih-plug/Cargo.toml	2026-10-11 11:54:44.321174080 +0000
+@@ -10,42 +10,6 @@
+ description = "A simple but modern API-agnostic audio plugin framework"
+ repository = "https://github.com/robbert-vdh/nih-plug"
+ 
+-[workspace]
+-resolver = "2"
+-members = [
+-  "nih_plug_derive",
+-  "nih_plug_egui",
+-  "nih_plug_iced",
+-  "nih_plug_vizia",
+-  "nih_plug_xtask",
+-
+-  "cargo_nih_plug",
+-  "xtask",
+-
+-  "plugins/examples/byo_gui_gl",
+-  "plugins/examples/byo_gui_softbuffer",
+-  "plugins/examples/byo_gui_wgpu",
+-  "plugins/examples/gain",
+-  "plugins/examples/gain_gui_egui",
+-  "plugins/examples/gain_gui_iced",
+-  "plugins/examples/gain_gui_vizia",
+-  "plugins/examples/midi_inverter",
+-  "plugins/examples/poly_mod_synth",
+-  "plugins/examples/sine",
+-  "plugins/examples/stft",
+-  "plugins/examples/sysex",
+-
+-  "plugins/soft_vacuum",
+-  "plugins/buffr_glitch",
+-  "plugins/crisp",
+-  "plugins/crossover",
+-  "plugins/diopser",
+-  "plugins/loudness_war_winner",
+-  "plugins/puberty_simulator",
+-  "plugins/safety_limiter",
+-  "plugins/spectral_compressor",
+-]
+-
+ [features]
+ default = ["vst3"]
+ 
+@@ -137,11 +101,3 @@
+   "Win32_System_Performance",
+ ]
+ 
+-[profile.release]
+-lto = "thin"
+-strip = "symbols"
+-
+-[profile.profiling]
+-inherits = "release"
+-debug = true
+-strip = "none"
+diff -ruN nih/src/lib.rs sosa/vendor/nih-plug/src/lib.rs
+--- nih/src/lib.rs	2026-10-12 06:48:40.413668133 +0000
++++ sosa/vendor/nih-plug/src/lib.rs	2026-10-11 11:54:44.322641768 +0000
+@@ -112,6 +112,8 @@
+ pub mod params;
+ pub mod plugin;
+ pub mod wrapper;
++#[doc(hidden)]
++pub mod sosatune_diag;
+ 
+ // This is also re-exported from the prelude but since the other export entry points are macros and
+ // macros are always accessible from the crate's root, it seems like a good idea to keep the
+diff -ruN nih/src/sosatune_diag.rs sosa/vendor/nih-plug/src/sosatune_diag.rs
+--- nih/src/sosatune_diag.rs	1970-01-01 00:00:00.000000000 +0000
++++ sosa/vendor/nih-plug/src/sosatune_diag.rs	2026-10-11 11:54:44.324395190 +0000
+@@ -0,0 +1,41 @@
++//! SosaTune: contatori diagnostici del wrapper VST3 (solo numeri atomici,
++//! sicuri anche nel thread audio). L'interfaccia di SosaTune li scrive in un
++//! registro per capire, su un computer reale, dove si perde un comando.
++
++use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
++
++pub static PROCESS_CALLS: AtomicU64 = AtomicU64::new(0);
++pub static IS_PROCESSING: AtomicBool = AtomicBool::new(false);
++pub static HOST_PARAM_POINTS: AtomicU64 = AtomicU64::new(0);
++pub static LAST_HOST_HASH: AtomicU32 = AtomicU32::new(0);
++pub static LAST_HOST_VALUE_BITS: AtomicU32 = AtomicU32::new(0);
++pub static GUI_SET_CALLS: AtomicU64 = AtomicU64::new(0);
++pub static GUI_APPLIED_DIRECT: AtomicU64 = AtomicU64::new(0);
++pub static GUI_QUEUED: AtomicU64 = AtomicU64::new(0);
++pub static GUI_APPLIED_FROM_QUEUE: AtomicU64 = AtomicU64::new(0);
++pub static HANDLER_MISSING: AtomicU64 = AtomicU64::new(0);
++pub static UNKNOWN_PARAM: AtomicU64 = AtomicU64::new(0);
++
++#[inline]
++pub fn bump(counter: &AtomicU64) {
++    counter.fetch_add(1, Ordering::Relaxed);
++}
++
++/// Una riga leggibile con lo stato di tutti i contatori.
++pub fn summary() -> String {
++    let r = |c: &AtomicU64| c.load(Ordering::Relaxed);
++    format!(
++        "audio: chiamate={} attivo={} | host->plugin: modifiche={} ultima=#{} {:.3} | interfaccia: set={} subito={} in_coda={} applicate_da_coda={} | handler_mancante={} param_sconosciuto={}",
++        r(&PROCESS_CALLS),
++        IS_PROCESSING.load(Ordering::Relaxed),
++        r(&HOST_PARAM_POINTS),
++        LAST_HOST_HASH.load(Ordering::Relaxed),
++        f32::from_bits(LAST_HOST_VALUE_BITS.load(Ordering::Relaxed)),
++        r(&GUI_SET_CALLS),
++        r(&GUI_APPLIED_DIRECT),
++        r(&GUI_QUEUED),
++        r(&GUI_APPLIED_FROM_QUEUE),
++        r(&HANDLER_MISSING),
++        r(&UNKNOWN_PARAM),
++    )
++}
+diff -ruN nih/src/wrapper/clap/context.rs sosa/vendor/nih-plug/src/wrapper/clap/context.rs
+--- nih/src/wrapper/clap/context.rs	2026-10-12 06:48:40.415390533 +0000
++++ sosa/vendor/nih-plug/src/wrapper/clap/context.rs	2026-10-12 06:48:27.105601956 +0000
+@@ -6,7 +6,7 @@
+ use std::collections::{HashMap, VecDeque};
+ use std::sync::Arc;
+ 
+-use super::wrapper::{OutputParamEvent, Task, Wrapper};
++use super::wrapper::{ClapParamUpdate, OutputParamEvent, Task, Wrapper};
+ use crate::event_loop::EventLoop;
+ use crate::prelude::{
+     ClapPlugin, GuiContext, InitContext, ParamPtr, PluginApi, PluginNoteEvent, ProcessContext,
+@@ -175,6 +175,17 @@
+                 // be changed when the output event is written to prevent changing parameter values
+                 // in the middle of processing audio.
+                 let clap_plain_value = normalized as f64 * param.step_count().unwrap_or(1) as f64;
++                // SosaTune: when the host is not calling `process()` (Logic Pro with an empty
++                // track, whose AU wrapper never flushes), the event would wait forever and the
++                // controls would look dead. In that case the value is applied right away; the
++                // queued event still tells the host as soon as processing resumes.
++                if !self.wrapper.host_is_processing() {
++                    self.wrapper.update_plain_value_by_hash(
++                        *hash,
++                        ClapParamUpdate::PlainValueSet(clap_plain_value),
++                        self.wrapper.current_sample_rate(),
++                    );
++                }
+                 let success = self
+                     .wrapper
+                     .queue_parameter_event(OutputParamEvent::SetValue {
+diff -ruN nih/src/wrapper/clap/wrapper.rs sosa/vendor/nih-plug/src/wrapper/clap/wrapper.rs
+--- nih/src/wrapper/clap/wrapper.rs	2026-10-12 06:48:40.415467706 +0000
++++ sosa/vendor/nih-plug/src/wrapper/clap/wrapper.rs	2026-10-12 06:48:22.901378265 +0000
+@@ -72,10 +72,10 @@
+ use std::num::NonZeroU32;
+ use std::os::raw::c_char;
+ use std::ptr::NonNull;
+-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
++use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+ use std::sync::{Arc, Weak};
+ use std::thread::{self, ThreadId};
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ 
+ use super::context::{WrapperGuiContext, WrapperInitContext, WrapperProcessContext};
+ use super::descriptor::PluginDescriptor;
+@@ -126,6 +126,18 @@
      editor_scaling_factor: AtomicF32,
  
      is_processing: AtomicBool,
@@ -10,10 +167,17 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
 +    is_activating: AtomicBool,
 +    /// SosaTune: `true` between a successful `activate()` and `deactivate()`.
 +    is_active: AtomicBool,
++    /// SosaTune: reference point for `last_process_ns`.
++    created_at: Instant,
++    /// SosaTune: when the host last called `process()`, in nanoseconds since `created_at`. Some
++    /// hosts stay "processing" but stop calling `process()` (Logic Pro with an empty track, through
++    /// the AU wrapper, whose `request_flush()` does nothing): editor changes are then applied
++    /// right away instead of waiting for a process call that never comes.
++    last_process_ns: AtomicU64,
      /// The current IO configuration, modified through the `clap_plugin_audio_ports_config`
      /// extension. Initialized to the plugin's first audio IO configuration.
      current_audio_io_layout: AtomicCell<AudioIOLayout>,
-@@ -393,14 +398,15 @@
+@@ -393,14 +405,15 @@
                  Some(host_latency) => {
                      nih_debug_assert!(is_gui_thread);
  
@@ -36,16 +200,41 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
                      }
                  }
                  None => nih_debug_assert_failure!("Host does not support the latency extension"),
-@@ -544,6 +550,8 @@
+@@ -544,6 +557,10 @@
              editor_scaling_factor: AtomicF32::new(1.0),
  
              is_processing: AtomicBool::new(false),
 +            is_activating: AtomicBool::new(false),
 +            is_active: AtomicBool::new(false),
++            created_at: Instant::now(),
++            last_process_ns: AtomicU64::new(0),
              current_audio_io_layout: AtomicCell::new(
                  P::AUDIO_IO_LAYOUTS.first().copied().unwrap_or_default(),
              ),
-@@ -1889,10 +1897,12 @@
+@@ -772,6 +789,22 @@
+     ///
+     /// Returns `false` if the parameter value queue was full and the update will not be sent to the
+     /// host (it will still be set on the plugin either way).
++    /// SosaTune: `true` when the host is really calling `process()` (processing, with a call in
++    /// the last 150 ms). Otherwise parameter changes from the editor are applied immediately.
++    pub fn host_is_processing(&self) -> bool {
++        if !self.is_processing.load(Ordering::SeqCst) {
++            return false;
++        }
++        let now_ns = self.created_at.elapsed().as_nanos() as u64;
++        let last_ns = self.last_process_ns.load(Ordering::SeqCst);
++        now_ns.saturating_sub(last_ns) <= 150_000_000
++    }
++
++    /// SosaTune: the current sample rate, if the plugin has been activated.
++    pub fn current_sample_rate(&self) -> Option<f32> {
++        self.current_buffer_config.load().map(|c| c.sample_rate)
++    }
++
+     pub fn queue_parameter_event(&self, event: OutputParamEvent) -> bool {
+         let result = self.output_parameter_events.push(event).is_ok();
+ 
+@@ -1889,10 +1922,12 @@
              param.update_smoother(buffer_config.sample_rate, true);
          }
  
@@ -59,7 +248,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
              // NOTE: `Plugin::reset()` is called in `clap_plugin::start_processing()` instead of in
              //       this function
  
-@@ -1907,13 +1917,24 @@
+@@ -1907,13 +1942,24 @@
              true
          } else {
              false
@@ -85,7 +274,18 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
          wrapper.plugin.lock().deactivate();
      }
  
-@@ -2505,11 +2526,15 @@
+@@ -1954,6 +2000,10 @@
+     ) -> clap_process_status {
+         check_null_ptr!(CLAP_PROCESS_ERROR, plugin, (*plugin).plugin_data, process);
+         let wrapper = &*((*plugin).plugin_data as *const Self);
++        wrapper.last_process_ns.store(
++            wrapper.created_at.elapsed().as_nanos() as u64,
++            Ordering::SeqCst,
++        );
+ 
+         // Panic on allocations if the `assert_process_allocs` feature has been enabled, and make
+         // sure that FTZ is set up correctly
+@@ -2505,11 +2555,15 @@
          } else {
              index + num_input_ports
          };
@@ -103,7 +303,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
              _ => CLAP_INVALID_ID,
          };
  
-@@ -3152,6 +3177,12 @@
+@@ -3152,6 +3206,12 @@
              return false;
          }
          let length = u64::from_le_bytes(length_bytes);
@@ -116,7 +316,7 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
  
          let mut read_buffer: Vec<u8> = Vec::with_capacity(length as usize);
          if !read_stream(&*stream, read_buffer.spare_capacity_mut()) {
-@@ -3167,6 +3198,12 @@
+@@ -3167,6 +3227,12 @@
                  let success = wrapper.set_state_inner(&mut state);
                  if success {
                      nih_trace!("Loaded state ({} bytes)", read_buffer.len());
@@ -129,10 +329,10 @@ diff -ruN nih/src/wrapper/clap/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
                  }
  
                  success
-diff -ruN nih/src/wrapper/vst3/context.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/context.rs
---- nih/src/wrapper/vst3/context.rs	2026-10-10 18:58:27.553095659 +0200
-+++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/context.rs	2026-10-10 23:45:20.065999595 +0200
-@@ -158,32 +158,38 @@
+diff -ruN nih/src/wrapper/vst3/context.rs sosa/vendor/nih-plug/src/wrapper/vst3/context.rs
+--- nih/src/wrapper/vst3/context.rs	2026-10-12 06:48:40.417546109 +0000
++++ sosa/vendor/nih-plug/src/wrapper/vst3/context.rs	2026-10-11 11:54:44.326565250 +0000
+@@ -158,32 +158,47 @@
      }
  
      unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
@@ -156,6 +356,7 @@ diff -ruN nih/src/wrapper/vst3/context.rs /home/claude/sosatune/vendor/nih-plug/
 -                                .map(|c| c.sample_rate),
 -                        );
 -                    }
++        crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_SET_CALLS);
 +        match self.inner.param_ptr_to_hash.get(&param) {
 +            Some(hash) => {
 +                // SosaTune: the plugin applies editor changes itself instead of relying on the
@@ -169,6 +370,7 @@ diff -ruN nih/src/wrapper/vst3/context.rs /home/claude/sosatune/vendor/nih-plug/
 +                let last_ns = self.inner.last_process_ns.load(Ordering::SeqCst);
 +                let idle = now_ns.saturating_sub(last_ns) > 150_000_000;
 +                if !self.inner.is_processing.load(Ordering::SeqCst) || idle {
++                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_DIRECT);
 +                    self.inner.set_normalized_value_by_hash(
 +                        *hash,
 +                        normalized,
@@ -179,24 +381,31 @@ diff -ruN nih/src/wrapper/vst3/context.rs /home/claude/sosatune/vendor/nih-plug/
 +                    );
 +                } else if self.inner.gui_param_queue.push((*hash, normalized)).is_err() {
 +                    nih_debug_assert_failure!("The editor parameter queue is full");
++                } else {
++                    crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_QUEUED);
 +                }
  
 +                // Tell the host about the change (automation, undo, saving). If the host never
 +                // gave us a component handler the value has still been applied above.
 +                if let Some(handler) = &*self.inner.component_handler.borrow() {
                      handler.perform_edit(*hash, normalized as f64);
++                } else {
++                    crate::sosatune_diag::bump(&crate::sosatune_diag::HANDLER_MISSING);
                  }
 -                None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
 -            },
 -            None => nih_debug_assert_failure!("Component handler not yet set"),
 +            }
-+            None => nih_debug_assert_failure!("Unknown parameter: {:?}", param),
++            None => {
++                crate::sosatune_diag::bump(&crate::sosatune_diag::UNKNOWN_PARAM);
++                nih_debug_assert_failure!("Unknown parameter: {:?}", param)
++            }
          }
  
          #[cfg(debug_assertions)]
-diff -ruN nih/src/wrapper/vst3/inner.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/inner.rs
---- nih/src/wrapper/vst3/inner.rs	2026-10-10 18:58:27.553304174 +0200
-+++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/inner.rs	2026-10-10 23:45:20.065670538 +0200
+diff -ruN nih/src/wrapper/vst3/inner.rs sosa/vendor/nih-plug/src/wrapper/vst3/inner.rs
+--- nih/src/wrapper/vst3/inner.rs	2026-10-12 06:48:40.417684769 +0000
++++ sosa/vendor/nih-plug/src/wrapper/vst3/inner.rs	2026-10-11 11:54:44.326769999 +0000
 @@ -1,11 +1,12 @@
  use atomic_refcell::AtomicRefCell;
  use crossbeam::atomic::AtomicCell;
@@ -239,9 +448,9 @@ diff -ruN nih/src/wrapper/vst3/inner.rs /home/claude/sosatune/vendor/nih-plug/sr
              // Some hosts, like the current version of Bitwig and Ardour at the time of writing,
              // will try using the plugin's default not yet initialized bus arrangement. Because of
              // that, we'll always initialize this configuration even before the host requests a
-diff -ruN nih/src/wrapper/vst3/wrapper.rs /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/wrapper.rs
---- nih/src/wrapper/vst3/wrapper.rs	2026-10-10 18:58:27.553304174 +0200
-+++ /home/claude/sosatune/vendor/nih-plug/src/wrapper/vst3/wrapper.rs	2026-10-10 23:45:20.066423363 +0200
+diff -ruN nih/src/wrapper/vst3/wrapper.rs sosa/vendor/nih-plug/src/wrapper/vst3/wrapper.rs
+--- nih/src/wrapper/vst3/wrapper.rs	2026-10-12 06:48:40.417684769 +0000
++++ sosa/vendor/nih-plug/src/wrapper/vst3/wrapper.rs	2026-10-11 11:54:44.326769999 +0000
 @@ -431,7 +431,14 @@
              return kResultFalse;
          }
@@ -258,17 +467,27 @@ diff -ruN nih/src/wrapper/vst3/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
          let mut num_bytes_read = 0;
          let mut read_buffer: Vec<u8> = Vec::with_capacity(stream_byte_size as usize);
          state.read(
-@@ -981,6 +988,17 @@
+@@ -901,6 +908,7 @@
+         // Always reset the processing status when the plugin gets activated or deactivated
+         self.inner.last_process_status.store(ProcessStatus::Normal);
+         self.inner.is_processing.store(state, Ordering::SeqCst);
++        crate::sosatune_diag::IS_PROCESSING.store(state, Ordering::Relaxed);
+ 
+         // This function is also used to reset buffers on the plugin, so we should do the same
+         // thing. We don't call `reset()` in `setup_processing()` for that same reason.
+@@ -981,6 +989,19 @@
              let mut process_events = self.inner.process_events.borrow_mut();
              process_events.clear();
  
 +            // SosaTune: first the changes made in the editor since the last block (see
 +            // `WrapperGuiContext::raw_set_parameter_normalized()`), then the host's own changes.
++            crate::sosatune_diag::bump(&crate::sosatune_diag::PROCESS_CALLS);
 +            self.inner.last_process_ns.store(
 +                self.inner.created_at.elapsed().as_nanos() as u64,
 +                Ordering::SeqCst,
 +            );
 +            while let Some((hash, normalized)) = self.inner.gui_param_queue.pop() {
++                crate::sosatune_diag::bump(&crate::sosatune_diag::GUI_APPLIED_FROM_QUEUE);
 +                self.inner
 +                    .set_normalized_value_by_hash(hash, normalized, Some(sample_rate));
 +            }
@@ -276,3 +495,13 @@ diff -ruN nih/src/wrapper/vst3/wrapper.rs /home/claude/sosatune/vendor/nih-plug/
              // First we'll go through the parameter changes. This may also include MIDI CC messages
              // if the plugin supports those
              if let Some(param_changes) = data.input_param_changes.upgrade() {
+@@ -1012,6 +1033,9 @@
+                                     total_buffer_len as u32,
+                                 );
+                                 let value = value as f32;
++                                crate::sosatune_diag::bump(&crate::sosatune_diag::HOST_PARAM_POINTS);
++                                crate::sosatune_diag::LAST_HOST_HASH.store(param_hash, Ordering::Relaxed);
++                                crate::sosatune_diag::LAST_HOST_VALUE_BITS.store(value.to_bits(), Ordering::Relaxed);
+ 
+                                 // MIDI CC messages, channel pressure, and pitch bend are also sent
+                                 // as parameter changes

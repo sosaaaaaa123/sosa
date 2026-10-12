@@ -1,6 +1,6 @@
 # Sosa Tune
 
-**Correzione dell'intonazione in tempo reale per la voce**, stile Auto-Tune, scritta in Rust con [nih-plug](https://github.com/robbert-vdh/nih-plug). Funziona come plugin **VST3**, **CLAP** e **AU** (Logic Pro, GarageBand) su macOS, e VST3/CLAP su Windows. Per installarlo su un altro computer ci sono gli installer pronti: `SosaTune-Installer.pkg` per Mac e `SosaTune-Setup.exe` per Windows, in cui scegli tu quali formati installare.
+**Correzione dell'intonazione in tempo reale per la voce**, stile Auto-Tune, scritta in Rust con [nih-plug](https://github.com/robbert-vdh/nih-plug). Funziona come plugin **VST3**, **CLAP** e **AU** (Logic Pro, GarageBand) su macOS, e VST3/CLAP su Windows. Per installarlo su un altro computer ci sono gli installer pronti: `SosaTune-Installer-macOS.pkg` per Mac e `SosaTune-Installer-Windows.exe` per Windows, in cui scegli tu quali formati installare.
 
 ![L'interfaccia di Sosa Tune](docs/interfaccia.png)
 
@@ -95,7 +95,7 @@ Apri il tuo DAW, fai ripetere la scansione dei plugin se non compare da solo, e 
 
 - **Ableton Live, FL Studio, Cubase, Studio One, Reaper**: usa il VST3.
 - **Bitwig, Reaper**: puoi usare anche il CLAP.
-- **Logic Pro e GarageBand**: usa l'AU (`SosaTune.component`, nel pacchetto `.pkg` scegli "Audio Unit"). È creato con [clap-wrapper](https://github.com/free-audio/clap-wrapper) e superato `auval`.
+- **Logic Pro e GarageBand**: usa l'AU (`SosaTune.component`, nel pacchetto `.pkg` scegli "Audio Unit"). È creato con [clap-wrapper](https://github.com/free-audio/clap-wrapper) e supera `auval`; le manopole funzionano anche su una traccia vuota o a trasporto fermo.
 
 ---
 
