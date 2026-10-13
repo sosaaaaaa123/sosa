@@ -145,10 +145,8 @@ pub struct PhaseVocoder {
     formant_bridge: (f32, f32),
     /// Righe 200 Hz, 4 kHz e 16 kHz (per `spectral_tilt`).
     tilt_bins: (usize, usize, usize),
-    /// Formant: dove agisce il compenso di volume (il corpo della voce: 1
-    /// fino a 3 kHz, 0 da 4,5 kHz), peso di ogni riga nel volume percepito
-    /// (curva K della misura LUFS, solo nel corpo) e righe su cui si misura.
-    body_weight: Vec<f32>,
+    /// Formant: peso di ogni riga nel volume percepito (curva K della
+    /// misura LUFS) e righe da 60 Hz a 16 kHz su cui si misura.
     loudness_weight: Vec<f32>,
     loudness_bins: (usize, usize),
     /// Formant: quanto il compenso di volume segue quello nuovo a ogni frame.
@@ -235,25 +233,13 @@ impl PhaseVocoder {
     /// sulla voce di prova +9 dB gia' dal primo frame, contro ~+1 dB dei buchi
     /// in mezzo alla nota) resta intatto come prima. Pieno fino a +3 dB, zero da +8 dB.
     const FORMANT_BRIGHTER_DB: (f32, f32) = (3.0, 8.0);
-    /// Formant: la voce non perde volume. Con le formanti in basso (voce piu'
-    /// grande) il corpo della voce si abbassava (misurato su voci vere: -2/-3
-    /// LU a -6 semitoni) e le "s" e le "z" spiccavano di piu' (+2 dB rispetto
-    /// alla voce). Ora quel calo si recupera, solo nel corpo della voce (fino
-    /// a 3 kHz, sfumando a 4,5 kHz): gli acuti, le "s" e le "z" restano come
-    /// prima. Il compenso si misura sulle vocali (non sui frame molto piu'
-    /// brillanti, una "z" o il respiro), e' lisciato su 60 ms e non abbassa
-    /// mai la voce: con le formanti in alto (che alzavano un po' il volume)
-    /// il suono resta esattamente quello di prima. (Un compenso in entrambe
-    /// le direzioni e su tutte le frequenze rendeva le "s" e le "z" piu'
-    /// evidenti: con Formant in alto la voce scendeva sotto le "s", con
-    /// Formant in basso le "z" e l'aria salivano di ~1,3 dB.)
+    /// Formant: il volume percepito resta quello di prima. Spostare le
+    /// formanti cambiava anche il volume (misurato su voci vere, in LUFS: -2/-3
+    /// a -6 semitoni, +0,5/+0,9 a +6): la voce "piu' grande" diventava piu'
+    /// piccola di volume. Ora il guadagno medio (pesato come l'orecchio, sullo
+    /// spettro del frame) si toglie: resta solo il cambio di timbro (entro
+    /// ~0,2 LU). Lisciato su 60 ms, cosi' il volume non trema.
     const FORMANT_LOUDNESS_S: f32 = 0.060;
-
-    /// Il corpo della voce, dove agisce il compenso di volume di Formant.
-    fn body(hz: f32) -> f32 {
-        let x = ((hz - 3000.0) / 1500.0).clamp(0.0, 1.0);
-        0.5 + 0.5 * (PI * x).cos()
-    }
 
     pub fn new(channels: usize, sample_rate: f32) -> Self {
         Self::with_windows(channels, sample_rate, Self::MIN_WINDOW_S, Self::MAX_WINDOW_S)
@@ -347,17 +333,16 @@ impl PhaseVocoder {
                 ((4000.0 / bin_hz) as usize).clamp(2, half - 1),
                 ((16000.0 / bin_hz) as usize).clamp(3, half),
             ),
-            body_weight: (0..=half).map(|k| Self::body(k as f32 * bin_hz)).collect(),
             loudness_weight: (0..=half)
                 .map(|k| {
                     // Curva K (ITU-R BS.1770): +4 dB sopra ~1,5 kHz, taglio sotto ~40 Hz.
                     let f = k as f32 * bin_hz;
                     let x = (f / 1500.0) * (f / 1500.0);
                     let f4 = (f / 38.0).powi(4);
-                    (1.0 + 1.512 * x) / (1.0 + x) * f4 / (1.0 + f4) * Self::body(f)
+                    (1.0 + 1.512 * x) / (1.0 + x) * f4 / (1.0 + f4)
                 })
                 .collect(),
-            loudness_bins: (((60.0 / bin_hz) as usize).clamp(1, half), ((4500.0 / bin_hz) as usize).clamp(1, half)),
+            loudness_bins: (((60.0 / bin_hz) as usize).clamp(1, half), ((16000.0 / bin_hz) as usize).clamp(1, half)),
             formant_comp_follow: 1.0 - (-(hop as f32) / (Self::FORMANT_LOUDNESS_S * sample_rate)).exp(),
             peaks: Vec::with_capacity(half),
             peak_bin: Vec::with_capacity(half),
@@ -640,11 +625,9 @@ impl PhaseVocoder {
             }
             self.formant_gain[k] = gain;
         }
-        // Volume (`FORMANT_LOUDNESS_S`): quanto il guadagno alzerebbe il
-        // volume percepito del corpo di questo frame (non sui frame molto piu'
-        // brillanti della voce: una "z", il respiro).
-        let brighter = (self.spectral_tilt() - self.states[ch].formant_tilt) * 10.0 / LN_10;
-        if let Some(fresh) = update.filter(|_| brighter < Self::FORMANT_BRIGHTER_DB.0) {
+        // Volume costante (`FORMANT_LOUDNESS_S`): quanto il guadagno alzerebbe
+        // il volume percepito di questo frame.
+        if let Some(fresh) = update {
             let (lo, hi) = self.loudness_bins;
             let (mut before, mut after) = (0.0f64, 0.0f64);
             for k in lo..=hi {
@@ -660,9 +643,9 @@ impl PhaseVocoder {
                 state.formant_comp += self.formant_comp_follow * (raw - state.formant_comp);
             }
         }
-        // Solo per recuperare un calo, e solo nel corpo della voce.
-        let comp = self.states[ch].formant_comp.min(0.0);
-        for (g, w) in self.formant_gain.iter_mut().zip(&self.body_weight) {
+        // Il compenso sfuma con lo spostamento sopra 7 kHz: l'aria resta com'era.
+        let comp = self.states[ch].formant_comp;
+        for (g, w) in self.formant_gain.iter_mut().zip(&self.formant_weight) {
             *g = (*g - comp * w) * amount;
         }
     }
@@ -1122,41 +1105,6 @@ mod tests {
         }
         for i in switch + 400..switch + 4000 {
             assert!((out[i + latency] - sibilant[i]).abs() < 1e-3, "la \"s\" cambia al campione {i}");
-        }
-    }
-
-    #[test]
-    fn formant_does_not_make_s_and_z_stand_out() {
-        // Una "z": vocale con tanto fruscio acuto (4-12 kHz). Con Formant in
-        // alto o in basso la voce non deve scendere sotto il fruscio, e il
-        // fruscio non deve salire (con il compenso di volume su tutte le
-        // frequenze e in entrambe le direzioni le "s" e le "z" spiccavano di piu').
-        let sr = 48000.0;
-        let len = 72000;
-        let vowel = crate::synth::steady_vowel(150.0, sr, len);
-        let mut hiss = crate::synth::noise(len, 0.25, 11);
-        let mut prev = 0.0;
-        for v in hiss.iter_mut() {
-            // Derivata: rumore che sale verso gli acuti, come una "s".
-            let x = *v;
-            *v = x - prev;
-            prev = x;
-        }
-        let input: Vec<f32> = vowel.iter().zip(&hiss).map(|(v, h)| v + h).collect();
-        let bands = [(150.0, 3000.0), (4500.0, 12000.0)];
-        let mean = |v: &[f32]| v.iter().sum::<f32>() / v.len() as f32;
-        for semitones in [4.0f32, -4.0] {
-            let formant = 2f32.powf(semitones / 12.0);
-            let (out, latency) = run(&input, sr, GrainPitch { period: sr / 150.0, ratio: 1.0, voiced: true, formant });
-            let dry = band_levels(&input[12000..len - latency], sr, &bands);
-            let wet = band_levels(&out[12000 + latency..], sr, &bands);
-            let body = mean(&wet[0]) - mean(&dry[0]);
-            let hiss = mean(&wet[1]) - mean(&dry[1]);
-            // (Formant in basso legge l'inviluppo da piu' in alto: su un fruscio
-            // che sale verso gli acuti 4,5-7 kHz salgono di ~1 dB da sempre.)
-            assert!(hiss < 1.15, "{semitones:+}: fruscio acuto +{hiss:.2} dB");
-            assert!(body > -0.5, "{semitones:+}: la voce perde {body:.2} dB");
-            assert!(hiss - body < 1.5, "{semitones:+}: le s spiccano di {:.2} dB sulla voce", hiss - body);
         }
     }
 
