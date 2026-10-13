@@ -86,6 +86,8 @@ struct ChannelState {
     formant_age: usize,
     /// Brillantezza (vedi `spectral_tilt`) delle ultime note, lisciata.
     formant_tilt: f32,
+    /// Compenso di volume del comando Formant (logaritmico), lisciato.
+    formant_comp: f32,
 }
 
 pub struct PhaseVocoder {
@@ -143,6 +145,12 @@ pub struct PhaseVocoder {
     formant_bridge: (f32, f32),
     /// Righe 200 Hz, 4 kHz e 16 kHz (per `spectral_tilt`).
     tilt_bins: (usize, usize, usize),
+    /// Formant: peso di ogni riga nel volume percepito (curva K della
+    /// misura LUFS) e righe da 60 Hz a 16 kHz su cui si misura.
+    loudness_weight: Vec<f32>,
+    loudness_bins: (usize, usize),
+    /// Formant: quanto il compenso di volume segue quello nuovo a ogni frame.
+    formant_comp_follow: f32,
     peaks: Vec<usize>,
     peak_bin: Vec<f32>,
     frame_out: Vec<f32>,
@@ -225,6 +233,13 @@ impl PhaseVocoder {
     /// sulla voce di prova +9 dB gia' dal primo frame, contro ~+1 dB dei buchi
     /// in mezzo alla nota) resta intatto come prima. Pieno fino a +3 dB, zero da +8 dB.
     const FORMANT_BRIGHTER_DB: (f32, f32) = (3.0, 8.0);
+    /// Formant: il volume percepito resta quello di prima. Spostare le
+    /// formanti cambiava anche il volume (misurato su voci vere, in LUFS: -2/-3
+    /// a -6 semitoni, +0,5/+0,9 a +6): la voce "piu' grande" diventava piu'
+    /// piccola di volume. Ora il guadagno medio (pesato come l'orecchio, sullo
+    /// spettro del frame) si toglie: resta solo il cambio di timbro (entro
+    /// ~0,2 LU). Lisciato su 60 ms, cosi' il volume non trema.
+    const FORMANT_LOUDNESS_S: f32 = 0.060;
 
     pub fn new(channels: usize, sample_rate: f32) -> Self {
         Self::with_windows(channels, sample_rate, Self::MIN_WINDOW_S, Self::MAX_WINDOW_S)
@@ -253,6 +268,7 @@ impl PhaseVocoder {
                 formant_env: vec![0.0; half + 1],
                 formant_age: usize::MAX,
                 formant_tilt: 0.0,
+                formant_comp: 0.0,
             })
             .collect();
         let follow = |seconds: f32| 1.0 - (-(hop as f32) / (seconds * sample_rate)).exp();
@@ -317,6 +333,17 @@ impl PhaseVocoder {
                 ((4000.0 / bin_hz) as usize).clamp(2, half - 1),
                 ((16000.0 / bin_hz) as usize).clamp(3, half),
             ),
+            loudness_weight: (0..=half)
+                .map(|k| {
+                    // Curva K (ITU-R BS.1770): +4 dB sopra ~1,5 kHz, taglio sotto ~40 Hz.
+                    let f = k as f32 * bin_hz;
+                    let x = (f / 1500.0) * (f / 1500.0);
+                    let f4 = (f / 38.0).powi(4);
+                    (1.0 + 1.512 * x) / (1.0 + x) * f4 / (1.0 + f4)
+                })
+                .collect(),
+            loudness_bins: (((60.0 / bin_hz) as usize).clamp(1, half), ((16000.0 / bin_hz) as usize).clamp(1, half)),
+            formant_comp_follow: 1.0 - (-(hop as f32) / (Self::FORMANT_LOUDNESS_S * sample_rate)).exp(),
             peaks: Vec::with_capacity(half),
             peak_bin: Vec::with_capacity(half),
             frame_out: vec![0.0; max_window],
@@ -395,6 +422,7 @@ impl PhaseVocoder {
                         b.formant_env.copy_from_slice(&a.formant_env);
                         b.formant_age = a.formant_age;
                         b.formant_tilt = a.formant_tilt;
+                        b.formant_comp = a.formant_comp;
                         self.add_frame(1, center, len);
                     } else {
                         self.process_frame(ch, center, len, pitch);
@@ -559,7 +587,8 @@ impl PhaseVocoder {
         let level = self.log_env[lo..hi].iter().sum::<f32>() / (hi - lo) as f32;
         let tilt = self.spectral_tilt();
         let state = &mut self.states[ch];
-        if state.formant_age > self.formant_hold {
+        let fresh = state.formant_age > self.formant_hold;
+        if fresh {
             for k in 0..=half {
                 state.formant_env[k] = self.log_env[k] - level;
             }
@@ -571,12 +600,14 @@ impl PhaseVocoder {
             state.formant_tilt += self.formant_follow[0] * (tilt - state.formant_tilt);
         }
         state.formant_age = 0;
-        self.formant_gain_from_env(ch, formant, 1.0);
+        self.formant_gain_from_env(ch, formant, 1.0, Some(fresh));
     }
 
     /// Formant: guadagno per ogni riga dall'inviluppo lisciato del canale
-    /// (`amount` = quanto dello spostamento, da 0 a 1).
-    fn formant_gain_from_env(&mut self, ch: usize, formant: f32, amount: f32) {
+    /// (`amount` = quanto dello spostamento, da 0 a 1). `update`: il frame ha
+    /// una nota e aggiorna il compenso di volume (`Some(true)`: da capo);
+    /// `None` usa quello delle note appena passate.
+    fn formant_gain_from_env(&mut self, ch: usize, formant: f32, amount: f32, update: Option<bool>) {
         let half = self.half;
         let env = &self.states[ch].formant_env;
         for k in 0..=half {
@@ -592,7 +623,30 @@ impl PhaseVocoder {
             if gain > 0.0 {
                 gain = Self::FORMANT_MAX_BOOST * (gain / Self::FORMANT_MAX_BOOST).tanh();
             }
-            self.formant_gain[k] = gain * amount;
+            self.formant_gain[k] = gain;
+        }
+        // Volume costante (`FORMANT_LOUDNESS_S`): quanto il guadagno alzerebbe
+        // il volume percepito di questo frame.
+        if let Some(fresh) = update {
+            let (lo, hi) = self.loudness_bins;
+            let (mut before, mut after) = (0.0f64, 0.0f64);
+            for k in lo..=hi {
+                let power = self.magnitude[k] * self.magnitude[k] * self.loudness_weight[k];
+                before += power as f64;
+                after += (power * (2.0 * self.formant_gain[k]).exp()) as f64;
+            }
+            let raw = if before > 1e-20 { (0.5 * (after / before).ln()) as f32 } else { 0.0 };
+            let state = &mut self.states[ch];
+            if fresh {
+                state.formant_comp = raw;
+            } else {
+                state.formant_comp += self.formant_comp_follow * (raw - state.formant_comp);
+            }
+        }
+        // Il compenso sfuma con lo spostamento sopra 7 kHz: l'aria resta com'era.
+        let comp = self.states[ch].formant_comp;
+        for (g, w) in self.formant_gain.iter_mut().zip(&self.formant_weight) {
+            *g = (*g - comp * w) * amount;
         }
     }
 
@@ -684,7 +738,7 @@ impl PhaseVocoder {
                     .clamp(0.0, 1.0);
                 amount *= x * x * (3.0 - 2.0 * x);
                 if amount > 0.0 {
-                    self.formant_gain_from_env(ch, formant, amount);
+                    self.formant_gain_from_env(ch, formant, amount, None);
                     for k in 0..=half {
                         let g = self.formant_gain[k].clamp(-2.8, 2.8).exp();
                         let c = self.out_spectrum[k];
@@ -777,6 +831,23 @@ impl PhaseVocoder {
                     half
                 };
                 let true_bin = self.peak_bin[p];
+                // Nota spostata in basso: le armoniche si avvicinano tra loro e
+                // le code di ogni zona finirebbero sopra la zona vicina, sommate
+                // con un'altra fase (un battimento, un fruscio tra le
+                // armoniche). Ogni zona scrive solo fino a meta' strada dalle
+                // armoniche vicine, nelle posizioni nuove (misurato: voce
+                // trasposta di -4 semitoni meno ruvida, 12,9% -> 11,5% dei frame,
+                // e il rumore tra le armoniche sotto 1 kHz -1,2 dB). Spostando in
+                // alto le zone si allontanano e non serve.
+                let (cell_lo, cell_hi) = if ratio < 1.0 {
+                    let moved = |q: usize| self.peak_bin[q] * ratio;
+                    (
+                        if p > 0 { 0.5 * (moved(p - 1) + moved(p)) } else { f32::MIN },
+                        if p + 1 < count { 0.5 * (moved(p) + moved(p + 1)) } else { f32::MAX },
+                    )
+                } else {
+                    (f32::MIN, f32::MAX)
+                };
                 {
                     // Spostamento in righe (anche frazionario): ogni riga della
                     // zona viene distribuita tra le due righe di arrivo piu'
@@ -806,6 +877,9 @@ impl PhaseVocoder {
                                 continue;
                             }
                             let dest = k as isize + shift_int + offset;
+                            if (dest as f32) < cell_lo || (dest as f32) > cell_hi {
+                                continue;
+                            }
                             if dest < 0 || dest as usize > half {
                                 continue;
                             }
@@ -944,8 +1018,12 @@ mod tests {
             let bin = |hz: f32| (hz / sr * pv.n_fft as f32) as usize;
             for g in &gains {
                 assert!(g[bin(14100.0)..].iter().all(|v| v.abs() < 1e-6));
-                assert!(g.iter().all(|v| v * db <= 20.01), "spinta oltre 20 dB");
+                assert!(g.iter().all(|v| v * db <= 20.01 + 3.0), "spinta oltre 20 dB");
             }
+            // ...il volume percepito non cambia...
+            let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
+            let level = db * (rms(&out[12000 + latency..]) / rms(&input[12000..len - latency])).ln();
+            assert!(level.abs() < 0.5, "{semitones:+}: volume cambiato di {level:+.2} dB");
             // ...e il guadagno non trema da un frame all'altro (senza lisciatura
             // il respiro lo faceva saltare di 1-2 dB ogni 5 ms).
             let (lo, hi) = (bin(300.0), bin(7000.0));
