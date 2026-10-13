@@ -68,9 +68,27 @@ pub fn sing_curve(freq_hz: &[f32], envelope: &[f32], sr: f32) -> Vec<f32> {
 /// passa tra le corde vocali, `breath` da 0 a 1) e senza normalizzare il
 /// volume: due voci generate con le stesse impostazioni sono confrontabili.
 pub fn sing_curve_detailed(freq_hz: &[f32], envelope: &[f32], sr: f32, breath: f32, seed: u32) -> Vec<f32> {
+    sing_with_formants(freq_hz, envelope, sr, breath, seed, 1.0)
+}
+
+/// Una vocale tenuta con le formanti moltiplicate per `scale` (come una gola
+/// piu' corta, `scale` > 1, o piu' lunga, `scale` < 1): il risultato ideale
+/// di uno spostamento delle formanti, per le prove. Normalizzata a picco 0.5.
+pub fn steady_vowel_formants(hz: f32, sr: f32, len: usize, scale: f32) -> Vec<f32> {
+    let mut out = sing_with_formants(&vec![hz; len], &vec![1.0; len], sr, 0.0, 1, scale);
+    let peak = out.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+    if peak > 0.0 {
+        for x in &mut out {
+            *x *= 0.5 / peak;
+        }
+    }
+    out
+}
+
+fn sing_with_formants(freq_hz: &[f32], envelope: &[f32], sr: f32, breath: f32, seed: u32, scale: f32) -> Vec<f32> {
     let mut formants: Vec<Resonator> = VOWEL_A
         .iter()
-        .map(|&(f, bw, g)| Resonator::new(f, bw, g, sr))
+        .map(|&(f, bw, g)| Resonator::new(f * scale, bw * scale, g, sr))
         .collect();
     let air = noise(freq_hz.len(), 1.0, seed);
     let mut phase = 0.0f32;

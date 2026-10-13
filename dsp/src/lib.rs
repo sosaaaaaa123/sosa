@@ -16,7 +16,8 @@
 //!        │        │
 //!        ▼        ▼
 //!     [vocoder] HQ: phase vocoder, sposta l'intonazione mantenendo il timbro (le formanti)
-//!     [zerolat] Low Latency: testina a latenza zero per registrare
+//!     [zerolat] Low Latency: testina a latenza zero per registrare, con
+//!     [timbre]  il timbro di HQ rimesso dopo la testina (formanti, Formant)
 //!        │
 //!        ▼
 //!  voce corretta in uscita
@@ -30,6 +31,7 @@ pub mod corrector;
 pub mod fft;
 pub mod scale;
 pub mod synth;
+pub mod timbre;
 pub mod vocoder;
 pub mod wav;
 pub mod yin;

@@ -132,6 +132,8 @@ pub struct PhaseVocoder {
     log_env: Vec<f32>,
     /// Formant: guadagno (logaritmico) per ogni riga in uscita.
     formant_gain: Vec<f32>,
+    /// Low Latency: guadagno del timbro per la testina (vedi `timbre_gain`).
+    timbre: Vec<f32>,
     /// Formant: quanto l'inviluppo lisciato segue quello nuovo a ogni frame
     /// (per ogni riga) e quanto pesa lo spostamento (1 fino a 7 kHz, poi 0).
     formant_follow: Vec<f32>,
@@ -331,6 +333,7 @@ impl PhaseVocoder {
             phase: vec![0.0; half + 1],
             log_env: vec![0.0; half + 1],
             formant_gain: vec![0.0; half + 1],
+            timbre: vec![0.0; half + 1],
             formant_follow,
             formant_weight,
             formant_hold: ((Self::FORMANT_HOLD_S * sample_rate) as usize / hop).max(1),
@@ -368,6 +371,11 @@ impl PhaseVocoder {
     /// Ritardo tra ingresso e uscita (campioni): la finestra piu' lunga.
     pub fn latency(&self) -> usize {
         self.max_window
+    }
+
+    /// Dimensione della FFT.
+    pub fn fft_len(&self) -> usize {
+        self.n_fft
     }
 
     /// Lunghezza attuale della finestra di analisi (campioni).
@@ -665,6 +673,64 @@ impl PhaseVocoder {
         for (g, w) in self.formant_gain.iter_mut().zip(&self.body_weight) {
             *g = (*g - comp * w) * amount;
         }
+    }
+
+    /// Low Latency: lo stesso timbro di HQ per la testina a latenza zero
+    /// (vedi `timbre.rs`). Su `segment` (la voce appena arrivata, prima dello
+    /// spostamento) misura l'inviluppo come in HQ e restituisce il guadagno
+    /// (logaritmico, per riga) da dare alla voce spostata di `ratio` dalla
+    /// testina: le formanti tornano dove erano (la testina le sposta con la
+    /// nota) e si spostano come vuole il comando Formant (`formant`), con le
+    /// stesse regole di HQ (inviluppo lisciato, aria intatta, spinte morbide,
+    /// volume). Usa il canale 0: un'istanza dedicata a questo.
+    pub fn timbre_gain(&mut self, segment: &[f32], period: f32, ratio: f32, formant: f32) -> &[f32] {
+        let half = self.half;
+        let len = ((period.max(1.0) * self.periods_per_window) as usize)
+            .clamp(self.min_window, self.max_window)
+            .min(segment.len())
+            / 2
+            * 2;
+        let start = segment.len() - len;
+        for c in self.spectrum.iter_mut() {
+            *c = Complex::default();
+        }
+        for i in 0..len {
+            let x = PI * (i as f32 + 0.5) / len as f32;
+            let w = x.sin() * x.sin();
+            self.spectrum[i] = Complex::new(segment[start + i] * w, 0.0);
+        }
+        self.fft.process(&mut self.spectrum, false);
+        for k in 0..=half {
+            let c = self.spectrum[k];
+            self.magnitude[k] = (c.re * c.re + c.im * c.im).sqrt();
+        }
+        self.spectral_envelope(period);
+        // La testina ha portato la riga `k / ratio` alla riga `k`: si rimette
+        // l'inviluppo della riga `k` (come il "keep" di HQ).
+        let ratio = ratio.clamp(0.25, 4.0);
+        for k in 0..=half {
+            let src = k as f32 / ratio;
+            let i = src.floor() as usize;
+            let moved = if i >= half {
+                self.log_env[half]
+            } else {
+                let f = src - i as f32;
+                self.log_env[i] * (1.0 - f) + self.log_env[i + 1] * f
+            };
+            self.timbre[k] = self.log_env[k] - moved;
+        }
+        let state = &mut self.states[0];
+        state.formant_age = state.formant_age.saturating_add(1);
+        if (formant - 1.0).abs() > 1e-5 {
+            self.formant_shift(0, formant.clamp(0.5, 2.0));
+            for k in 0..=half {
+                self.timbre[k] += self.formant_gain[k];
+            }
+        }
+        for g in self.timbre.iter_mut() {
+            *g = g.clamp(-2.8, 2.8);
+        }
+        &self.timbre
     }
 
     /// Quanto e' brillante il frame: energia tra 4 e 16 kHz rispetto a

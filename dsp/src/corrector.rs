@@ -1,6 +1,7 @@
 //! Il correttore: unisce rilevamento (YIN), scelta della nota (scale) e
 //! spostamento dell'intonazione (phase vocoder). E' il "cervello" del plugin.
 
+use crate::timbre::TimbreFilter;
 use crate::scale::{hz_to_note, NoteSnapper, VoiceType};
 use crate::vocoder::{GrainPitch, PhaseVocoder};
 use crate::yin::YinDetector;
@@ -195,6 +196,9 @@ pub struct PitchCorrector {
     /// Entrambi pronti: cambiare modalita' durante la riproduzione non
     /// alloca memoria.
     zero: DelayShifter,
+    /// Low Latency: il timbro di HQ dopo la testina (formanti al loro posto,
+    /// comando Formant), vedi `timbre.rs`.
+    timbre: TimbreFilter,
 
     /// Ultimi campioni (mono) per il rilevatore.
     mono: Vec<f32>,
@@ -281,6 +285,7 @@ impl PitchCorrector {
             detector,
             vocoder,
             zero,
+            timbre: TimbreFilter::new(sample_rate, channels),
             mono: vec![0.0; mono_len],
             mono_mask: mono_len - 1,
             frame,
@@ -370,6 +375,7 @@ impl PitchCorrector {
     pub fn reset(&mut self) {
         self.vocoder.reset();
         self.zero.reset();
+        self.timbre.reset();
         self.mono.fill(0.0);
         self.countdown = self.hop;
         self.position = 0;
@@ -501,6 +507,14 @@ impl PitchCorrector {
                 }
                 g
             });
+            // Timbro come in HQ (vedi `timbre.rs`): la testina ha spostato le
+            // formanti insieme alla nota; il filtro le rimette dove erano e
+            // applica il comando Formant, con lo stesso calcolo di HQ. Nota
+            // ferma e Formant a 0: la voce passa identica.
+            let mono_in = input[..channels].iter().sum::<f32>() / channels as f32;
+            let ratio = self.zero.current_ratio() as f32;
+            let latest_voiced = latest.valid && latest.voiced;
+            self.timbre.process(mono_in, &mut output[..channels], ratio, formant, latest_period, latest_voiced);
         }
         frame[..channels].copy_from_slice(&output[..channels]);
 

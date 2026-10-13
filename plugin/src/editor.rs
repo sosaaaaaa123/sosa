@@ -1144,7 +1144,7 @@ fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &
     // Modalita' (Low Latency / HQ) e stile (Modern / Classic).
     let quality = params.quality.value();
     if choice_button(ui, painter, g, MODE_LOW, "low", "Low Latency", quality == QualityChoice::LowLatency,
-        "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Qualità da monitoraggio: per il mix passa a HQ.") {
+        "Latenza zero: per registrare e cantare in diretta con il plugin acceso, senza nessun ritardo in cuffia. Stessa correzione e stesso timbro di HQ, calcolati solo sul passato; per il mix HQ resta il più preciso.") {
         set_param(setter, &params.quality, QualityChoice::LowLatency);
     }
     if choice_button(ui, painter, g, MODE_HQ, "hq", "HQ", quality == QualityChoice::Hq,
@@ -2120,7 +2120,7 @@ fn bottom_bar(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, sette
         if formant.abs() < 0.05 { "0".to_owned() } else { format!("{formant:+.1}") },
         ("formant", 1.0),
         ArcStyle::Cyan,
-        "Il timbro della voce, senza cambiare la nota (in modalità HQ): a destra più \
+        "Il timbro della voce, senza cambiare la nota (in HQ e in Low Latency): a destra più \
          piccola e chiara, a sinistra più grande e scura. Doppio clic = 0.",
         state,
     );
@@ -2327,7 +2327,7 @@ fn help_page(painter: &Painter, g: Geo) {
         ("Modern / Classic", "note già intonate / ogni nota scivola sulla nota giusta."),
         ("Retune Speed", "0 = robotico, 10-30 = pop, 50-150 = naturale (ms)."),
         ("Humanize / Flex Tune", "note lunghe più libere / corregge di più vicino alla nota."),
-        ("Vibrato / Formant", "toglie o aggiunge vibrato / timbro della voce (in HQ)."),
+        ("Vibrato / Formant", "toglie o aggiunge vibrato / timbro della voce."),
         ("Detune", "accordatura del La4: 440 Hz, o quella della base (es. 432 Hz)."),
         ("☰  /  ⚙", "preset e Save as Default / misura della finestra e altre impostazioni."),
         ("Annulla, accensione", "frecce tonde: annulla e ripeti / tasto blu: bypass (voce originale, a tempo)."),

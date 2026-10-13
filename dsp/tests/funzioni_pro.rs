@@ -208,6 +208,81 @@ fn formant_shift_changes_timbre_not_pitch() {
     }
 }
 
+/// Il "timbro" di una vocale tenuta: energia relativa di ogni armonica di
+/// `f0` fino a 5 kHz, a meta' del segnale.
+fn harmonic_profile(signal: &[f32], f0: f32) -> Vec<f32> {
+    let n = 8192;
+    let fft = Fft::new(n);
+    let start = signal.len() / 2 - n / 2;
+    let mut data: Vec<Complex> = (0..n)
+        .map(|i| Complex::new(signal[start + i] * (0.5 - 0.5 * (2.0 * PI * i as f32 / n as f32).cos()), 0.0))
+        .collect();
+    fft.process(&mut data, false);
+    let power: Vec<f32> = data.iter().take(n / 2).map(|c| c.re * c.re + c.im * c.im).collect();
+    let mut profile = Vec::new();
+    let mut h = 1.0;
+    while h * f0 < 5000.0 {
+        let k = (h * f0 * n as f32 / SR).round() as usize;
+        profile.push(power[k - 2..=k + 2].iter().cloned().fold(0.0, f32::max));
+        h += 1.0;
+    }
+    let total: f32 = profile.iter().sum();
+    profile.iter().map(|p| p / total).collect()
+}
+
+/// Differenza media (dB) tra due timbri.
+fn timbre_distance(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(x, y)| (10.0 * (x.max(1e-12) / y.max(1e-12)).log10()).abs()).sum::<f32>() / a.len() as f32
+}
+
+/// Elabora in Low Latency (`hq` = false) o in HQ, allineando l'uscita.
+fn process_mode(input: &[f32], settings: &CorrectionSettings, hq: bool) -> Vec<f32> {
+    let mut corrector = PitchCorrector::new(SR, 1);
+    corrector.set_quality(hq);
+    let latency = corrector.latency();
+    let mut out: Vec<f32> = input
+        .iter()
+        .chain(std::iter::repeat(&0.0).take(latency))
+        .map(|&x| {
+            let mut f = [x];
+            corrector.process_frame(&mut f, settings);
+            f[0]
+        })
+        .collect();
+    out.drain(..latency);
+    out
+}
+
+/// Low Latency ha lo stesso timbro di HQ: trasponendo le formanti restano al
+/// loro posto (niente "effetto scoiattolo"), e il comando Formant agisce.
+#[test]
+fn low_latency_keeps_the_timbre_like_hq() {
+    use sosatune_dsp::synth::steady_vowel_formants;
+    let len = (SR * 1.5) as usize;
+    let f0 = note_to_hz(50.0);
+    let input = steady_vowel_formants(f0, SR, len, 1.0);
+    for semitones in [5.0f32, -5.0] {
+        let f_out = note_to_hz(50.0 + semitones);
+        let r = f_out / f0;
+        let same_timbre = harmonic_profile(&steady_vowel_formants(f_out, SR, len, 1.0), f_out);
+        let chipmunk = harmonic_profile(&steady_vowel_formants(f_out, SR, len, r), f_out);
+        let settings = CorrectionSettings { transpose: semitones, ..Default::default() };
+        let kept = timbre_distance(&harmonic_profile(&process_mode(&input, &settings, false), f_out), &same_timbre);
+        let moved = timbre_distance(&chipmunk, &same_timbre);
+        println!("Low Latency {semitones:+} semitoni: dal timbro originale {kept:.1} dB (senza correzione del timbro {moved:.1} dB)");
+        assert!(kept < 0.7 * moved, "{semitones:+}: {kept:.1} vs {moved:.1} dB");
+    }
+    let original = harmonic_profile(&input, f0);
+    for semitones in [4.0f32, -4.0] {
+        let ideal = harmonic_profile(&steady_vowel_formants(f0, SR, len, 2f32.powf(semitones / 12.0)), f0);
+        let before = timbre_distance(&original, &ideal);
+        let settings = CorrectionSettings { formant: semitones, ..Default::default() };
+        let after = timbre_distance(&harmonic_profile(&process_mode(&input, &settings, false), f0), &ideal);
+        println!("Low Latency, Formant {semitones:+}: distanza dal timbro voluto {before:.1} -> {after:.1} dB");
+        assert!(after < 0.75 * before, "Formant {semitones:+}: {before:.1} -> {after:.1} dB");
+    }
+}
+
 #[test]
 fn tracking_recognises_breathy_voices() {
     let n = (SR * 1.5) as usize;
