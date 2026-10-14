@@ -1,0 +1,2210 @@
+SosaTune 1be4bf3 - Wed Oct 14 20:29:14 UTC 2026
+
+## Formato degli eseguibili
+target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit bundle x86_64] [arm64]
+target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune (for architecture x86_64):	Mach-O 64-bit bundle x86_64
+target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune (for architecture arm64):	Mach-O 64-bit bundle arm64
+target/bundled/SosaTune.vst3/Contents/MacOS/SosaTune:          Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit dynamically linked shared library x86_64] [arm64]
+target/bundled/SosaTune.vst3/Contents/MacOS/SosaTune (for architecture x86_64):	Mach-O 64-bit dynamically linked shared library x86_64
+target/bundled/SosaTune.vst3/Contents/MacOS/SosaTune (for architecture arm64):	Mach-O 64-bit dynamically linked shared library arm64
+
+## Simboli esportati (bundle)
+0000000000126400 T _GetPluginFactory
+000000000012e114 T _bundleEntry
+000000000012e130 T _bundleExit
+0000000000566578 S _clap_entry
+
+## Firma
+Executable=/Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.vst3/Contents/MacOS/SosaTune
+Identifier=com.nih-plug.sosatune
+Format=bundle with Mach-O universal (x86_64 arm64)
+CodeDirectory v=20400 size=51470 flags=0x2(adhoc) hashes=1602+3 location=embedded
+Signature=adhoc
+Info.plist entries=11
+TeamIdentifier=not set
+Sealed Resources version=2 rules=13 files=0
+Internal requirements count=0 size=12
+
+## Compilazione (ultime righe)
+    [1m[94m= [0m[1mnote[0m: `#[warn(semicolon_in_expressions_from_non_local_macros)]` (part of `#[warn(future_incompatible)]`) on by default
+    [1m[94m= [0m[1mnote[0m: this warning originates in the macro `vst3_com::vtable` which comes from the expansion of the macro `nih_export_vst3` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[33mwarning[0m[1m: trailing semicolon in macro used in expression position[0m
+   [1m[94m--> [0mplugin/src/lib.rs:381:1
+    [1m[94m|[0m
+[1m[94m381[0m [1m[94m|[0m nih_export_vst3!(SosaTune);
+    [1m[94m|[0m [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+    [1m[94m= [0m[1mnote[0m: for more information, see issue #79813 <https://github.com/rust-lang/rust/issues/79813>
+    [1m[94m= [0m[1mnote[0m: this warning originates in the macro `vst3_com::vtable` which comes from the expansion of the macro `nih_export_vst3` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[33mwarning[0m[1m: variant `SemiBold` is never constructed[0m
+   [1m[94m--> [0mplugin/src/editor.rs:157:5
+    [1m[94m|[0m
+[1m[94m153[0m [1m[94m|[0m enum Weight {
+    [1m[94m|[0m      [1m[94m------[0m [1m[94mvariant in this enum[0m
+[1m[94m...[0m
+[1m[94m157[0m [1m[94m|[0m     SemiBold,
+    [1m[94m|[0m     [1m[33m^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `Weight` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+    [1m[94m= [0m[1mnote[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m[1m: function `glow_line` is never used[0m
+   [1m[94m--> [0mplugin/src/editor.rs:342:4
+    [1m[94m|[0m
+[1m[94m342[0m [1m[94m|[0m fn glow_line(painter: &Painter, points: &[Pos2], color: Color32, width: f32, k: f32) {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: field `output` is never read[0m
+  [1m[94m--> [0mplugin/src/shared.rs:21:9
+   [1m[94m|[0m
+[1m[94m19[0m [1m[94m|[0m pub struct PitchPoint {
+   [1m[94m|[0m            [1m[94m----------[0m [1m[94mfield in this struct[0m
+[1m[94m20[0m [1m[94m|[0m     pub input: f32,
+[1m[94m21[0m [1m[94m|[0m     pub output: f32,
+   [1m[94m|[0m         [1m[33m^^^^^^[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: `PitchPoint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+[1m[33mwarning[0m[1m: method `interval_s` is never used[0m
+   [1m[94m--> [0mplugin/src/shared.rs:225:12
+    [1m[94m|[0m
+[1m[94m106[0m [1m[94m|[0m impl PitchDisplay {
+    [1m[94m|[0m [1m[94m-----------------[0m [1m[94mmethod in this implementation[0m
+[1m[94m...[0m
+[1m[94m225[0m [1m[94m|[0m     pub fn interval_s(&self) -> f32 {
+    [1m[94m|[0m            [1m[33m^^^^^^^^^^[0m
+
+[1m[33mwarning[0m: `sosatune` (lib) generated 7 warnings (1 duplicate)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 29.17s
+[1m[33mwarning[0m: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+[1m[92mnote[0m: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+
+/Users/runner/work/sosa/sosa/target/bundled/SosaTune.clap: replacing existing signature
+Created a CLAP bundle at '/Users/runner/work/sosa/sosa/target/bundled/SosaTune.clap'
+/Users/runner/work/sosa/sosa/target/bundled/SosaTune.vst3: replacing existing signature
+Created a VST3 bundle at '/Users/runner/work/sosa/sosa/target/bundled/SosaTune.vst3'
+
+## Test del plugin (interfaccia)
+[1m[92m  Downloaded[0m thiserror v2.0.11
+[1m[92m  Downloaded[0m thiserror-impl v2.0.11
+[1m[92m   Compiling[0m thiserror v2.0.11
+[1m[92m   Compiling[0m thiserror-impl v2.0.11
+   [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+    [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+    [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+test presets::tests::names_are_unique_and_values_in_range ... ok
+test params::tests::every_control_reaches_the_engine ... ok
+test defaults::tests::saves_loads_and_clears ... ok
+test preview::tests::clicking_a_note_edits_the_scale ... ok
+test preview::tests::autokey_button_toggles_listening ... ok
+test preview::tests::ab_switches_and_copies_settings ... ok
+test preview::tests::dropdowns_set_voice_key_and_scale ... ok
+test preview::tests::long_preset_names_fit_in_the_header ... ok
+test preview::tests::help_and_undo_buttons_do_not_break_anything ... ok
+test preview::tests::mode_and_style_buttons_work ... ok
+test preview::tests::power_button_is_the_daw_bypass ... ok
+test preview::tests::numbers_can_be_typed ... ok
+test preview::tests::preset_arrows_and_list_load_presets ... ok
+test preview::tests::every_knob_follows_the_mouse ... ok
+test preview::tests::settings_panel_knobs_work ... ok
+test preview::tests::save_as_default_from_the_preset_menu ... ok
+test preview::tests::vocal_range_auto_listens_with_low_male ... ok
+test shared::tests::detects_the_key_of_a_real_vocal ... ok
+test shared::tests::note_profile_counts_sung_time ... ok
+test shared::tests::picks_the_best_key_source ... ok
+test shared::tests::recognises_the_voice_range ... ok
+test preview::tests::window_can_be_resized ... ok
+test preview::tests::preview_renders ... ok
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit code: 0
+
+## Anteprima dell'interfaccia
+[1m[33mwarning[0m[1m: function `glow_line` is never used[0m
+   [1m[94m--> [0mplugin/src/editor.rs:342:4
+    [1m[94m|[0m
+[1m[94m342[0m [1m[94m|[0m fn glow_line(painter: &Painter, points: &[Pos2], color: Color32, width: f32, k: f32) {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: field `output` is never read[0m
+  [1m[94m--> [0mplugin/src/shared.rs:21:9
+   [1m[94m|[0m
+[1m[94m19[0m [1m[94m|[0m pub struct PitchPoint {
+   [1m[94m|[0m            [1m[94m----------[0m [1m[94mfield in this struct[0m
+[1m[94m20[0m [1m[94m|[0m     pub input: f32,
+[1m[94m21[0m [1m[94m|[0m     pub output: f32,
+   [1m[94m|[0m         [1m[33m^^^^^^[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mnote[0m: `PitchPoint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+[1m[33mwarning[0m[1m: method `interval_s` is never used[0m
+   [1m[94m--> [0mplugin/src/shared.rs:225:12
+    [1m[94m|[0m
+[1m[94m106[0m [1m[94m|[0m impl PitchDisplay {
+    [1m[94m|[0m [1m[94m-----------------[0m [1m[94mmethod in this implementation[0m
+[1m[94m...[0m
+[1m[94m225[0m [1m[94m|[0m     pub fn interval_s(&self) -> f32 {
+    [1m[94m|[0m            [1m[33m^^^^^^^^^^[0m
+
+[1m[33mwarning[0m: `sosatune` (lib) generated 7 warnings (1 duplicate)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 0.38s
+[1m[33mwarning[0m: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+[1m[92mnote[0m: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+[1m[92m     Running[0m `target/release/examples/anteprima anteprima.png`
+Interfaccia: 1.92 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima.png (1920 x 1388 pixel)
+Interfaccia: 2.38 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-impostazioni.png (1920 x 1388 pixel)
+Interfaccia: 1.91 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-preset.png (1920 x 1388 pixel)
+Interfaccia: 2.55 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-guida.png (1920 x 1388 pixel)
+exit code: 0
+
+## Creazione dei pacchetti
+== aarch64-apple-darwin
+librerie: -framework AppKit -framework Foundation -framework AppKit -framework QuartzCore -framework Foundation -framework CoreGraphics -lSystem -lobjc -framework CoreFoundation -liconv -lSystem -lc -lm
+ld: warning: ignoring duplicate libraries: '-lSystem'
+== x86_64-apple-darwin
+librerie: -framework AppKit -framework Foundation -framework AppKit -framework QuartzCore -framework Foundation -framework CoreGraphics -lSystem -lobjc -framework CoreFoundation -liconv -lSystem -lc -lm
+ld: warning: ignoring duplicate libraries: '-lSystem'
+target/mhbundle-work/SosaTune: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit bundle x86_64] [arm64]
+target/mhbundle-work/SosaTune (for architecture x86_64):	Mach-O 64-bit bundle x86_64
+target/mhbundle-work/SosaTune (for architecture arm64):	Mach-O 64-bit bundle arm64
+target/bundled-mhbundle/SosaTune.vst3: replacing existing signature
+target/bundled-mhbundle/SosaTune.vst3: valid on disk
+target/bundled-mhbundle/SosaTune.vst3: satisfies its Designated Requirement
+target/bundled-mhbundle/SosaTune.clap: replacing existing signature
+target/bundled-mhbundle/SosaTune.clap: valid on disk
+target/bundled-mhbundle/SosaTune.clap: satisfies its Designated Requirement
+Pacchetti pronti in target/bundled-mhbundle
+
+## pluginval livello 10 - VST3
+Started validating: /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.vst3
+Random seed: 0x5b9c444
+Validation started
+	14 Oct 2026 8:28:17pm
+
+Strictness level: 10
+-----------------------------------------------------------------
+Starting tests in: pluginval / Scan for plugins located in: /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.vst3...
+Num plugins found: 1
+
+Testing plugin: VST3-Sosa Tune-da7d0a4a-4b0b5ca8
+Vladislav: Sosa Tune v0.1.0
+Completed tests in pluginval / Scan for plugins located in: /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.vst3
+-----------------------------------------------------------------
+Starting tests in: pluginval / Open plugin (cold)...
+
+Time taken to open plugin (cold): 316 ms
+Completed tests in pluginval / Open plugin (cold)
+-----------------------------------------------------------------
+Starting tests in: pluginval / Open plugin (warm)...
+
+Time taken to open plugin (warm): 0
+Running tests 1 times
+Completed tests in pluginval / Open plugin (warm)
+-----------------------------------------------------------------
+Starting tests in: pluginval / Plugin info...
+
+Plugin name: Sosa Tune
+Alternative names: Sosa Tune
+SupportsDoublePrecision: no
+Reported latency: 0
+Reported taillength: 0
+
+Time taken to run test: 0
+Completed tests in pluginval / Plugin info
+-----------------------------------------------------------------
+Starting tests in: pluginval / Plugin programs...
+Num programs: 0
+All program names checked
+
+Time taken to run test: 0
+Completed tests in pluginval / Plugin programs
+-----------------------------------------------------------------
+Starting tests in: pluginval / Editor...
+20:28:17 [ERROR] thread 'unnamed' panicked at 'Could not create OpenGL context: CreationFailed(())': /Users/runner/.cargo/git/checkouts/baseview-497883493ac32f43/9a0b42c/src/macos/window.rs:354
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: core::result::unwrap_failed
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/result.rs:1871:5
+   9: <baseview::macos::window::Window>::create_gl_context
+  10: <baseview::macos::window::Window>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>, <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>::{closure#0}>
+  11: <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>
+  12: <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn
+  13: <sosatune::editor::SafeEditor as nih_plug::editor::Editor>::spawn
+  14: <nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune> as vst3_sys::gui::iplugview::IPlugView>::attached
+  15: <dyn vst3_sys::gui::iplugview::IPlugView as vst3_com::ProductionComInterface<_>>::vtable::iplugview_attached::<nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune>, vst3_com::Offset0>
+  16: __ZN4juce16VST3PluginWindow26componentVisibilityChangedEv
+  17: __ZN4juce24ComponentMovementWatcher31componentParentHierarchyChangedERNS_9ComponentE
+  18: __ZN4juce9Component24internalHierarchyChangedEv
+  19: __ZN4juce9Component12addToDesktopEiPv
+  20: __ZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceE
+  21: __ZN10EditorTest7runTestER11PluginTestsRN4juce19AudioPluginInstanceE
+  22: __ZNSt3__110__function6__funcIZN11PluginTests8testTypeERKN4juce17PluginDescriptionEE3$_1NS_9allocatorIS7_EEFvvEEclEv
+  23: __ZN4juce12MessageQueue15runLoopCallbackEv
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: <unknown>
+  35: __ZN4juce19JUCEApplicationBase4mainEv
+  36: __ZN4juce19JUCEApplicationBase4mainEiPPKc
+
+20:28:17 [ERROR] SosaTune: impossibile aprire l'interfaccia grafica, il plugin continua senza
+
+Time taken to open editor (cold): 272 ms
+20:28:17 [ERROR] thread 'unnamed' panicked at 'Could not create OpenGL context: CreationFailed(())': /Users/runner/.cargo/git/checkouts/baseview-497883493ac32f43/9a0b42c/src/macos/window.rs:354
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: core::result::unwrap_failed
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/result.rs:1871:5
+   9: <baseview::macos::window::Window>::create_gl_context
+  10: <baseview::macos::window::Window>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>, <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>::{closure#0}>
+  11: <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>
+  12: <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn
+  13: <sosatune::editor::SafeEditor as nih_plug::editor::Editor>::spawn
+  14: <nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune> as vst3_sys::gui::iplugview::IPlugView>::attached
+  15: <dyn vst3_sys::gui::iplugview::IPlugView as vst3_com::ProductionComInterface<_>>::vtable::iplugview_attached::<nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune>, vst3_com::Offset0>
+  16: __ZN4juce16VST3PluginWindow26componentVisibilityChangedEv
+  17: __ZN4juce24ComponentMovementWatcher31componentParentHierarchyChangedERNS_9ComponentE
+  18: __ZN4juce9Component24internalHierarchyChangedEv
+  19: __ZN4juce9Component12addToDesktopEiPv
+  20: __ZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceE
+  21: __ZN10EditorTest7runTestER11PluginTestsRN4juce19AudioPluginInstanceE
+  22: __ZNSt3__110__function6__funcIZN11PluginTests8testTypeERKN4juce17PluginDescriptionEE3$_1NS_9allocatorIS7_EEFvvEEclEv
+  23: __ZN4juce12MessageQueue15runLoopCallbackEv
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: <unknown>
+  35: __ZN4juce19JUCEApplicationBase4mainEv
+  36: __ZN4juce19JUCEApplicationBase4mainEiPPKc
+
+20:28:17 [ERROR] SosaTune: impossibile aprire l'interfaccia grafica, il plugin continua senza
+Time taken to open editor (warm): 210 ms
+
+Time taken to run test: 485 ms
+Completed tests in pluginval / Editor
+-----------------------------------------------------------------
+Starting tests in: pluginval / Open editor whilst processing...
+20:28:18 [ERROR] thread 'unnamed' panicked at 'Could not create OpenGL context: CreationFailed(())': /Users/runner/.cargo/git/checkouts/baseview-497883493ac32f43/9a0b42c/src/macos/window.rs:354
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: core::result::unwrap_failed
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/result.rs:1871:5
+   9: <baseview::macos::window::Window>::create_gl_context
+  10: <baseview::macos::window::Window>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>, <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>::{closure#0}>
+  11: <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>
+  12: <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn
+  13: <sosatune::editor::SafeEditor as nih_plug::editor::Editor>::spawn
+  14: <nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune> as vst3_sys::gui::iplugview::IPlugView>::attached
+  15: <dyn vst3_sys::gui::iplugview::IPlugView as vst3_com::ProductionComInterface<_>>::vtable::iplugview_attached::<nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune>, vst3_com::Offset0>
+  16: __ZN4juce16VST3PluginWindow26componentVisibilityChangedEv
+  17: __ZN4juce24ComponentMovementWatcher31componentParentHierarchyChangedERNS_9ComponentE
+  18: __ZN4juce9Component24internalHierarchyChangedEv
+  19: __ZN4juce9Component12addToDesktopEiPv
+  20: __ZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceE
+  21: __ZN26EditorWhilstProcessingTest7runTestER11PluginTestsRN4juce19AudioPluginInstanceE
+  22: __ZNSt3__110__function6__funcIZN11PluginTests8testTypeERKN4juce17PluginDescriptionEE3$_1NS_9allocatorIS7_EEFvvEEclEv
+  23: __ZN4juce12MessageQueue15runLoopCallbackEv
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: <unknown>
+  35: __ZN4juce19JUCEApplicationBase4mainEv
+  36: __ZN4juce19JUCEApplicationBase4mainEiPPKc
+
+20:28:18 [ERROR] SosaTune: impossibile aprire l'interfaccia grafica, il plugin continua senza
+
+Time taken to run test: 205 ms
+Completed tests in pluginval / Open editor whilst processing
+-----------------------------------------------------------------
+Starting tests in: pluginval / Audio processing...
+Testing with sample rate [44100] and block size [64]
+Testing with sample rate [44100] and block size [128]
+Testing with sample rate [44100] and block size [256]
+Testing with sample rate [44100] and block size [512]
+Testing with sample rate [44100] and block size [1024]
+Testing with sample rate [48000] and block size [64]
+Testing with sample rate [48000] and block size [128]
+Testing with sample rate [48000] and block size [256]
+Testing with sample rate [48000] and block size [512]
+Testing with sample rate [48000] and block size [1024]
+Testing with sample rate [96000] and block size [64]
+Testing with sample rate [96000] and block size [128]
+Testing with sample rate [96000] and block size [256]
+Testing with sample rate [96000] and block size [512]
+Testing with sample rate [96000] and block size [1024]
+
+Time taken to run test: 79 ms
+Completed tests in pluginval / Audio processing
+-----------------------------------------------------------------
+Starting tests in: pluginval / Non-releasing audio processing...
+Testing with sample rate [44100] and block size [64]
+Testing with sample rate [44100] and block size [128]
+Testing with sample rate [44100] and block size [256]
+Testing with sample rate [44100] and block size [512]
+Testing with sample rate [44100] and block size [1024]
+Testing with sample rate [48000] and block size [64]
+Testing with sample rate [48000] and block size [128]
+Testing with sample rate [48000] and block size [256]
+Testing with sample rate [48000] and block size [512]
+Testing with sample rate [48000] and block size [1024]
+Testing with sample rate [96000] and block size [64]
+Testing with sample rate [96000] and block size [128]
+Testing with sample rate [96000] and block size [256]
+Testing with sample rate [96000] and block size [512]
+Testing with sample rate [96000] and block size [1024]
+
+Time taken to run test: 57 ms
+Completed tests in pluginval / Non-releasing audio processing
+-----------------------------------------------------------------
+Starting tests in: pluginval / Plugin state...
+
+Time taken to run test: 2 ms
+Completed tests in pluginval / Plugin state
+-----------------------------------------------------------------
+Starting tests in: pluginval / Plugin state restoration...
+
+Time taken to run test: 18 ms
+Completed tests in pluginval / Plugin state restoration
+-----------------------------------------------------------------
+Starting tests in: pluginval / Automation...
+Testing with sample rate [44100] and block size [64] and sub-block size [32]
+Testing with sample rate [44100] and block size [128] and sub-block size [32]
+Testing with sample rate [44100] and block size [256] and sub-block size [32]
+Testing with sample rate [44100] and block size [512] and sub-block size [32]
+Testing with sample rate [44100] and block size [1024] and sub-block size [32]
+Testing with sample rate [48000] and block size [64] and sub-block size [32]
+Testing with sample rate [48000] and block size [128] and sub-block size [32]
+Testing with sample rate [48000] and block size [256] and sub-block size [32]
+Testing with sample rate [48000] and block size [512] and sub-block size [32]
+Testing with sample rate [48000] and block size [1024] and sub-block size [32]
+Testing with sample rate [96000] and block size [64] and sub-block size [32]
+Testing with sample rate [96000] and block size [128] and sub-block size [32]
+Testing with sample rate [96000] and block size [256] and sub-block size [32]
+Testing with sample rate [96000] and block size [512] and sub-block size [32]
+Testing with sample rate [96000] and block size [1024] and sub-block size [32]
+
+Time taken to run test: 10 ms
+Completed tests in pluginval / Automation
+-----------------------------------------------------------------
+Starting tests in: pluginval / Editor Automation...
+20:28:18 [ERROR] thread 'unnamed' panicked at 'Could not create OpenGL context: CreationFailed(())': /Users/runner/.cargo/git/checkouts/baseview-497883493ac32f43/9a0b42c/src/macos/window.rs:354
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: core::result::unwrap_failed
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/result.rs:1871:5
+   9: <baseview::macos::window::Window>::create_gl_context
+  10: <baseview::macos::window::Window>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>, <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>::{closure#0}>
+  11: <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>
+  12: <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn
+  13: <sosatune::editor::SafeEditor as nih_plug::editor::Editor>::spawn
+  14: <nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune> as vst3_sys::gui::iplugview::IPlugView>::attached
+  15: <dyn vst3_sys::gui::iplugview::IPlugView as vst3_com::ProductionComInterface<_>>::vtable::iplugview_attached::<nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune>, vst3_com::Offset0>
+  16: __ZN4juce16VST3PluginWindow26componentVisibilityChangedEv
+  17: __ZN4juce24ComponentMovementWatcher31componentParentHierarchyChangedERNS_9ComponentE
+  18: __ZN4juce9Component24internalHierarchyChangedEv
+  19: __ZN4juce9Component12addToDesktopEiPv
+  20: __ZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceE
+  21: __ZNSt3__110__function6__funcIZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceEE3$_0NS_9allocatorIS5_EEFvvEEclEv
+  22: __ZN4juce12MessageQueue15runLoopCallbackEv
+  23: <unknown>
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: __ZN4juce19JUCEApplicationBase4mainEv
+  35: __ZN4juce19JUCEApplicationBase4mainEiPPKc
+
+20:28:18 [ERROR] SosaTune: impossibile aprire l'interfaccia grafica, il plugin continua senza
+2026-10-14 20:28:33.545 pluginval[8043:28519] WARNING: Secure coding is automatically enabled for restorable state! However, not on all supported macOS versions of this application. Opt-in to secure coding explicitly by implementing NSApplicationDelegate.applicationSupportsSecureRestorableState:.
+
+Time taken to run test: 45 secs
+Completed tests in pluginval / Editor Automation
+-----------------------------------------------------------------
+Starting tests in: pluginval / Automatable Parameters...
+
+Testing parameter: 0 - Tonalità
+Parameter info: index - 0, paramName - Tonalità, defaultValue - 0, label - , numSteps - 12, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 1 - Scala
+Parameter info: index - 1, paramName - Scala, defaultValue - 0, label - , numSteps - 8, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 2 - Voce
+Parameter info: index - 2, paramName - Voce, defaultValue - 0.5, label - , numSteps - 3, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 3 - Velocità
+Parameter info: index - 3, paramName - Velocità, defaultValue - 0.34675, label -  ms, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 4 - Quantità
+Parameter info: index - 4, paramName - Quantità, defaultValue - 1, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 5 - Trasposizione
+Parameter info: index - 5, paramName - Trasposizione, defaultValue - 0.5, label -  st, numSteps - 25, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 7 - Humanize
+Parameter info: index - 7, paramName - Humanize, defaultValue - 0, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 8 - Flex-Tune
+Parameter info: index - 8, paramName - Flex-Tune, defaultValue - 0, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 9 - Vibrato
+Parameter info: index - 9, paramName - Vibrato, defaultValue - 0.5, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 10 - Formanti
+Parameter info: index - 10, paramName - Formanti, defaultValue - 0.5, label -  st, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 11 - Sensibilità
+Parameter info: index - 11, paramName - Sensibilità, defaultValue - 0.3, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 12 - Detune
+Parameter info: index - 12, paramName - Detune, defaultValue - 0.5, label -  Hz, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 13 - Mode
+Parameter info: index - 13, paramName - Mode, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 14 - Style
+Parameter info: index - 14, paramName - Style, defaultValue - 0, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 15 - Nota Do
+Parameter info: index - 15, paramName - Nota Do, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 16 - Nota Do#
+Parameter info: index - 16, paramName - Nota Do#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 17 - Nota Re
+Parameter info: index - 17, paramName - Nota Re, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 18 - Nota Re#
+Parameter info: index - 18, paramName - Nota Re#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 19 - Nota Mi
+Parameter info: index - 19, paramName - Nota Mi, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 20 - Nota Fa
+Parameter info: index - 20, paramName - Nota Fa, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 21 - Nota Fa#
+Parameter info: index - 21, paramName - Nota Fa#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 22 - Nota Sol
+Parameter info: index - 22, paramName - Nota Sol, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 23 - Nota Sol#
+Parameter info: index - 23, paramName - Nota Sol#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 24 - Nota La
+Parameter info: index - 24, paramName - Nota La, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 25 - Nota La#
+Parameter info: index - 25, paramName - Nota La#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 26 - Nota Si
+Parameter info: index - 26, paramName - Nota Si, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Time taken to run test: 3 ms
+Completed tests in pluginval / Automatable Parameters
+-----------------------------------------------------------------
+Starting tests in: pluginval / Parameters...
+
+Testing parameter: 0 - Tonalità
+Parameter info: index - 0, paramName - Tonalità, defaultValue - 0, label - , numSteps - 12, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 1 - Scala
+Parameter info: index - 1, paramName - Scala, defaultValue - 0, label - , numSteps - 8, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 2 - Voce
+Parameter info: index - 2, paramName - Voce, defaultValue - 0.5, label - , numSteps - 3, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 3 - Velocità
+Parameter info: index - 3, paramName - Velocità, defaultValue - 0.34675, label -  ms, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 4 - Quantità
+Parameter info: index - 4, paramName - Quantità, defaultValue - 1, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 5 - Trasposizione
+Parameter info: index - 5, paramName - Trasposizione, defaultValue - 0.5, label -  st, numSteps - 25, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 7 - Humanize
+Parameter info: index - 7, paramName - Humanize, defaultValue - 0, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 8 - Flex-Tune
+Parameter info: index - 8, paramName - Flex-Tune, defaultValue - 0, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 9 - Vibrato
+Parameter info: index - 9, paramName - Vibrato, defaultValue - 0.5, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 10 - Formanti
+Parameter info: index - 10, paramName - Formanti, defaultValue - 0.5, label -  st, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 11 - Sensibilità
+Parameter info: index - 11, paramName - Sensibilità, defaultValue - 0.3, label - %, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 12 - Detune
+Parameter info: index - 12, paramName - Detune, defaultValue - 0.5, label -  Hz, numSteps - 2147483647, isDiscrete - 0, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 13 - Mode
+Parameter info: index - 13, paramName - Mode, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 14 - Style
+Parameter info: index - 14, paramName - Style, defaultValue - 0, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 15 - Nota Do
+Parameter info: index - 15, paramName - Nota Do, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 16 - Nota Do#
+Parameter info: index - 16, paramName - Nota Do#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 17 - Nota Re
+Parameter info: index - 17, paramName - Nota Re, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 18 - Nota Re#
+Parameter info: index - 18, paramName - Nota Re#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 19 - Nota Mi
+Parameter info: index - 19, paramName - Nota Mi, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 20 - Nota Fa
+Parameter info: index - 20, paramName - Nota Fa, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 21 - Nota Fa#
+Parameter info: index - 21, paramName - Nota Fa#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 22 - Nota Sol
+Parameter info: index - 22, paramName - Nota Sol, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 23 - Nota Sol#
+Parameter info: index - 23, paramName - Nota Sol#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 24 - Nota La
+Parameter info: index - 24, paramName - Nota La, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 25 - Nota La#
+Parameter info: index - 25, paramName - Nota La#, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Testing parameter: 26 - Nota Si
+Parameter info: index - 26, paramName - Nota Si, defaultValue - 1, label - , numSteps - 2, isDiscrete - 1, isBoolean - 0, isOrientationInverted - 0, isAutomatable - 1, isMetaParameter - 0, category - 0, all value strings - 
+Testing accessors
+
+Time taken to run test: 4 ms
+Completed tests in pluginval / Parameters
+-----------------------------------------------------------------
+Starting tests in: pluginval / Background thread state...
+20:29:04 [ERROR] thread 'unnamed' panicked at 'Could not create OpenGL context: CreationFailed(())': /Users/runner/.cargo/git/checkouts/baseview-497883493ac32f43/9a0b42c/src/macos/window.rs:354
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: core::result::unwrap_failed
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/result.rs:1871:5
+   9: <baseview::macos::window::Window>::create_gl_context
+  10: <baseview::macos::window::Window>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>, <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>::{closure#0}>
+  11: <egui_baseview::window::EguiWindow<alloc::sync::Arc<lock_api::rwlock::RwLock<parking_lot::raw_rwlock::RawRwLock, sosatune::editor::GuiState>>, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#2}>>::open_parented::<sosatune::gui::window::ParentWindowHandleAdapter, <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn::{closure#1}>
+  12: <sosatune::gui::window::EguiEditor<sosatune::editor::GuiState> as nih_plug::editor::Editor>::spawn
+  13: <sosatune::editor::SafeEditor as nih_plug::editor::Editor>::spawn
+  14: <nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune> as vst3_sys::gui::iplugview::IPlugView>::attached
+  15: <dyn vst3_sys::gui::iplugview::IPlugView as vst3_com::ProductionComInterface<_>>::vtable::iplugview_attached::<nih_plug::wrapper::vst3::view::WrapperView<sosatune::SosaTune>, vst3_com::Offset0>
+  16: __ZN4juce16VST3PluginWindow26componentVisibilityChangedEv
+  17: __ZN4juce24ComponentMovementWatcher31componentParentHierarchyChangedERNS_9ComponentE
+  18: __ZN4juce9Component24internalHierarchyChangedEv
+  19: __ZN4juce9Component12addToDesktopEiPv
+  20: __ZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceE
+  21: __ZNSt3__110__function6__funcIZL34createAndShowEditorOnMessageThreadRN4juce19AudioPluginInstanceEE3$_0NS_9allocatorIS5_EEFvvEEclEv
+  22: __ZN4juce12MessageQueue15runLoopCallbackEv
+  23: <unknown>
+  24: <unknown>
+  25: <unknown>
+  26: <unknown>
+  27: <unknown>
+  28: <unknown>
+  29: <unknown>
+  30: <unknown>
+  31: <unknown>
+  32: <unknown>
+  33: <unknown>
+  34: __ZN4juce19JUCEApplicationBase4mainEv
+  35: __ZN4juce19JUCEApplicationBase4mainEiPPKc
+
+20:29:04 [ERROR] SosaTune: impossibile aprire l'interfaccia grafica, il plugin continua senza
+
+Time taken to run test: 2 secs
+Completed tests in pluginval / Background thread state
+-----------------------------------------------------------------
+Starting tests in: pluginval / Parameter thread safety...
+
+Time taken to run test: 27 ms
+Completed tests in pluginval / Parameter thread safety
+-----------------------------------------------------------------
+Starting tests in: pluginval / auval...
+
+Time taken to run test: 0
+Completed tests in pluginval / auval
+-----------------------------------------------------------------
+Starting tests in: pluginval / vst3 validator...
+INFO: Skipping vst3 validator as validator path hasn't been set
+
+Time taken to run test: 0
+Completed tests in pluginval / vst3 validator
+-----------------------------------------------------------------
+Starting tests in: pluginval / Basic bus...
+Completed tests in pluginval / Basic bus
+-----------------------------------------------------------------
+Starting tests in: pluginval / Listing available buses...
+Inputs:
+	Named layouts: Stereo, Stereo
+	Discrete layouts: None
+Outputs:
+	Named layouts: Stereo
+	Discrete layouts: None
+Main bus num input channels: 2
+Main bus num output channels: 2
+Completed tests in pluginval / Listing available buses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Enabling all buses...
+Completed tests in pluginval / Enabling all buses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Disabling non-main busses...
+Completed tests in pluginval / Disabling non-main busses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Restoring default layout...
+Main bus num input channels: 2
+Main bus num output channels: 2
+
+Time taken to run test: 4 ms
+Completed tests in pluginval / Restoring default layout
+-----------------------------------------------------------------
+Starting tests in: pluginval / Fuzz parameters...
+Fuzz testing parameter: 0 - Tonalità
+Fuzz testing parameter: 1 - Scala
+Fuzz testing parameter: 2 - Voce
+Fuzz testing parameter: 3 - Velocità
+Fuzz testing parameter: 4 - Quantità
+Fuzz testing parameter: 5 - Trasposizione
+Fuzz testing parameter: 7 - Humanize
+Fuzz testing parameter: 8 - Flex-Tune
+Fuzz testing parameter: 9 - Vibrato
+Fuzz testing parameter: 10 - Formanti
+Fuzz testing parameter: 11 - Sensibilità
+Fuzz testing parameter: 12 - Detune
+Fuzz testing parameter: 13 - Mode
+Fuzz testing parameter: 14 - Style
+Fuzz testing parameter: 15 - Nota Do
+Fuzz testing parameter: 16 - Nota Do#
+Fuzz testing parameter: 17 - Nota Re
+Fuzz testing parameter: 18 - Nota Re#
+Fuzz testing parameter: 19 - Nota Mi
+Fuzz testing parameter: 20 - Nota Fa
+Fuzz testing parameter: 21 - Nota Fa#
+Fuzz testing parameter: 22 - Nota Sol
+Fuzz testing parameter: 23 - Nota Sol#
+Fuzz testing parameter: 24 - Nota La
+Fuzz testing parameter: 25 - Nota La#
+Fuzz testing parameter: 26 - Nota Si
+
+Time taken to run test: 5 ms
+
+Time taken to run all tests: 49 secs
+Completed tests in pluginval / Fuzz parameters
+SUCCESS
+exit code: 0
+
+## Validatore ufficiale Steinberg VST3
+* Loading module...
+
+	/Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.vst3
+
+* Check valid bundle structure...
+
+* Scanning classes...
+
+  Factory Info:
+	vendor = Vladislav
+	url = 
+	email = 
+
+  Class Info 0:
+	name = Sosa Tune
+	category = Audio Module Class
+	subCategories = Fx|Pitch Shift
+	version = 0.1.0
+	sdkVersion = VST 3.6.14
+	cid = 536F736154756E65566C616450746368
+
+* Checking snapshots...
+
+Info: No snapshots in Bundle.
+
+* Creating tests...
+
+* Running tests...
+
+-------------------------------------------------------------
+TestSuite : Sosa Tune
+-------------------------------------------------------------
+
+-------------------------------------------------------------
+TestSuite : General Tests
+-------------------------------------------------------------
+
+[Scan Editor Classes]
+Info:  ===Scan Editor Classes ====================================
+Info:  Processor and edit controller united.
+[Succeeded]
+
+[Scan Buses]
+Info:  ===Scan Buses ====================================
+Info:  => Audio Buses: [2 In(s) => 1 Out(s)]
+Info:       In [0]: "Input" (Main-Default Active) 
+Info:       In [1]: "Sidechain (base per AutoKey)" (Aux-Default Active) 
+Info:       Out[0]: "Output" (Main-Default Active) 
+Info:  => Event Buses: [0 In(s) => 0 Out(s)]
+[Succeeded]
+
+[Scan Parameters]
+Info:  ===Scan Parameters ====================================
+Info:  This component exports 27 parameter(s)
+Info:     Parameter 000 (id=106079): [title="Tonalità"] [unit=""] [type = Discrete, default = 0.000000, unit = 0]
+Info:     Parameter 001 (id=109250890): [title="Scala"] [unit=""] [type = Discrete, default = 0.000000, unit = 0]
+Info:     Parameter 002 (id=112386354): [title="Voce"] [unit=""] [type = Discrete, default = 0.500000, unit = 0]
+Info:     Parameter 003 (id=1213086891): [title="Velocità"] [unit=" ms"] [type = Float, default = 0.346750, unit = 0]
+Info:     Parameter 004 (id=733630552): [title="Quantità"] [unit="%"] [type = Float, default = 1.000000, unit = 0]
+Info:     Parameter 005 (id=1052964665): [title="Trasposizione"] [unit=" st"] [type = Discrete, default = 0.500000, unit = 0]
+Info:     Parameter 006 (id=773352680): [title="Bypass"] [unit=""] [type = Toggle, default = 0.000000, unit = 0]
+Info:     Parameter 007 (id=540937479): [title="Humanize"] [unit="%"] [type = Float, default = 0.000000, unit = 0]
+Info:     Parameter 008 (id=344896844): [title="Flex-Tune"] [unit="%"] [type = Float, default = 0.000000, unit = 0]
+Info:     Parameter 009 (id=451310969): [title="Vibrato"] [unit="%"] [type = Float, default = 0.500000, unit = 0]
+Info:     Parameter 010 (id=1470039715): [title="Formanti"] [unit=" st"] [type = Float, default = 0.500000, unit = 0]
+Info:     Parameter 011 (id=1270488759): [title="Sensibilità"] [unit="%"] [type = Float, default = 0.300000, unit = 0]
+Info:     Parameter 012 (id=812278777): [title="Detune"] [unit=" Hz"] [type = Float, default = 0.500000, unit = 0]
+Info:     Parameter 013 (id=651215103): [title="Mode"] [unit=""] [type = Toggle, default = 1.000000, unit = 0]
+Info:     Parameter 014 (id=109780401): [title="Style"] [unit=""] [type = Toggle, default = 0.000000, unit = 0]
+Info:     Parameter 015 (id=1107788104): [title="Nota Do"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 016 (id=2129176619): [title="Nota Do#"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 017 (id=1107788105): [title="Nota Re"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 018 (id=2129176650): [title="Nota Re#"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 019 (id=1107788106): [title="Nota Mi"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 020 (id=1107788107): [title="Nota Fa"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 021 (id=2129176712): [title="Nota Fa#"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 022 (id=1107788108): [title="Nota Sol"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 023 (id=2129176743): [title="Nota Sol#"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 024 (id=1107788102): [title="Nota La"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 025 (id=2129176557): [title="Nota La#"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+Info:     Parameter 026 (id=1107788103): [title="Nota Si"] [unit=""] [type = Toggle, default = 1.000000, unit = 1]
+[Succeeded]
+
+[MIDI Mapping]
+Info:  ===MIDI Mapping ====================================
+[Succeeded]
+
+[MIDI Learn]
+Info:  ===MIDI Learn ====================================
+Info:  No MIDI Learn interface supplied!
+[Succeeded]
+
+[Scan Units]
+Info:  ===Scan Units ====================================
+Info:  This component has 1 unit(s).
+Info:     Unit000 (ID = 1): "Scala personalizzata" (parent ID = 0, programlist ID = -1)
+[Succeeded]
+
+[Scan Programs]
+Info:  ===Scan Programs ====================================
+Info:  This component does not export any programs.
+[Succeeded]
+
+[Terminate/Initialize]
+Info:  ===Terminate/Initialize ====================================
+[Succeeded]
+
+[Check Unit Structure]
+Info:  ===Check Unit Structure ====================================
+Info:  All units have valid parent IDs.
+[Succeeded]
+
+[Valid State Transition 32bits]
+Info:  ===Valid State Transition 32bits ====================================
+[Succeeded]
+
+[Valid State Transition 64bits]
+Info:  ===Valid State Transition 64bits ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Bus Consistency]
+Info:  ===Bus Consistency ====================================
+[Succeeded]
+
+[Bus Activation]
+Info:  ===Bus Activation ====================================
+Info:     Bus Activation: Input Audio Bus (0) (kMain)
+Info:     Bus Activation: Input Audio Bus (1) (kAux)
+Info:     Bus Activation: Output Audio Bus (0) (kMain)
+[Succeeded]
+
+[Check Audio Bus Arrangement]
+Info:  ===Check Audio Bus Arrangement ====================================
+Info:     Check Input Audio Bus Arrangement (0)
+Info:     Check Input Audio Bus Arrangement (1)
+Info:     Check Output Audio Bus Arrangement (0)
+[Succeeded]
+
+[SideChain Arrangement]
+Info:  ===SideChain Arrangement ====================================
+[Succeeded]
+
+[Suspend/Resume]
+Info:  ===Suspend/Resume ====================================
+[Succeeded]
+
+[Note Expression]
+Info:  ===Note Expression ====================================
+Info:  No Note Expression PhysicalUIMapping interface supplied!
+[Succeeded]
+
+[Keyswitch]
+Info:  ===Keyswitch ====================================
+Info:  No Keyswitch interface supplied!
+[Succeeded]
+
+[ProcessContext Requirements]
+Info:  ===ProcessContext Requirements ====================================
+Info:  No ProcessContextRequirements required. Plug-In built with older SDK.
+[Succeeded]
+
+-------------------------------------------------------------
+TestSuite : Single Precision (32 bit) Tests
+-------------------------------------------------------------
+
+[Process Test]
+[Succeeded]
+
+[Process function running in another thread]
+Info:  ===Process function running in another thread ====================================
+[Succeeded]
+
+[Silence Flags]
+Info:  ===Silence Flags ====================================
+[Succeeded]
+
+[Silence Processing]
+Info:  ===Silence Processing ====================================
+[Succeeded]
+
+[Parameters Flush (no Buffer)]
+Info:  ===Parameters Flush (no Buffer) ====================================
+[Succeeded]
+
+[Parameters Flush 2 (only numChannel==0)]
+Info:  ===Parameters Flush 2 (only numChannel==0) ====================================
+[Succeeded]
+
+[Parameters Flush 2 (no Buffer, no parameter change)]
+Info:  ===Parameters Flush 2 (no Buffer, no parameter change) ====================================
+[Succeeded]
+
+[Variable Block Size]
+Info:  ===Variable Block Size ====================================
+[Succeeded]
+
+[Process Format]
+Info:  ===Process Format ====================================
+Info:  ***Tested Sample Rates***
+Info:        22050 Hz - processed successfully!
+Info:        32000 Hz - processed successfully!
+Info:        44100 Hz - processed successfully!
+Info:        48000 Hz - processed successfully!
+Info:        88200 Hz - processed successfully!
+Info:        96000 Hz - processed successfully!
+Info:       192000 Hz - processed successfully!
+Info:       384000 Hz - processed successfully!
+20:28:11 [ERROR] thread 'unnamed' panicked at 'min > max. min = 64, max = 32': dsp/src/timbre.rs:88
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: <sosatune_dsp::timbre::TimbreFilter>::new
+   9: <sosatune_dsp::corrector::PitchCorrector>::new
+  10: <sosatune::SosaTune as nih_plug::plugin::Plugin>::initialize::<nih_plug::wrapper::vst3::context::WrapperInitContext<sosatune::SosaTune>>
+  11: <nih_plug::wrapper::vst3::wrapper::Wrapper<sosatune::SosaTune> as vst3_sys::vst::ivstcomponent::IComponent>::set_active
+  12: <dyn vst3_sys::vst::ivstcomponent::IComponent as vst3_com::ProductionComInterface<_>>::vtable::icomponent_set_active::<nih_plug::wrapper::vst3::wrapper::Wrapper<sosatune::SosaTune>, vst3_com::Offset0>
+  13: __ZN9Steinberg3Vst17ProcessFormatTest3runEPNS_11ITestResultE
+  14: __ZN9Steinberg3Vst9Validator12runTestSuiteEPNS0_9TestSuiteEPKc
+  15: __ZN9Steinberg3Vst9Validator12runTestSuiteEPNS0_9TestSuiteEPKc
+  16: __ZN9Steinberg3Vst9Validator12runTestSuiteEPNS0_9TestSuiteEPKc
+  17: __ZN9Steinberg3Vst9Validator10testModuleENSt3__110shared_ptrIN4VST37Hosting6ModuleEEERKNS1_16ModuleTestConfigE
+  18: __ZN9Steinberg3Vst9Validator3runEv
+  19: _main
+
+20:28:11 [ERROR] thread 'unnamed' panicked at 'panic in a function that cannot unwind': /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:225
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:681:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_nounwind_fmt::runtime
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:122:22
+      core::panicking::panic_nounwind_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/intrinsics/mod.rs:2636:9
+   8: core::panicking::panic_nounwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:225:5
+   9: core::panicking::panic_cannot_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:350:5
+  10: <dyn vst3_sys::vst::ivstcomponent::IComponent as vst3_com::ProductionComInterface<_>>::vtable::icomponent_set_active::<nih_plug::wrapper::vst3::wrapper::Wrapper<sosatune::SosaTune>, vst3_com::Offset0>
+  11: __ZN9Steinberg3Vst17ProcessFormatTest3runEPNS_11ITestResultE
+  12: __ZN9Steinberg3Vst9Validator12runTestSuiteEPNS0_9TestSuiteEPKc
+  13: __ZN9Steinberg3Vst9Validator12runTestSuiteEPNS0_9TestSuiteEPKc
+  14: __ZN9Steinberg3Vst9Validator12runTestSuiteEPNS0_9TestSuiteEPKc
+  15: __ZN9Steinberg3Vst9Validator10testModuleENSt3__110shared_ptrIN4VST37Hosting6ModuleEEERKNS1_16ModuleTestConfigE
+  16: __ZN9Steinberg3Vst9Validator3runEv
+  17: _main
+
+thread caused non-unwinding panic. aborting.
+exit code: 134
+
+## clap-validator
+[2m    8[0m[2mms[0m [32m INFO[0m Test create-id-with-trailing-garbage completed [2;3mclap_validator::validator[0m
+[2m    8[0m[2mms[0m [32m INFO[0m Test scan-rtld-now completed [2;3mclap_validator::validator[0m
+[2m    8[0m[2mms[0m [32m INFO[0m Test query-nonexistent-factory completed [2;3mclap_validator::validator[0m
+[2m   41[0m[2mms[0m [32m INFO[0m Test scan-time completed [2;3mclap_validator::validator[0m
+[2m   71[0m[2mms[0m [32m INFO[0m Test features-categories completed [2;3mclap_validator::validator[0m
+[2m   90[0m[2mms[0m [32m INFO[0m Test features-duplicates completed [2;3mclap_validator::validator[0m
+[2m  258[0m[2mms[0m [32m INFO[0m Test process-audio-basic-out-of-place completed [2;3mclap_validator::validator[0m
+[2m  264[0m[2mms[0m [32m INFO[0m Test process-audio-basic-in-place completed [2;3mclap_validator::validator[0m
+[2m  277[0m[2mms[0m [32m INFO[0m Test descriptor-consistency completed [2;3mclap_validator::validator[0m
+[2m  336[0m[2mms[0m [32m INFO[0m Test process-sleep-constant-mask completed [2;3mclap_validator::validator[0m
+[2m  374[0m[2mms[0m [32m INFO[0m Test process-sleep-process-status completed [2;3mclap_validator::validator[0m
+[2m  386[0m[2mms[0m [32m INFO[0m Test process-audio-denormals completed [2;3mclap_validator::validator[0m
+[2m  455[0m[2mms[0m [32m INFO[0m Test process-random-block-sizes completed [2;3mclap_validator::validator[0m
+[2m  504[0m[2mms[0m [32m INFO[0m Test process-reset-reactivate completed [2;3mclap_validator::validator[0m
+[2m  553[0m[2mms[0m [32m INFO[0m Test process-varying-block-sizes completed [2;3mclap_validator::validator[0m
+[2m  571[0m[2mms[0m [32m INFO[0m Test layout-audio-ports-config completed [2;3mclap_validator::validator[0m
+[2m  625[0m[2mms[0m [32m INFO[0m Test param-set-events completed [2;3mclap_validator::validator[0m
+[2m  643[0m[2mms[0m [32m INFO[0m Test param-set-no-cookies completed [2;3mclap_validator::validator[0m
+[2m  662[0m[2mms[0m [32m INFO[0m Test param-set-wrong-namespace completed [2;3mclap_validator::validator[0m
+20:28:15 [ERROR] thread 'unnamed' panicked at 'min > max. min = 64, max = 32': dsp/src/timbre.rs:88
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:688:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:80:14
+   8: <sosatune_dsp::timbre::TimbreFilter>::new
+   9: <sosatune_dsp::corrector::PitchCorrector>::new
+  10: <sosatune::SosaTune as nih_plug::plugin::Plugin>::initialize::<nih_plug::wrapper::vst3::context::WrapperInitContext<sosatune::SosaTune>>
+  11: <nih_plug::wrapper::clap::wrapper::Wrapper<sosatune::SosaTune>>::activate
+  12: <clap_validator::plugin::instance::main_thread::Plugin>::activate
+  13: <<clap_validator::plugin::instance::audio_thread::PluginAudioThread>::on_main_thread<<clap_validator::plugin::process::ProcessScope>::activate::{closure#0}, core::result::Result<(), anyhow::Error>>::{closure#0} as core::ops::function::FnOnce<(&clap_validator::plugin::instance::main_thread::Plugin,)>>::call_once::{shim:vtable#0}
+  14: std::thread::scoped::scope::<<clap_validator::plugin::instance::main_thread::Plugin>::on_audio_thread<(), clap_validator::tests::plugin_instance::processing::test_process_varying_sample_rates::{closure#2}>::{closure#0}, core::result::Result<(), anyhow::Error>>
+  15: <clap_validator::plugin::instance::main_thread::Plugin>::on_audio_thread::<(), clap_validator::tests::plugin_instance::processing::test_process_varying_sample_rates::{closure#2}>
+  16: clap_validator::tests::plugin_instance::processing::test_process_varying_sample_rates
+  17: <clap_validator::validator::SandboxedValidation as clap_validator::cli::sandbox::SandboxOperation>::run
+  18: <clap_validator::cli::sandbox::SandboxPayload>::dispatch
+  19: clap_validator::main
+  20: std::sys::backtrace::__rust_begin_short_backtrace::<fn() -> std::process::ExitCode, std::process::ExitCode>
+  21: std::rt::lang_start::<std::process::ExitCode>::{closure#0}
+  22: std::rt::lang_start_internal
+  23: _main
+
+20:28:15 [ERROR] thread 'unnamed' panicked at 'panic in a function that cannot unwind': /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:225
+   0: backtrace::backtrace::trace::<<backtrace::capture::Backtrace>::create::{closure#0}>
+   1: <backtrace::capture::Backtrace>::new
+   2: nih_plug::wrapper::util::log_panics::{closure#0}
+   3: <alloc::boxed::Box<dyn for<'a, 'b> core::ops::function::Fn<(&'a std::panic::PanicHookInfo<'b>,), Output = ()> + core::marker::Send + core::marker::Sync> as core::ops::function::Fn<(&std::panic::PanicHookInfo,)>>::call
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/alloc/src/boxed.rs:2334:9
+      std::panicking::panic_with_hook
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:823:13
+   4: std::panicking::panic_handler::{closure#0}
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:681:13
+   5: std::sys::backtrace::__rust_end_short_backtrace::<std::panicking::panic_handler::{closure#0}, !>
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/sys/backtrace.rs:182:18
+   6: __rustc::rust_begin_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/std/src/panicking.rs:679:5
+   7: core::panicking::panic_nounwind_fmt::runtime
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:122:22
+      core::panicking::panic_nounwind_fmt
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/intrinsics/mod.rs:2636:9
+   8: core::panicking::panic_nounwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:225:5
+   9: core::panicking::panic_cannot_unwind
+             at /rustc/b940084d7eb6a299eb4bfeb8e34901bc051e7ac4/library/core/src/panicking.rs:350:5
+  10: <nih_plug::wrapper::clap::wrapper::Wrapper<sosatune::SosaTune>>::activate
+  11: <clap_validator::plugin::instance::main_thread::Plugin>::activate
+  12: <<clap_validator::plugin::instance::audio_thread::PluginAudioThread>::on_main_thread<<clap_validator::plugin::process::ProcessScope>::activate::{closure#0}, core::result::Result<(), anyhow::Error>>::{closure#0} as core::ops::function::FnOnce<(&clap_validator::plugin::instance::main_thread::Plugin,)>>::call_once::{shim:vtable#0}
+  13: std::thread::scoped::scope::<<clap_validator::plugin::instance::main_thread::Plugin>::on_audio_thread<(), clap_validator::tests::plugin_instance::processing::test_process_varying_sample_rates::{closure#2}>::{closure#0}, core::result::Result<(), anyhow::Error>>
+  14: <clap_validator::plugin::instance::main_thread::Plugin>::on_audio_thread::<(), clap_validator::tests::plugin_instance::processing::test_process_varying_sample_rates::{closure#2}>
+  15: clap_validator::tests::plugin_instance::processing::test_process_varying_sample_rates
+  16: <clap_validator::validator::SandboxedValidation as clap_validator::cli::sandbox::SandboxOperation>::run
+  17: <clap_validator::cli::sandbox::SandboxPayload>::dispatch
+  18: clap_validator::main
+  19: std::sys::backtrace::__rust_begin_short_backtrace::<fn() -> std::process::ExitCode, std::process::ExitCode>
+  20: std::rt::lang_start::<std::process::ExitCode>::{closure#0}
+  21: std::rt::lang_start_internal
+  22: _main
+
+thread caused non-unwinding panic. aborting.
+[2m  727[0m[2mms[0m [1;31mERROR[0m Test process-varying-sample-rates crashed: signal: 6 (SIGABRT) [2;3mclap_validator::validator[0m
+[2m  744[0m[2mms[0m [32m INFO[0m Test param-fuzz-sample-accurate completed [2;3mclap_validator::validator[0m
+[2m  769[0m[2mms[0m [32m INFO[0m Test param-fuzz-modulation completed [2;3mclap_validator::validator[0m
+[2m  779[0m[2mms[0m [32m INFO[0m Test param-conversions completed [2;3mclap_validator::validator[0m
+[2m  787[0m[2mms[0m [32m INFO[0m Test param-fuzz-basic completed [2;3mclap_validator::validator[0m
+[2m  790[0m[2mms[0m [32m INFO[0m Test param-default-values completed [2;3mclap_validator::validator[0m
+[2m  796[0m[2mms[0m [32m INFO[0m Test state-invalid-empty completed [2;3mclap_validator::validator[0m
+[2m  801[0m[2mms[0m [32m INFO[0m Test state-invalid-random completed [2;3mclap_validator::validator[0m
+[2m  803[0m[2mms[0m [32m INFO[0m Test param-fuzz-bounds completed [2;3mclap_validator::validator[0m
+[2m  806[0m[2mms[0m [32m INFO[0m Test state-reproducibility-basic completed [2;3mclap_validator::validator[0m
+[2m  809[0m[2mms[0m [32m INFO[0m Test state-reproducibility-binary completed [2;3mclap_validator::validator[0m
+[2m  814[0m[2mms[0m [32m INFO[0m Test state-reproducibility-buffered completed [2;3mclap_validator::validator[0m
+[2m  821[0m[2mms[0m [32m INFO[0m Test transport-null completed [2;3mclap_validator::validator[0m
+[2m  831[0m[2mms[0m [32m INFO[0m Test transport-fuzz-sample-accurate completed [2;3mclap_validator::validator[0m
+[2m  838[0m[2mms[0m [32m INFO[0m Test transport-fuzz completed [2;3mclap_validator::validator[0m
+
+[2m┌[0m[2m─[0m [1mPlugin Library[0m
+[2m│[0m target/bundled-mhbundle/SosaTune.clap
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mquery-nonexistent-factory[0m
+[2m│[0m [2m│[0m Tries to query a factory from the plugin's entry point with a non-
+[2m│[0m [2m│[0m existent ID. This should return a null pointer.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mcreate-id-with-trailing-garbage[0m
+[2m│[0m [2m│[0m Attempts to create a plugin instance using an existing plugin ID
+[2m│[0m [2m│[0m with some extra text appended to the end. This should return a
+[2m│[0m [2m│[0m null pointer.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mscan-rtld-now[0m
+[2m│[0m [2m│[0m Checks whether the plugin loads correctly when loaded using
+[2m│[0m [2m│[0m 'dlopen(..., RTLD_LOCAL | RTLD_NOW)'. Only run on Unix-like
+[2m│[0m [2m│[0m platforms.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mscan-time[0m
+[2m│[0m [2m│[0m Checks whether the plugin can be scanned in under 100
+[2m│[0m [2m│[0m milliseconds.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin can be scanned in 5 milliseconds.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mpreset-discovery-crawl[0m
+[2m│[0m [2m│[0m If the plugin supports the preset discovery mechanism, then this
+[2m│[0m [2m│[0m test ensures that all of the plugin's declared locations can be
+[2m│[0m [2m│[0m indexed successfully.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'clap.preset-discovery-
+[2m│[0m [2m│[0m [2m│[0m factory/2' factory.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mpreset-discovery-descriptor-consistency[0m
+[2m│[0m [2m│[0m Ensures that all preset provider descriptors from a preset
+[2m│[0m [2m│[0m discovery factory match those stored in the providers created by
+[2m│[0m [2m│[0m the factory.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'clap.preset-discovery-
+[2m│[0m [2m│[0m [2m│[0m factory/2' factory.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mpreset-discovery-load[0m
+[2m│[0m [2m│[0m The same as 'preset-discovery-crawl', but also tries to load all
+[2m│[0m [2m│[0m found presets for plugins supported the CLAP plugin library. A
+[2m│[0m [2m│[0m single plugin instance is reused for loading multiple presets, and
+[2m│[0m [2m│[0m the process function is called after loading each preset.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'clap.preset-discovery-
+[2m│[0m [2m│[0m [2m│[0m factory/2' factory.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m4ms[0m
+[2m└[0m[2m─[0m[2m─[0m 7 tests
+
+[2m┌[0m[2m─[0m [1mPlugin[0m
+[2m│[0m com.vladislav.sosatune
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mdescriptor-consistency[0m
+[2m│[0m [2m│[0m The plugin descriptor returned from the plugin factory and the
+[2m│[0m [2m│[0m plugin descriptor stored on the 'clap_plugin' object should be
+[2m│[0m [2m│[0m equivalent.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m207ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mfeatures-categories[0m
+[2m│[0m [2m│[0m The plugin needs to have at least one of the main CLAP category
+[2m│[0m [2m│[0m features.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mfeatures-duplicates[0m
+[2m│[0m [2m│[0m The plugin's features array should not contain any duplicates.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-audio-basic-out-of-place[0m
+[2m│[0m [2m│[0m Processes random audio through the plugin with its default
+[2m│[0m [2m│[0m parameter values and tests whether the output does not contain
+[2m│[0m [2m│[0m any non-finite or subnormal values. Uses out-of-place audio
+[2m│[0m [2m│[0m processing.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m154ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-audio-basic-in-place[0m
+[2m│[0m [2m│[0m Processes random audio through the plugin with its default
+[2m│[0m [2m│[0m parameter values and tests whether the output does not contain any
+[2m│[0m [2m│[0m non-finite or subnormal values. Uses in-place audio processing for
+[2m│[0m [2m│[0m buses that support it.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m147ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-audio-double-out-of-place[0m
+[2m│[0m [2m│[0m Same as 'process-audio-basic-out-of-place', but uses 64-bit
+[2m│[0m [2m│[0m floating point audio buffers instead of 32-bit ones for ports that
+[2m│[0m [2m│[0m support it.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not support 64-bit floating point audio.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m6ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-audio-double-in-place[0m
+[2m│[0m [2m│[0m Same as 'process-audio-basic-in-place', but uses 64-bit floating
+[2m│[0m [2m│[0m point audio buffers instead of 32-bit ones for ports that support
+[2m│[0m [2m│[0m it.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not support 64-bit floating point audio.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-audio-denormals[0m
+[2m│[0m [2m│[0m Processes random audio through the plugin with its default
+[2m│[0m [2m│[0m parameter values two times: without and with denormals as
+[2m│[0m [2m│[0m the input. Emits a warning if processing denormals causes a
+[2m│[0m [2m│[0m significant slowdown.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m86ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-sleep-constant-mask[0m
+[2m│[0m [2m│[0m Processes random audio through the plugin with its default
+[2m│[0m [2m│[0m parameter values while setting the constant mask on silent blocks,
+[2m│[0m [2m│[0m and tests whether the output does not contain any non-finite
+[2m│[0m [2m│[0m or subnormal values and that the plugin sets the constant mask
+[2m│[0m [2m│[0m correctly
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin never set the constant flag on any output
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m23ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-sleep-process-status[0m
+[2m│[0m [2m│[0m Processes random audio through the plugin with its default
+[2m│[0m [2m│[0m parameter values while checking if the output is consistent with
+[2m│[0m [2m│[0m the returned process status, and tests whether the output does
+[2m│[0m [2m│[0m not contain any non-finite or subnormal values and that the plugin
+[2m│[0m [2m│[0m sets the process status correctly
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin never went to sleep during the test.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m41ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-note-out-of-place-basic[0m
+[2m│[0m [2m│[0m Sends audio and random note and MIDI events to the plugin with
+[2m│[0m [2m│[0m its default parameter values and tests the output for consistency.
+[2m│[0m [2m│[0m Uses out-of-place audio processing.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'note-ports' extension.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m21ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-note-inconsistent[0m
+[2m│[0m [2m│[0m Sends intentionally inconsistent and mismatching note and MIDI
+[2m│[0m [2m│[0m events to the plugin with its default parameter values and tests
+[2m│[0m [2m│[0m the output for consistency. Uses out-of-place audio processing.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'note-ports' extension.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-note-wildcard[0m
+[2m│[0m [2m│[0m Same as process-note-out-of-place-basic, but this time some note
+[2m│[0m [2m│[0m events have their note ID, port index, channel, or key set to -1,
+[2m│[0m [2m│[0m which means they can match multiple notes at the same time. This
+[2m│[0m [2m│[0m tests whether the plugin can handle such wildcard events without
+[2m│[0m [2m│[0m crashing or producing invalid output. Uses out-of-place audio
+[2m│[0m [2m│[0m processing.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'note-ports' extension.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m4ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-varying-sample-rates[0m
+[2m│[0m [2m│[0m Processes random audio and random note events through the plugin
+[2m│[0m [2m│[0m with its default parameter values while trying different sample
+[2m│[0m [2m│[0m rates ranging from 1kHz to 768kHz, including fractional rates,
+[2m│[0m [2m│[0m and tests whether the output does not contain any non-finite or
+[2m│[0m [2m│[0m subnormal values. Uses out-of-place audio processing.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m signal: 6 (SIGABRT)
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [1;31mCRASHED[0m [2m─[0m [2m340ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-varying-block-sizes[0m
+[2m│[0m [2m│[0m Processes random audio and random note events through the plugin
+[2m│[0m [2m│[0m with its default parameter values while trying different maximum
+[2m│[0m [2m│[0m block sizes ranging from 1 to 16k, including non-power-of-two
+[2m│[0m [2m│[0m ones, and tests whether the output does not contain any non-finite
+[2m│[0m [2m│[0m or subnormal values. Uses out-of-place audio processing.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m137ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-random-block-sizes[0m
+[2m│[0m [2m│[0m Processes random audio and random note events through the plugin
+[2m│[0m [2m│[0m with maximum block size of 2048 while randomizing block sizes for
+[2m│[0m [2m│[0m each process call, and tests whether the output does not contain
+[2m│[0m [2m│[0m any non-finite or subnormal values. Uses out-of-place audio
+[2m│[0m [2m│[0m processing.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m37ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mprocess-reset-reactivate[0m
+[2m│[0m [2m│[0m Asserts that resetting the plugin via 'clap_plugin::reset()' and
+[2m│[0m [2m│[0m via re-activation does not cause any crashes, and that the plugin
+[2m│[0m [2m│[0m still produces valid (non-NaN and non-infinite) output
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m21ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mlayout-audio-ports-activation[0m
+[2m│[0m [2m│[0m Same as 'process-audio-basic-out-of-place', but this time it
+[2m│[0m [2m│[0m toggles the activation state of audio ports on and off via the
+[2m│[0m [2m│[0m 'audio-ports-activation' extension.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'audio-ports-activation'
+[2m│[0m [2m│[0m [2m│[0m extension.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m6ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mlayout-audio-ports-config[0m
+[2m│[0m [2m│[0m Same as 'process-audio-basic-in-place', but this time it tries
+[2m│[0m [2m│[0m all available port configurations exposed via the 'audio-ports-
+[2m│[0m [2m│[0m config' extension.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m14ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mlayout-configurable-audio-ports[0m
+[2m│[0m [2m│[0m Same as 'process-audio-basic-out-of-place', but this time it tries
+[2m│[0m [2m│[0m random configurations exposed via the 'configurable-audio-ports'
+[2m│[0m [2m│[0m extension.
+[2m│[0m [2m│[0m 
+[2m│[0m [2m│[0m [2m┌[0m[2m─[0m [1m[0m
+[2m│[0m [2m│[0m [2m│[0m The plugin does not implement the 'configurable-audio-ports'
+[2m│[0m [2m│[0m [2m│[0m extension.
+[2m│[0m [2m│[0m [2m└[0m[2m─[0m[2m─[0m 
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [2mSKIPPED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-set-events[0m
+[2m│[0m [2m│[0m Asserts that the resulting parameter values after a flush are the
+[2m│[0m [2m│[0m same as if the parameter changes were sent via a process call.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m31ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-set-no-cookies[0m
+[2m│[0m [2m│[0m Same as 'param-set-events', but this time the parameter change
+[2m│[0m [2m│[0m events are sent with null cookies. The plugin should behave
+[2m│[0m [2m│[0m identically to when the cookies are set to non-null values.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m6ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-set-wrong-namespace[0m
+[2m│[0m [2m│[0m Sends events to the plugin with the 'CLAP_EVENT_PARAM_VALUE'
+[2m│[0m [2m│[0m event type but with a mismatching namespace ID. Asserts that the
+[2m│[0m [2m│[0m plugin's parameter values don't change.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-fuzz-basic[0m
+[2m│[0m [2m│[0m Generates 50 sets of random parameter values, sets those on the
+[2m│[0m [2m│[0m plugin, and has the plugin process 5 buffers of random audio and
+[2m│[0m [2m│[0m note events. The plugin passes the test if it doesn't produce any
+[2m│[0m [2m│[0m infinite or NaN values, and doesn't crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m139ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-fuzz-bounds[0m
+[2m│[0m [2m│[0m The exact same test as 'param-fuzz-basic', but this time the
+[2m│[0m [2m│[0m parameter values are snapped to the minimum and maximum values.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m119ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-fuzz-sample-accurate[0m
+[2m│[0m [2m│[0m Sets parameter values in a sample-accurate fashion while
+[2m│[0m [2m│[0m processing audio, generating them at fixed intervals (10, 100,
+[2m│[0m [2m│[0m 1000 samples). The plugin passes the test if it doesn't produce
+[2m│[0m [2m│[0m any infinite or NaN values, and doesn't crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m12ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-fuzz-modulation[0m
+[2m│[0m [2m│[0m Sends parameter change events, including monophonic modulation
+[2m│[0m [2m│[0m and polyphonic automation/modulation events at random irregular
+[2m│[0m [2m│[0m unsynchronized intervals, and have the plugin process them. The
+[2m│[0m [2m│[0m plugin passes the test if it doesn't produce any infinite or NaN
+[2m│[0m [2m│[0m values, and doesn't crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m17ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-conversions[0m
+[2m│[0m [2m│[0m Asserts that value to string and string to value conversions
+[2m│[0m [2m│[0m are supported for either all or none of the plugin's parameters,
+[2m│[0m [2m│[0m and that conversions between values and strings roundtrip
+[2m│[0m [2m│[0m consistently.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mparam-default-values[0m
+[2m│[0m [2m│[0m Asserts that the values for all parameters are set correctly to
+[2m│[0m [2m│[0m their default values when the plugin is initialized.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mstate-invalid-empty[0m
+[2m│[0m [2m│[0m The plugin should return false when 'clap_plugin_state::load()' is
+[2m│[0m [2m│[0m called with an empty state.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m4ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mstate-invalid-random[0m
+[2m│[0m [2m│[0m Loads 3x1MB chunks of random bytes via 'clap_plugin_state::load()'
+[2m│[0m [2m│[0m and asserts that the plugin doesn't crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m6ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mstate-reproducibility-basic[0m
+[2m│[0m [2m│[0m Randomizes a plugin's parameters, saves its state, recreates the
+[2m│[0m [2m│[0m plugin instance, reloads the state, and then checks whether the
+[2m│[0m [2m│[0m parameter values are the same and whether saving the state once
+[2m│[0m [2m│[0m more results in the same parameters as before. The parameter
+[2m│[0m [2m│[0m values are updated using the process function.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m5ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mstate-reproducibility-binary[0m
+[2m│[0m [2m│[0m Performs the same parameter reproducibility check as in 'state-
+[2m│[0m [2m│[0m reproducibility-basic', but also checks that the saved state data
+[2m│[0m [2m│[0m is exactly the same byte for byte. This means that the plugin
+[2m│[0m [2m│[0m needs to save the state in a completely deterministic way, without
+[2m│[0m [2m│[0m any non-determinism coming from things like uninitialized memory
+[2m│[0m [2m│[0m or random bytes.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m3ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mstate-reproducibility-buffered[0m
+[2m│[0m [2m│[0m Performs the same parameter reproducibility check as in 'state-
+[2m│[0m [2m│[0m reproducibility-basic', but this time the plugin is only allowed
+[2m│[0m [2m│[0m to read a small prime number of bytes at a time when reloading and
+[2m│[0m [2m│[0m resaving the state.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m4ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mtransport-null[0m
+[2m│[0m [2m│[0m Performs audio processing with a 'null' transport pointer,
+[2m│[0m [2m│[0m simulating a free-running transport state. The plugin passes the
+[2m│[0m [2m│[0m test if it doesn't produce any infinite or NaN values, and doesn't
+[2m│[0m [2m│[0m crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m11ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mtransport-fuzz[0m
+[2m│[0m [2m│[0m Performs audio processing while randomly changing the transport
+[2m│[0m [2m│[0m state on every block. The plugin passes the test if it doesn't
+[2m│[0m [2m│[0m produce any infinite or NaN values, and doesn't crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m23ms[0m
+[2m│[0m 
+[2m│[0m [2m┌[0m[2m─[0m [1mtransport-fuzz-sample-accurate[0m
+[2m│[0m [2m│[0m Same as 'transport-fuzz', but this time the test sends
+[2m│[0m [2m│[0m 'clap_event_transport' events in sample-accurate fashion while
+[2m│[0m [2m│[0m processing audio, generating them at fixed intervals (1, 100, 1000
+[2m│[0m [2m│[0m samples). The plugin passes the test if it doesn't produce any
+[2m│[0m [2m│[0m infinite or NaN values, and doesn't crash.
+[2m│[0m [2m└[0m[2m─[0m[2m─[0m [32mPASSED[0m [2m─[0m [2m11ms[0m
+[2m└[0m[2m─[0m[2m─[0m 37 tests
+44 tests run, [1;32m33[0m passed, [1;31m1[0m failed, [1;33m0[0m warnings, [1m10[0m skipped
+exit code: 1
+
+## Audio Unit (Logic Pro)
+-- The C compiler identification is AppleClang 15.0.0.15000309
+-- The CXX compiler identification is AppleClang 15.0.0.15000309
+-- The OBJC compiler identification is AppleClang 15.0.0.15000309
+-- The OBJCXX compiler identification is AppleClang 15.0.0.15000309
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting OBJC compiler ABI info
+-- Detecting OBJC compiler ABI info - done
+-- Check for working OBJC compiler: /usr/bin/cc - skipped
+-- Detecting OBJCXX compiler ABI info
+-- Detecting OBJCXX compiler ABI info - done
+-- Check for working OBJCXX compiler: /usr/bin/c++ - skipped
+-- clap-wrapper: CLAP_WRAPPER_VERSION is 0.16.0
+-- clap-wrapper: Building with C++ standard 17
+-- clap-wrapper: including CPM
+-- cmake-wrapper: Downloading Gulrak Filesystem as a macOS deployment 10.13 < 10.15 stub
+-- CPM: Adding package filesystem@1.5.14 (v1.5.14)
+CMake Warning (deprecated) at /Users/runner/work/sosa/sosa/build-auv2/_deps/filesystem-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- System name: Darwin
+-- Compiler ID: AppleClang
+-- CMAKE_CXX_COMPILE_FEATURES: cxx_std_98;cxx_template_template_parameters;cxx_std_11;cxx_alias_templates;cxx_alignas;cxx_alignof;cxx_attributes;cxx_auto_type;cxx_constexpr;cxx_decltype;cxx_decltype_incomplete_return_types;cxx_default_function_template_args;cxx_defaulted_functions;cxx_defaulted_move_initializers;cxx_delegating_constructors;cxx_deleted_functions;cxx_enum_forward_declarations;cxx_explicit_conversions;cxx_extended_friend_declarations;cxx_extern_templates;cxx_final;cxx_func_identifier;cxx_generalized_initializers;cxx_inheriting_constructors;cxx_inline_namespaces;cxx_lambdas;cxx_local_type_template_args;cxx_long_long_type;cxx_noexcept;cxx_nonstatic_member_init;cxx_nullptr;cxx_override;cxx_range_for;cxx_raw_string_literals;cxx_reference_qualified_functions;cxx_right_angle_brackets;cxx_rvalue_references;cxx_sizeof_member;cxx_static_assert;cxx_strong_enums;cxx_thread_local;cxx_trailing_return_types;cxx_unicode_literals;cxx_uniform_initialization;cxx_unrestricted_unions;cxx_user_literals;cxx_variadic_macros;cxx_variadic_templates;cxx_std_14;cxx_aggregate_default_initializers;cxx_attribute_deprecated;cxx_binary_literals;cxx_contextual_conversions;cxx_decltype_auto;cxx_digit_separators;cxx_generic_lambdas;cxx_lambda_init_captures;cxx_relaxed_constexpr;cxx_return_type_deduction;cxx_variable_templates;cxx_std_17;cxx_std_20;cxx_std_23
+-- clap-wrapper: using gcc/llvm-clang compile options
+-- clap-wrapper: Warnings are Errors
+-- clap-wrapper: source dir is /Users/runner/work/_temp/clap-wrapper, platform is MAC
+-- clap-wrapper: including CPM
+-- CPM: Adding package clap@1.2.6 (1.2.6)
+-- Populating clap
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/sosa/sosa/build-auv2/_deps/clap-subbuild
+[ 11%] Creating directories for 'clap-populate'
+[ 22%] Performing download step (git clone) for 'clap-populate'
+Cloning into 'clap'...
+HEAD is now at 69a6925 Merge pull request #459 from free-audio/next
+[ 33%] Performing update step for 'clap-populate'
+-- Already at requested tag: 1.2.6
+[ 44%] No patch step for 'clap-populate'
+[ 55%] No configure step for 'clap-populate'
+[ 66%] No build step for 'clap-populate'
+[ 77%] No install step for 'clap-populate'
+[ 88%] No test step for 'clap-populate'
+[100%] Completed 'clap-populate'
+[100%] Built target clap-populate
+-- clap-wrapper: Configuring clap sdk
+-- CLAP version: 1.2.6
+-- clap-wrapper: using included fmt library since no fmt-header-only available
+-- clap-wrapper: including CPM
+-- CPM: Adding package AudioUnitSDK@ (AudioUnitSDK-1.1.0)
+-- Populating audiounitsdk
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/sosa/sosa/build-auv2/_deps/audiounitsdk-subbuild
+[ 11%] Creating directories for 'audiounitsdk-populate'
+[ 22%] Performing download step (git clone) for 'audiounitsdk-populate'
+Cloning into 'AudioUnitSDK'...
+HEAD is now at 53a9a20 AudioUnitSDK - version 1.1.0
+[ 33%] Performing update step for 'audiounitsdk-populate'
+-- Already at requested tag: AudioUnitSDK-1.1.0
+[ 44%] No patch step for 'audiounitsdk-populate'
+[ 55%] No configure step for 'audiounitsdk-populate'
+[ 66%] No build step for 'audiounitsdk-populate'
+[ 77%] No install step for 'audiounitsdk-populate'
+[ 88%] No test step for 'audiounitsdk-populate'
+[100%] Completed 'audiounitsdk-populate'
+[100%] Built target audiounitsdk-populate
+-- clap-wrapper: configuring auv2 sdk from /Users/runner/work/sosa/sosa/build-auv2/cpm/AudioUnitSDK
+-- clap-wrapper: building auv2 based on clap /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.clap
+-- clap-wrapper: Adding AUV2 Wrapper to target SosaTune_auv2 generating 'SosaTune.component'
+-- clap-wrapper: including embedded clap in target SosaTune_auv2
+-- Configuring done (7.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/sosa/sosa/build-auv2
+[ 42%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUMIDIEffectBase.cpp.o
+[ 46%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUOutputElement.cpp.o
+[ 50%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUPlugInDispatch.cpp.o
+[ 53%] Linking CXX static library libclap-wrapper-shared-detail.a
+[ 57%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUScopeElement.cpp.o
+[ 60%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/ComponentBase.cpp.o
+[ 60%] Built target clap-wrapper-shared-detail
+[ 64%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/MusicDeviceBase.cpp.o
+[ 67%] Building CXX object CMakeFiles/SosaTune_auv2-build-helper.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/build-helper/build-helper.cpp.o
+[ 71%] Linking CXX static library libbase-sdk-auv2.a
+[ 71%] Built target base-sdk-auv2
+[ 75%] Linking CXX executable SosaTune_auv2-build-helper
+clap-wrapper: auv2 configuration output dir is /Users/runner/work/sosa/sosa/build-auv2/SosaTune_auv2-build-helper-output
+/Users/runner/work/sosa/sosa/build-auv2/SosaTune_auv2-build-helper: replacing existing signature
+clap-wrapper: auv2 configuration tool starting
+  - CLAP is a directory. Assuming bundle
+  - building information from CLAP directly
+  - source clap: '/Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.clap'
+  - clap file produced 1 units
+  - generating auv2_Info.plist from auv2_infoplist_top
+    + Sosa Tune (aufx/SsTn) by Vladislav (Vlad)
+    + Using bundle version 1.0.0
+    + Calculating version from bundle version 1 0 0
+  - auv2_Info.plist generated
+  - generating generated_entrypoints.hxx
+    + Sosa Tune entry wrapAsAUV2_inst0 from WrapAsAUV2
+  - generated_entrypoints.hxx generated
+  - generating generated_cocoaclasses.hxx
+    + wrapAsAUV2_inst_cocoaUI_com_vladislav_sosatune class com.vladislav.sosatune
+  - generated_cocoaclasses.hxx generated
+[ 75%] Built target SosaTune_auv2-build-helper
+[ 78%] Building OBJCXX object CMakeFiles/SosaTune_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/os/macos.mm.o
+[ 82%] Building CXX object CMakeFiles/SosaTune_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/wrapasauv2.cpp.o
+[ 85%] Building OBJCXX object CMakeFiles/SosaTune_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/auv2_shared.mm.o
+[ 89%] Building CXX object CMakeFiles/SosaTune_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/process.cpp.o
+[ 92%] Building OBJCXX object CMakeFiles/SosaTune_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/wrappedview.mm.o
+[ 96%] Building CXX object CMakeFiles/SosaTune_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/parameter.cpp.o
+[100%] Linking CXX CFBundle shared module SosaTune.component/Contents/MacOS/SosaTune
+Installing /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SosaTune.clap in SosaTune.component/Contents/PlugIns/SosaTune.clap
+[100%] Built target SosaTune_auv2
+component: build-auv2/SosaTune.component
+target/bundled-mhbundle/SosaTune.component
+target/bundled-mhbundle/SosaTune.component/Contents
+target/bundled-mhbundle/SosaTune.component/Contents/_CodeSignature
+target/bundled-mhbundle/SosaTune.component/Contents/_CodeSignature/CodeResources
+target/bundled-mhbundle/SosaTune.component/Contents/MacOS
+target/bundled-mhbundle/SosaTune.component/Contents/MacOS/SosaTune
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents/_CodeSignature
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents/_CodeSignature/CodeResources
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents/MacOS
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents/MacOS/SosaTune
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents/Info.plist
+target/bundled-mhbundle/SosaTune.component/Contents/PlugIns/SosaTune.clap/Contents/PkgInfo
+target/bundled-mhbundle/SosaTune.component/Contents/Info.plist
+target/bundled-mhbundle/SosaTune.component/Contents/PkgInfo
+Architectures in the fat file: target/bundled-mhbundle/SosaTune.component/Contents/MacOS/SosaTune are: x86_64 arm64 
+{
+  "AudioComponents" => [
+    0 => {
+      "description" => "Correzione dell'intonazione in tempo reale per la voce"
+      "factoryFunction" => "wrapAsAUV2_inst0Factory"
+      "manufacturer" => "Vlad"
+      "name" => "Vladislav: Sosa Tune"
+      "resourceUsage" => {
+        "network.client" => 1
+        "temporary-exception.files.all.read-write" => 1
+      }
+      "sandboxSafe" => 1
+      "subtype" => "SsTn"
+      "tags" => [
+        0 => "Audio-effect"
+        1 => "Pitch-correction"
+        2 => "Mono"
+        3 => "Stereo"
+      ]
+      "type" => "aufx"
+      "version" => 65536
+    }
+  ]
+  "CFBundleDevelopmentRegion" => "English"
+  "CFBundleExecutable" => "SosaTune"
+  "CFBundleIdentifier" => "com.vladislav.sosatune.auv2"
+  "CFBundleInfoDictionaryVersion" => "6.0"
+  "CFBundleName" => "SosaTune"
+  "CFBundlePackageType" => "BNDL"
+  "CFBundleShortVersionString" => "1.0.0"
+  "CFBundleSignature" => "????"
+  "CFBundleVersion" => "1.0.0"
+  "NSHighResolutionCapable" => 1
+  "NSPrincipalClass" => ""
+}
+## elenco Audio Unit
+aufx SsTn Vlad  -  Vladislav: Sosa Tune[clap-wrapper] auv2 loaded clap from /Users/runner/Library/Audio/Plug-Ins/Components/SosaTune.component/Contents/PlugIns
+[clap-wrapper] auv2: Initialized 'com.vladislav.sosatune' / 'Sosa Tune' / '0.1.0'
+## auval -strict
+
+    AU Validation Tool
+    Version: 1.10.0 
+    Copyright 2003-2019, Apple Inc. All Rights Reserved.
+    Specify -h (-help) for command options
+
+--------------------------------------------------
+VALIDATING AUDIO UNIT: 'aufx' - 'SsTn' - 'Vlad'
+--------------------------------------------------
+Manufacturer String: Vladislav
+AudioUnit Name: Sosa Tune
+Component Version: 1.0.0 (0x10000)
+
+* * PASS
+--------------------------------------------------
+TESTING OPEN TIMES:
+COLD:
+[clap-wrapper] auv2 loaded clap from /Users/runner/Library/Audio/Plug-Ins/Components/SosaTune.component/Contents/PlugIns
+[clap-wrapper] auv2: Initialized 'com.vladislav.sosatune' / 'Sosa Tune' / '0.1.0'
+Time to open AudioUnit:         3.014 ms
+WARM:
+[clap-wrapper] auv2: Initialized 'com.vladislav.sosatune' / 'Sosa Tune' / '0.1.0'
+Time to open AudioUnit:         0.157  ms
+This AudioUnit is a version 2 implementation.
+FIRST TIME:
+Time for initialization:        0.007 ms
+
+* * PASS
+--------------------------------------------------
+VERIFYING DEFAULT SCOPE FORMATS:
+Input Scope Bus Configuration:
+ Default Bus Count:2
+    Bus Name: Input
+    Format Bus 0: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Sidechain (base per AutoKey)
+    Format Bus 1: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+
+Output Scope Bus Configuration:
+ Default Bus Count:1
+    Bus Name: Output
+    Default Format: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+
+* * PASS
+--------------------------------------------------
+VERIFYING REQUIRED PROPERTIES:
+
+* * PASS
+--------------------------------------------------
+VERIFYING RECOMMENDED PROPERTIES:
+  VERIFYING PROPERTY: Latency
+    PASS
+  VERIFYING PROPERTY: Tail Time
+WARNING: Recommended Property is not supported
+
+  VERIFYING PROPERTY: Bypass Effect
+    PASS
+
+* * PASS
+--------------------------------------------------
+VERIFYING OPTIONAL PROPERTIES:
+
+* * PASS
+--------------------------------------------------
+VERIFYING SPECIAL PROPERTIES:
+
+VERIFYING CUSTOM UI
+Cocoa Views Available: 1
+  wrapAsAUV2_inst_cocoaUI_com_vladislav_sosatune
+    PASS
+
+VERIFYING CLASS INFO
+WARNING: Preset name is not retained in retrieved class data
+    PASS
+
+TESTING HOST CALLBACKS
+    PASS
+
+* * PASS
+--------------------------------------------------
+PUBLISHED PARAMETER INFO:
+
+# # # 27 Global Scope Parameters:
+Parameter ID:106079
+Name: Tonalità
+Parameter Type: Indexed
+Values: Minimum = C (Do), Default = C (Do), Maximum = B (Si)
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:109250890
+Name: Scala
+Parameter Type: Indexed
+Values: Minimum = Cromatica, Default = Cromatica, Maximum = Personalizzata
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:109780401
+Name: Style
+Parameter Type: Boolean
+Values: Minimum = Modern, Default = Modern, Maximum = Classic
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:112386354
+Name: Voce
+Parameter Type: Indexed
+Values: Minimum = Soprano / voce acuta, Default = Alto / Tenore, Maximum = Voce bassa (baritono, basso)
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:344896844
+Name: Flex-Tune
+Parameter Type: Generic
+Values: Minimum = 0%, Default = 0%, Maximum = 100%
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:451310969
+Name: Vibrato
+Parameter Type: Generic
+Values: Minimum = -100%, Default = 0%, Maximum = 100%
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:540937479
+Name: Humanize
+Parameter Type: Generic
+Values: Minimum = 0%, Default = 0%, Maximum = 100%
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:651215103
+Name: Mode
+Parameter Type: Boolean
+Values: Minimum = Low Latency, Default = HQ, Maximum = HQ
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:733630552
+Name: Quantità
+Parameter Type: Generic
+Values: Minimum = 0%, Default = 100%, Maximum = 100%
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:773352680
+Name: Bypass
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:812278777
+Name: Detune
+Parameter Type: Generic
+Values: Minimum = 410.0 Hz, Default = 440.0 Hz, Maximum = 470.0 Hz
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1052964665
+Name: Trasposizione
+Parameter Type: Indexed
+Values: Minimum = -12 st, Default = 0 st, Maximum = 12 st
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1213086891
+Name: Velocità
+Parameter Type: Generic
+Values: Minimum = 0 ms, Default = 20 ms, Maximum = 400 ms
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1270488759
+Name: Sensibilità
+Parameter Type: Generic
+Values: Minimum = 0%, Default = 30%, Maximum = 100%
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1470039715
+Name: Formanti
+Parameter Type: Generic
+Values: Minimum = -12.0 st, Default = 0.0 st, Maximum = 12.0 st
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+
+# # Parameters for clump: 1
+# Full Clump Name: Scala personalizzata
+# Short (4 Chars limit) Clump Name: Scal
+Parameter ID:1107788102
+Name: Nota La
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1107788103
+Name: Nota Si
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1107788104
+Name: Nota Do
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1107788105
+Name: Nota Re
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1107788106
+Name: Nota Mi
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1107788107
+Name: Nota Fa
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1107788108
+Name: Nota Sol
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:2129176557
+Name: Nota La#
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:2129176619
+Name: Nota Do#
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:2129176650
+Name: Nota Re#
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:2129176712
+Name: Nota Fa#
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:2129176743
+Name: Nota Sol#
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Testing that parameters retain value across reset and initialization
+  PASS
+
+* * PASS
+--------------------------------------------------
+FORMAT TESTS:
+
+Reported Channel Capabilities (explicit):
+      [2, 2]  
+
+Input/Output Channel Handling:
+1-1   1-2   1-4   1-5   1-6   1-7   1-8   2-2   2-4   2-5   2-6   2-7   2-8   4-4   4-5   5-5   6-6   7-7   8-8
+                                          X                                                                       
+
+* * PASS
+--------------------------------------------------
+RENDER TESTS:
+
+Input Format: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+Output Format: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+Render Test at 512 frames
+Slicing Render Test at 64 frames
+  PASS
+
+
+Render Test at 64 frames, sample rate: 22050 Hz
+Render Test at 137 frames, sample rate: 96000 Hz
+Render Test at 4096 frames, sample rate: 48000 Hz
+Render Test at 4096 frames, sample rate: 192000 Hz
+Render Test at 4096 frames, sample rate: 11025 Hz
+Render Test at 512 frames, sample rate: 44100 Hz
+  PASS
+
+Checking connection semantics:
+Connection format:
+AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+  PASS
+
+Bad Max Frames - Render should fail
+  PASS
+
+Checking parameter setting
+Using AudioUnitSetParameter
+Using AudioUnitScheduleParameter
+  PASS
+
+Test MIDI
+WARNING: AU implements MusicDeviceMIDIEvent but is of type 'aufx' (it should be 'aumf')
+  PASS
+
+* * PASS
+--------------------------------------------------
+AU VALIDATION SUCCEEDED.
+--------------------------------------------------
+exit code: 0
+## Installer per Mac
+pkgbuild: Inferring bundle components from contents of /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/root-vst3
+pkgbuild: Writing new component property list to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/vst3.plist
+componenti vst3: 1
+Array {
+    Dict {
+        BundleIsVersionChecked = true
+        BundleOverwriteAction = upgrade
+        BundleIsRelocatable = false
+        RootRelativeBundlePath = SosaTune.vst3
+    }
+}
+pkgbuild: Reading components from /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/vst3.plist
+pkgbuild: Adding component at SosaTune.vst3
+pkgbuild: Adding top-level postinstall script
+pkgbuild: Wrote package to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/SosaTune-vst3.pkg
+pkgbuild: Inferring bundle components from contents of /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/root-clap
+pkgbuild: Writing new component property list to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/clap.plist
+componenti clap: 1
+Array {
+    Dict {
+        BundleIsVersionChecked = true
+        BundleOverwriteAction = upgrade
+        BundleIsRelocatable = false
+        RootRelativeBundlePath = SosaTune.clap
+    }
+}
+pkgbuild: Reading components from /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/clap.plist
+pkgbuild: Adding component at SosaTune.clap
+pkgbuild: Adding top-level postinstall script
+pkgbuild: Wrote package to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/SosaTune-clap.pkg
+pkgbuild: Inferring bundle components from contents of /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/root-component
+pkgbuild: Writing new component property list to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/component.plist
+componenti component: 1
+Array {
+    Dict {
+        BundleIsVersionChecked = true
+        BundleOverwriteAction = upgrade
+        BundleIsRelocatable = false
+        ChildBundles = Array {
+            Dict {
+                BundleOverwriteAction = 
+                RootRelativeBundlePath = SosaTune.component/Contents/PlugIns/SosaTune.clap
+            }
+        }
+        RootRelativeBundlePath = SosaTune.component
+    }
+}
+pkgbuild: Reading components from /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/component.plist
+pkgbuild: Adding component at SosaTune.component/Contents/PlugIns/SosaTune.clap
+pkgbuild: Adding component at SosaTune.component
+pkgbuild: Adding top-level postinstall script
+pkgbuild: Wrote package to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.l1NqvvklRy/SosaTune-component.pkg
+productbuild: Wrote product to SosaTune-Installer-macOS.pkg
+Package "SosaTune-Installer-macOS.pkg":
+   Status: no signature
+.
+./SosaTune.vst3
+./SosaTune.vst3/Contents
+./SosaTune.vst3/Contents/_CodeSignature
+./SosaTune.vst3/Contents/_CodeSignature/CodeResources
+./SosaTune.vst3/Contents/MacOS
+./SosaTune.vst3/Contents/MacOS/SosaTune
+./SosaTune.vst3/Contents/Info.plist
+./SosaTune.vst3/Contents/PkgInfo
+-rw-r--r--  1 runner  staff  18448712 Oct 14 20:29 SosaTune-Installer-macOS.pkg
+exit code: 0
+## scelte predefinite
+		<string>vst3</string>			<string>vst3</string>			<string>vst3</string>			<string>clap</string>
+		<string>clap</string>			<string>clap</string>			<string>au</string>			<string>au</string>
+		<string>au</string>			
+## installazione di prova con tutti e tre i formati
+installer: Package name is Sosa Tune
+installer: choices changes file 'installer/macos/choices-all.xml' applied
+installer: Installing at base path /
+installer: The install was successful.
+exit code: 0
+/Library/Audio/Plug-Ins/CLAP/SosaTune.clap/Contents/MacOS:
+total 26296
+drwxr-xr-x  3 root  wheel        96 Oct 14 20:29 .
+drwxr-xr-x  6 root  wheel       192 Oct 14 20:29 ..
+-rwxr-xr-x  1 root  wheel  13462448 Oct 14 20:29 SosaTune
+
+/Library/Audio/Plug-Ins/VST3/SosaTune.vst3/Contents/MacOS:
+total 26296
+drwxr-xr-x  3 root  wheel        96 Oct 14 20:29 .
+drwxr-xr-x  6 root  wheel       192 Oct 14 20:29 ..
+-rwxr-xr-x  1 root  wheel  13462448 Oct 14 20:29 SosaTune
+VST3 identico a quello collaudato
+/Library/Audio/Plug-Ins/Components/SosaTune.component/Contents/MacOS:
+total 1520
+drwxr-xr-x  3 root  wheel      96 Oct 14 20:29 .
+drwxr-xr-x  7 root  wheel     224 Oct 14 20:29 ..
+-rwxr-xr-x  1 root  wheel  774592 Oct 14 20:29 SosaTune
+
+/Library/Audio/Plug-Ins/Components/SosaTune.component/Contents/PlugIns:
+total 0
+drwxr-xr-x  3 root  wheel   96 Oct 14 20:29 .
+drwxr-xr-x  7 root  wheel  224 Oct 14 20:29 ..
+drwxr-xr-x  3 root  wheel   96 Oct 14 20:29 SosaTune.clap
