@@ -1,0 +1,137 @@
+Sosa Tune Windows 1be4bf3 - Wed Oct 14 20:26:57 UTC 2026
+
+## Test del plugin
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit code: 0
+
+## Compilazione (ultime righe)
+   [1m[96m--> [0mplugin\src\editor.rs:342:4
+    [1m[96m|[0m
+[1m[96m342[0m [1m[96m|[0m fn glow_line(painter: &Painter, points: &[Pos2], color: Color32, width: f32, k: f32) {
+    [1m[96m|[0m    [1m[93m^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: field `output` is never read[0m
+  [1m[96m--> [0mplugin\src\shared.rs:21:9
+   [1m[96m|[0m
+[1m[96m19[0m [1m[96m|[0m pub struct PitchPoint {
+   [1m[96m|[0m            [1m[96m----------[0m [1m[96mfield in this struct[0m
+[1m[96m20[0m [1m[96m|[0m     pub input: f32,
+[1m[96m21[0m [1m[96m|[0m     pub output: f32,
+   [1m[96m|[0m         [1m[93m^^^^^^[0m
+   [1m[96m|[0m
+   [1m[96m= [0m[1m[97mnote[0m: `PitchPoint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+[1m[93mwarning[0m[1m[97m: method `interval_s` is never used[0m
+   [1m[96m--> [0mplugin\src\shared.rs:225:12
+    [1m[96m|[0m
+[1m[96m106[0m [1m[96m|[0m impl PitchDisplay {
+    [1m[96m|[0m [1m[96m-----------------[0m [1m[96mmethod in this implementation[0m
+[1m[96m...[0m
+[1m[96m225[0m [1m[96m|[0m     pub fn interval_s(&self) -> f32 {
+    [1m[96m|[0m            [1m[93m^^^^^^^^^^[0m
+
+[1m[93mwarning[0m: `sosatune` (lib) generated 7 warnings (1 duplicate)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 0.21s
+
+Created a CLAP bundle at 'D:\a\sosa\sosa\target\bundled\SosaTune.clap'
+Created a VST3 bundle at 'D:\a\sosa\sosa\target\bundled\SosaTune.vst3'
+
+## pluginval livello 10 - VST3
+Testing with sample rate [48000] and block size [128]
+Testing with sample rate [48000] and block size [256]
+Testing with sample rate [48000] and block size [512]
+Testing with sample rate [48000] and block size [1024]
+Testing with sample rate [96000] and block size [64]
+Testing with sample rate [96000] and block size [128]
+Testing with sample rate [96000] and block size [256]
+Testing with sample rate [96000] and block size [512]
+Testing with sample rate [96000] and block size [1024]
+Completed tests in pluginval / Non-releasing audio processing
+-----------------------------------------------------------------
+Starting tests in: pluginval / Plugin state...
+Completed tests in pluginval / Plugin state
+-----------------------------------------------------------------
+Starting tests in: pluginval / Plugin state restoration...
+Completed tests in pluginval / Plugin state restoration
+-----------------------------------------------------------------
+Starting tests in: pluginval / Automation...
+Testing with sample rate [44100] and block size [64] and sub-block size [32]
+Testing with sample rate [44100] and block size [128] and sub-block size [32]
+Testing with sample rate [44100] and block size [256] and sub-block size [32]
+Testing with sample rate [44100] and block size [512] and sub-block size [32]
+Testing with sample rate [44100] and block size [1024] and sub-block size [32]
+Testing with sample rate [48000] and block size [64] and sub-block size [32]
+Testing with sample rate [48000] and block size [128] and sub-block size [32]
+Testing with sample rate [48000] and block size [256] and sub-block size [32]
+Testing with sample rate [48000] and block size [512] and sub-block size [32]
+Testing with sample rate [48000] and block size [1024] and sub-block size [32]
+Testing with sample rate [96000] and block size [64] and sub-block size [32]
+Testing with sample rate [96000] and block size [128] and sub-block size [32]
+Testing with sample rate [96000] and block size [256] and sub-block size [32]
+Testing with sample rate [96000] and block size [512] and sub-block size [32]
+Testing with sample rate [96000] and block size [1024] and sub-block size [32]
+Completed tests in pluginval / Automation
+-----------------------------------------------------------------
+Starting tests in: pluginval / Automatable Parameters...
+Completed tests in pluginval / Automatable Parameters
+-----------------------------------------------------------------
+Starting tests in: pluginval / Parameters...
+Completed tests in pluginval / Parameters
+-----------------------------------------------------------------
+Starting tests in: pluginval / Parameter thread safety...
+Completed tests in pluginval / Parameter thread safety
+-----------------------------------------------------------------
+Starting tests in: pluginval / auval...
+Completed tests in pluginval / auval
+-----------------------------------------------------------------
+Starting tests in: pluginval / vst3 validator...
+INFO: Skipping vst3 validator as validator path hasn't been set
+Completed tests in pluginval / vst3 validator
+-----------------------------------------------------------------
+Starting tests in: pluginval / Basic bus...
+Completed tests in pluginval / Basic bus
+-----------------------------------------------------------------
+Starting tests in: pluginval / Listing available buses...
+Inputs:
+	Named layouts: Stereo, Stereo
+	Discrete layouts: None
+Outputs:
+	Named layouts: Stereo
+	Discrete layouts: None
+Main bus num input channels: 2
+Main bus num output channels: 2
+Completed tests in pluginval / Listing available buses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Enabling all buses...
+Completed tests in pluginval / Enabling all buses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Disabling non-main busses...
+Completed tests in pluginval / Disabling non-main busses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Restoring default layout...
+Main bus num input channels: 2
+Main bus num output channels: 2
+Completed tests in pluginval / Restoring default layout
+-----------------------------------------------------------------
+Starting tests in: pluginval / Fuzz parameters...
+Completed tests in pluginval / Fuzz parameters
+SUCCESS
+exit code: 0
+
+## Installazione di prova
+Predefinita - VST3: True  CLAP: False
+
+FullName                                                                           Length
+--------                                                                           ------
+C:\Program Files\Common Files\VST3\SosaTune.vst3\Contents                          
+C:\Program Files\Common Files\VST3\SosaTune.vst3\Contents\x86_64-win               
+C:\Program Files\Common Files\VST3\SosaTune.vst3\Contents\x86_64-win\SosaTune.vst3 5958656
+
+
+
+FullName                                          Length
+--------                                          ------
+C:\Program Files\Common Files\CLAP\SosaTune.clap 5958656
+
+
