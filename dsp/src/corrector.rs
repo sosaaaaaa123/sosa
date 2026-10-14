@@ -2,7 +2,7 @@
 //! spostamento dell'intonazione (phase vocoder). E' il "cervello" del plugin.
 
 use crate::timbre::TimbreFilter;
-use crate::scale::{hz_to_note, NoteSnapper, VoiceType};
+use crate::scale::{hz_to_note, NoteSnapper, VoiceType, HIGHEST_HZ};
 use crate::vocoder::{GrainPitch, PhaseVocoder};
 use crate::yin::YinDetector;
 use crate::zerolat::DelayShifter;
@@ -550,6 +550,39 @@ impl PitchCorrector {
             }
         }
 
+        // Low Latency: l'analisi copre ~30 ms di voce e il suo centro cade
+        // ~20 ms nel passato; HQ puo' aspettare (ha la latenza), la latenza
+        // zero no. Qui l'intonazione si misura sugli ultimi cicli appena
+        // arrivati (YIN serve a dire se c'e' una nota e a dare la stima di
+        // partenza): scelta della nota, velocita', Humanize e vibrato
+        // lavorano poi come in HQ, ma sulla voce di ~1 periodo fa invece che
+        // di 20 ms fa. Nessun effetto su HQ.
+        let mut recent_center = None;
+        if !self.hq && !estimate.voiced && !self.was_voiced {
+            // Attacco di una nota: YIN confronta l'inizio della finestra con
+            // il resto, quindi dice "nota" solo quando tutta la finestra
+            // (~22 ms) e' gia' voce. HQ, che guarda avanti, corregge l'attacco
+            // fin dal primo ciclo; qui senza questo controllo i primi 15-20 ms
+            // di ogni nota uscirebbero non corretti. Bastano tre cicli chiari
+            // appena arrivati (vedi `onset_period`).
+            let tau_min = (self.sample_rate / HIGHEST_HZ).floor().max(8.0) as i64;
+            let tau_max = self.detector.max_period() as i64;
+            let before_min = (ONSET_BEFORE_S * self.sample_rate) as i64;
+            if let Some(period) = onset_period(&self.mono, self.mono_mask, self.position, tau_min, tau_max, before_min) {
+                estimate = crate::yin::PitchEstimate { period, clarity: ONSET_SCORE, voiced: true };
+            }
+        }
+        if !self.hq && estimate.voiced {
+            if let Some((period, score, center)) =
+                recent_period(&self.mono, self.mono_mask, self.position, estimate.period)
+            {
+                if score >= RECENT_SCORE {
+                    estimate.period = period;
+                    recent_center = Some(center);
+                }
+            }
+        }
+
         let window = self.detector.window_len() as f64;
         let report;
         let (center, period, ratio, voiced);
@@ -711,7 +744,7 @@ impl PitchCorrector {
             ratio = 2f32.powf(shift / 12.0);
             period = estimate.period;
             // Il periodo trovato descrive il tratto [inizio, inizio + finestra + periodo].
-            center = start as f64 + (window + period as f64) * 0.5;
+            center = recent_center.unwrap_or(start as f64 + (window + period as f64) * 0.5);
 
             voiced = true;
             self.was_voiced = true;
@@ -987,6 +1020,154 @@ fn periodicity(buf: &[f32], mask: usize, newest: u64, t: f64, p0: f32) -> Option
     Some((fine as f32 + offset, fine_score))
 }
 
+/// Somiglianza minima tra gli ultimi due cicli perche' un attacco valga come nota.
+const ONSET_SCORE: f32 = 0.9;
+/// La stessa somiglianza a distanza di due periodi (un po' piu' tollerante).
+const ONSET_SCORE_DOUBLE: f32 = 0.85;
+/// Sotto questo volume (RMS) gli ultimi cicli sono silenzio (-50 dBFS, come YIN).
+const ONSET_SILENCE: f32 = 0.00316;
+/// Di quanto (in potenza) gli ultimi cicli devono superare quelli prima (3 dB).
+const ONSET_RISE: f32 = 2.0;
+/// Quanto prima dell'attacco guardare, almeno (secondi).
+const ONSET_BEFORE_S: f32 = 0.015;
+
+/// Low Latency, attacco di una nota: il periodo degli ultimi cicli
+/// arrivati, se sono gia' chiaramente una nota. Per ogni periodo candidato
+/// confronta l'ultimo ciclo con quello prima; vale il periodo piu' corto che
+/// li fa coincidere bene (somiglianza >= `ONSET_SCORE`, picco vero), cosi'
+/// non si sbaglia d'ottava verso il basso. Il candidato deve valere anche a
+/// distanza doppia (l'ultimo ciclo simile a quello di due periodi prima):
+/// dopo un solo ciclo di voce anche un'armonica (per esempio un terzo del
+/// periodo vero) puo' sembrare un periodo, ma a distanza doppia non torna.
+/// `None` se non c'e' una nota chiara. Non alloca memoria.
+fn onset_period(buf: &[f32], mask: usize, newest: u64, tau_min: i64, tau_max: i64, before_min: i64) -> Option<f32> {
+    let end = newest as i64;
+    if end - 3 * tau_max - before_min - 4 < 0 || (3 * tau_max + before_min + 4) as usize >= buf.len() {
+        return None;
+    }
+    let at = |i: i64| buf[i as usize & mask];
+    // L'ultimo tratto lungo `tau` contro quello `lag` campioni prima.
+    let score = |tau: i64, lag: i64, step: i64| -> f32 {
+        let (mut ab, mut aa, mut bb) = (0.0f32, 0.0f32, 0.0f32);
+        let mut i = 0;
+        while i < tau {
+            let a = at(end - i);
+            let b = at(end - i - lag);
+            ab += a * b;
+            aa += a * a;
+            bb += b * b;
+            i += step;
+        }
+        if aa <= 1e-12 || bb <= 1e-12 {
+            -1.0
+        } else {
+            ab / (aa * bb).sqrt()
+        }
+    };
+    let mean_square = |from: i64, len: i64| (from..from + len).map(|i| at(i) * at(i)).sum::<f32>() / len as f32;
+    let mut prev = (-1.0f32, -1.0f32); // (punteggio a tau-1, a tau-2)
+    let mut tau = tau_min;
+    while tau <= tau_max {
+        let step = if tau > 96 { 2 } else { 1 };
+        let s = score(tau, tau, step);
+        // Picco vero (sale e poi scende) sopra la soglia.
+        if prev.0 >= ONSET_SCORE && prev.0 >= prev.1 && prev.0 > s {
+            let t = tau - 1;
+            if score(t, 2 * t, 1) >= ONSET_SCORE_DOUBLE {
+                // Volume: sopra il silenzio, e un attacco vero (gli ultimi due
+                // cicli almeno 3 dB sopra i ~15 ms prima). Un ronzio basso e
+                // regolare prima della nota (o la coda della nota precedente)
+                // non conta: spostarlo e poi dover tornare indietro
+                // sull'attacco vero lo taglierebbe.
+                let recent = mean_square(end - 2 * t + 1, 2 * t);
+                if recent < ONSET_SILENCE * ONSET_SILENCE {
+                    return None;
+                }
+                let before_len = (2 * t).max(before_min);
+                if recent < ONSET_RISE * mean_square(end - 2 * t + 1 - before_len, before_len) {
+                    return None;
+                }
+                let (m, c, p) = (score(t - 1, t - 1, 1), score(t, t, 1), score(t + 1, t + 1, 1));
+                let den = m - 2.0 * c + p;
+                let offset = if den < 0.0 { (0.5 * (m - p) / den).clamp(-0.5, 0.5) } else { 0.0 };
+                return Some(t as f32 + offset);
+            }
+        }
+        prev = (s, prev.0);
+        tau += 1;
+    }
+    None
+}
+
+/// Somiglianza minima tra gli ultimi due cicli per fidarsi della misura
+/// "recente" di Low Latency (sotto resta la stima di YIN).
+const RECENT_SCORE: f32 = 0.8;
+
+/// Low Latency: il periodo della voce negli ultimissimi cicli. Confronta il
+/// tratto che finisce sull'ultimo campione arrivato (1,5 periodi) con lo
+/// stesso tratto un periodo prima, cercando entro ±8 semitoni dalla stima
+/// `p0` (abbastanza per i cambi di nota, troppo poco per sbagliare d'ottava).
+/// Restituisce (periodo, somiglianza, istante a cui si riferisce la misura).
+/// Non alloca memoria.
+fn recent_period(buf: &[f32], mask: usize, newest: u64, p0: f32) -> Option<(f32, f32, f64)> {
+    if !(16.0..=4096.0).contains(&p0) {
+        return None;
+    }
+    let len = ((1.5 * p0) as i64).max(32);
+    let lo = ((p0 * 0.63).floor() as i64).max(8);
+    let hi = (p0 * 1.59).ceil() as i64;
+    let end = newest as i64; // ultimo campione (incluso)
+    if end - len - hi - 2 < 0 || (len + hi + 2) as usize >= buf.len() {
+        return None;
+    }
+    let at = |i: i64| buf[i as usize & mask];
+    let score = |tau: i64, step: i64| -> f32 {
+        let (mut ab, mut aa, mut bb) = (0.0f32, 0.0f32, 0.0f32);
+        let mut i = 0;
+        while i < len {
+            let a = at(end - i);
+            let b = at(end - i - tau);
+            ab += a * b;
+            aa += a * a;
+            bb += b * b;
+            i += step;
+        }
+        if aa <= 1e-12 || bb <= 1e-12 {
+            return -1.0;
+        }
+        ab / (aa * bb).sqrt()
+    };
+    let coarse = if p0 > 64.0 { 2 } else { 1 };
+    let (mut best, mut best_score) = (lo, f32::MIN);
+    let mut tau = lo;
+    while tau <= hi {
+        let s = score(tau, coarse);
+        if s > best_score {
+            best_score = s;
+            best = tau;
+        }
+        tau += coarse;
+    }
+    let (mut fine, mut fine_score) = (best, f32::MIN);
+    for tau in (best - 2).max(lo)..=(best + 2).min(hi) {
+        let s = score(tau, 1);
+        if s > fine_score {
+            fine_score = s;
+            fine = tau;
+        }
+    }
+    if fine <= lo || fine >= hi {
+        return None;
+    }
+    let (minus, plus) = (score(fine - 1, 1), score(fine + 1, 1));
+    let den = minus - 2.0 * fine_score + plus;
+    let offset = if den < 0.0 { (0.5 * (minus - plus) / den).clamp(-0.5, 0.5) } else { 0.0 };
+    let period = fine as f32 + offset;
+    // Il confronto copre [end - len - period, end]: la misura vale per il suo centro.
+    let center = end as f64 - 0.5 * (len as f64 + period as f64);
+    Some((period, fine_score, center))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1011,6 +1192,56 @@ mod tests {
         let est = yin.detect(&signal[signal.len() - len..]);
         assert!(est.voiced, "nessuna nota in uscita");
         hz_to_note(sr / est.period)
+    }
+
+    /// Il periodo (in campioni, con decimali) di `x` cercato tra `lo` e `hi`.
+    fn period_between(x: &[f32], lo: usize, hi: usize) -> f32 {
+        let n = x.len() - hi;
+        let score = |lag: usize| {
+            let (mut ab, mut aa, mut bb) = (0.0f32, 0.0f32, 0.0f32);
+            for i in 0..n {
+                ab += x[i] * x[i + lag];
+                aa += x[i] * x[i];
+                bb += x[i + lag] * x[i + lag];
+            }
+            ab / (aa * bb).sqrt().max(1e-12)
+        };
+        let best = (lo..=hi).max_by(|&a, &b| score(a).partial_cmp(&score(b)).unwrap()).unwrap();
+        let (m, c, p) = (score(best - 1), score(best), score(best + 1));
+        let den = m - 2.0 * c + p;
+        best as f32 + if den < 0.0 { 0.5 * (m - p) / den } else { 0.0 }
+    }
+
+    #[test]
+    fn low_latency_corrects_the_attack_right_away() {
+        // Nota che parte dopo il silenzio, crescente di 60 centesimi. HQ la
+        // corregge fin dal primo ciclo (guarda avanti); Low Latency deve
+        // arrivarci appena ha visto tre cicli, non dopo i ~25 ms che servono
+        // a riempire la finestra dell'analisi.
+        let sr = 48000.0;
+        let settings = CorrectionSettings {
+            notes: scale_notes(0, ScaleKind::Major),
+            retune_ms: 0.0,
+            ..Default::default()
+        };
+        let onset = 9600;
+        let mut input = vec![0.0f32; onset];
+        let mut vowel = synth::steady_vowel(note_to_hz(57.6), sr, 24000);
+        for (i, x) in vowel.iter_mut().take(96).enumerate() {
+            *x *= i as f32 / 96.0;
+        }
+        input.extend(vowel);
+        let mut corrector = PitchCorrector::new(sr, 1);
+        corrector.set_quality(false);
+        let out = process_mono(&mut corrector, &input, &settings);
+        // Dai 18 ai 30 ms dopo l'attacco (servono tre cicli, ~14 ms a 220 Hz;
+        // prima della misura sugli ultimi cicli qui si era ancora a 50 centesimi).
+        let from = onset + 864;
+        let segment = &out[from..from + 560];
+        let target = sr / note_to_hz(57.0);
+        let period = period_between(segment, (target * 0.9) as usize, (target * 1.1) as usize);
+        let cents = 1200.0 * (target / period).log2();
+        assert!(cents.abs() < 12.0, "attacco a {cents:.1} centesimi dal La (doveva essere gia' corretto)");
     }
 
     #[test]
