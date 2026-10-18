@@ -57,66 +57,6 @@ pub struct GrainPitch {
 
 /// Riporta un angolo in (-π, π].
 #[inline]
-/// La pendenza dell'inviluppo `env` (logaritmico, per riga), in `out`:
-/// l'inviluppo lisciato con la campana `kernel` su una griglia in ottave (`grid_bin`: la riga di ogni punto; `bin_pos`: il punto di ogni
-/// riga). `grid` e `smooth` sono memoria di lavoro. Non alloca memoria.
-fn smooth_tilt(env: &[f32], grid_bin: &[f32], bin_pos: &[f32], kernel: &[f32], grid: &mut [f32], smooth: &mut [f32], out: &mut [f32]) {
-    let last = env.len() - 1;
-    let at = |pos: f32| {
-        let i = (pos.floor() as usize).min(last.saturating_sub(1));
-        let f = (pos - i as f32).clamp(0.0, 1.0);
-        env[i] * (1.0 - f) + env[(i + 1).min(last)] * f
-    };
-    for (g, &b) in grid.iter_mut().zip(grid_bin) {
-        *g = at(b);
-    }
-    let n = grid.len() as isize;
-    let reach = kernel.len() as isize - 1;
-    for j in 0..n {
-        let (mut sum, mut weight) = (0.0f32, 0.0f32);
-        for d in -reach..=reach {
-            let i = j + d;
-            if i >= 0 && i < n {
-                let w = kernel[d.unsigned_abs()];
-                sum += w * grid[i as usize];
-                weight += w;
-            }
-        }
-        smooth[j as usize] = sum / weight;
-    }
-    let top = smooth.len() - 1;
-    for (k, o) in out.iter_mut().enumerate() {
-        let pos = bin_pos[k];
-        let i = (pos.floor() as usize).min(top.saturating_sub(1));
-        let f = (pos - i as f32).clamp(0.0, 1.0);
-        let tilt = smooth[i] * (1.0 - f) + smooth[(i + 1).min(top)] * f;
-        *o = tilt;
-    }
-}
-
-/// `src` lisciato con una campana larga `sigma` righe (deviazione standard),
-/// fatta di tre medie mobili di fila: costa uguale qualunque sia la
-/// larghezza. Ai bordi si ripete l'ultimo valore. Non alloca memoria.
-fn smooth_three_boxes(src: &[f32], work: &mut [f32], dst: &mut [f32], sigma: f32) {
-    // Tre medie mobili larghe 2r+1 hanno varianza 3 * ((2r+1)^2 - 1) / 12.
-    let r = ((sigma * sigma + 0.25).sqrt() - 0.5).round().max(0.0) as isize;
-    dst.copy_from_slice(src);
-    if r == 0 {
-        return;
-    }
-    let n = src.len() as isize;
-    let width = (2 * r + 1) as f32;
-    for _ in 0..3 {
-        work.copy_from_slice(dst);
-        let at = |i: isize| work[i.clamp(0, n - 1) as usize];
-        let mut sum: f32 = (-r..=r).map(at).sum();
-        for k in 0..n {
-            dst[k as usize] = sum / width;
-            sum += at(k + r + 1) - at(k - r);
-        }
-    }
-}
-
 fn wrap(x: f32) -> f32 {
     x - TAU * (x / TAU).round()
 }
@@ -215,22 +155,6 @@ pub struct PhaseVocoder {
     loudness_bins: (usize, usize),
     /// Formant: quanto il compenso di volume segue quello nuovo a ogni frame.
     formant_comp_follow: f32,
-    /// Formant: la pendenza della voce (vedi `FORMANT_TILT_OCTAVES`). Griglia
-    /// in ottave (posizione in righe di ogni punto), posizione sulla griglia
-    /// di ogni riga, campana della lisciatura, memoria di lavoro, pendenza
-    /// per ogni riga e quanto conta (0 sotto 3 kHz, 1 sopra 6 kHz).
-    tilt_grid_bin: Vec<f32>,
-    tilt_bin_pos: Vec<f32>,
-    tilt_kernel: Vec<f32>,
-    tilt_grid: Vec<f32>,
-    tilt_smooth: Vec<f32>,
-    formant_detail: Vec<f32>,
-    tilt_weight: Vec<f32>,
-    /// Formant: inviluppo lisciato anche in frequenza (vedi
-    /// `FORMANT_SMOOTH_HARMONICS`), memoria di lavoro e larghezza (righe).
-    formant_smooth: Vec<f32>,
-    formant_work: Vec<f32>,
-    formant_width: f32,
     peaks: Vec<usize>,
     peak_bin: Vec<f32>,
     frame_out: Vec<f32>,
@@ -326,30 +250,6 @@ impl PhaseVocoder {
     /// evidenti: con Formant in alto la voce scendeva sotto le "s", con
     /// Formant in basso le "z" e l'aria salivano di ~1,3 dB.)
     const FORMANT_LOUDNESS_S: f32 = 0.060;
-    /// Formant: si spostano le formanti (le risonanze della gola), non la
-    /// pendenza della voce (gli acuti che scendono di 6-12 dB per ottava, dalla
-    /// sorgente: le corde vocali). Spostando tutto l'inviluppo, con Formant in
-    /// alto la pendenza saliva insieme alle formanti e gli acuti uscivano piu'
-    /// forti del dovuto (sopra 6 kHz +3/+4 dB rispetto a una voce con le
-    /// formanti davvero spostate, a +6 semitoni: acuti taglienti); in basso
-    /// il contrario. La pendenza e' l'inviluppo lisciato in ottave (campana
-    /// larga `FORMANT_TILT_OCTAVES`, molto piu' delle formanti): resta dove
-    /// e', si sposta solo il resto.
-    const FORMANT_TILT_OCTAVES: f32 = 1.0;
-    /// Formant: l'inviluppo misurato ha piccole ondulazioni tra un'armonica e
-    /// l'altra (passa sopra le armoniche); quando la nota si muove, si
-    /// spostano con lei e il guadagno di Formant modulava il volume delle
-    /// armoniche: note che "vibravano" leggermente e acuti un po' sporchi
-    /// (sulla voce di prova il timbro tremava di ~0,2 dB in piu' ogni 5 ms).
-    /// Per Formant l'inviluppo si liscia anche in frequenza, su meta' della
-    /// distanza tra le armoniche (campana ~ tre medie mobili): le formanti
-    /// restano, le ondulazioni spariscono.
-    const FORMANT_SMOOTH_HARMONICS: f32 = 0.5;
-    /// Punti per ottava della griglia della pendenza, e da che frequenza parte.
-    const TILT_GRID_PER_OCTAVE: f32 = 24.0;
-    const TILT_GRID_FROM_HZ: f32 = 50.0;
-    /// La pendenza resta ferma da qui in su (sfumando tra le due frequenze).
-    const TILT_FROM_HZ: (f32, f32) = (3000.0, 6000.0);
 
     /// Il corpo della voce, dove agisce il compenso di volume di Formant.
     fn body(hz: f32) -> f32 {
@@ -397,11 +297,6 @@ impl PhaseVocoder {
                 let x = x * x * (3.0 - 2.0 * x);
                 follow(Self::FORMANT_SMOOTH_LOW_S + (Self::FORMANT_SMOOTH_HIGH_S - Self::FORMANT_SMOOTH_LOW_S) * x)
             })
-            .collect();
-        // Griglia in ottave per la pendenza della voce (fino a Nyquist).
-        let grid_points = ((half as f32 * bin_hz / Self::TILT_GRID_FROM_HZ).log2() * Self::TILT_GRID_PER_OCTAVE).floor() as usize + 1;
-        let tilt_grid_bin: Vec<f32> = (0..grid_points.max(2))
-            .map(|j| (Self::TILT_GRID_FROM_HZ * (j as f32 / Self::TILT_GRID_PER_OCTAVE).exp2() / bin_hz).min(half as f32))
             .collect();
         let formant_weight = (0..=half)
             .map(|k| {
@@ -467,30 +362,6 @@ impl PhaseVocoder {
                 .collect(),
             loudness_bins: (((60.0 / bin_hz) as usize).clamp(1, half), ((4500.0 / bin_hz) as usize).clamp(1, half)),
             formant_comp_follow: 1.0 - (-(hop as f32) / (Self::FORMANT_LOUDNESS_S * sample_rate)).exp(),
-            tilt_grid_bin: tilt_grid_bin.clone(),
-            tilt_bin_pos: (0..=half)
-                .map(|k| {
-                    let f = (k as f32 * bin_hz).max(Self::TILT_GRID_FROM_HZ);
-                    ((f / Self::TILT_GRID_FROM_HZ).log2() * Self::TILT_GRID_PER_OCTAVE).min((tilt_grid_bin.len() - 1) as f32)
-                })
-                .collect(),
-            tilt_kernel: {
-                let sigma = Self::FORMANT_TILT_OCTAVES * Self::TILT_GRID_PER_OCTAVE;
-                let reach = (3.0 * sigma).ceil() as usize;
-                (0..=reach).map(|i| (-0.5 * (i as f32 / sigma).powi(2)).exp()).collect()
-            },
-            tilt_grid: vec![0.0; tilt_grid_bin.len()],
-            tilt_smooth: vec![0.0; tilt_grid_bin.len()],
-            formant_detail: vec![0.0; half + 1],
-            formant_smooth: vec![0.0; half + 1],
-            formant_work: vec![0.0; half + 1],
-            formant_width: 0.0,
-            tilt_weight: (0..=half)
-                .map(|k| {
-                    let x = ((k as f32 * bin_hz - Self::TILT_FROM_HZ.0) / (Self::TILT_FROM_HZ.1 - Self::TILT_FROM_HZ.0)).clamp(0.0, 1.0);
-                    x * x * (3.0 - 2.0 * x)
-                })
-                .collect(),
             peaks: Vec::with_capacity(half),
             peak_bin: Vec::with_capacity(half),
             frame_out: vec![0.0; max_window],
@@ -725,12 +596,6 @@ impl PhaseVocoder {
         }
     }
 
-    /// Formant: larghezza della lisciatura in frequenza per la voce di periodo
-    /// `period` (vedi `FORMANT_SMOOTH_HARMONICS`).
-    fn set_formant_width(&mut self, period: f32) {
-        self.formant_width = Self::FORMANT_SMOOTH_HARMONICS * self.n_fft as f32 / period.max(2.0);
-    }
-
     /// Formant: guadagno per ogni riga in uscita che sposta le formanti
     /// (l'inviluppo letto `formant` volte piu' in basso: >1 voce piu' piccola,
     /// <1 piu' grande). Usa l'inviluppo lisciato nel tempo, sfuma sopra 7 kHz
@@ -767,34 +632,16 @@ impl PhaseVocoder {
     /// `None` usa quello delle note appena passate.
     fn formant_gain_from_env(&mut self, ch: usize, formant: f32, amount: f32, update: Option<bool>) {
         let half = self.half;
-        // La pendenza della voce (`FORMANT_TILT_OCTAVES`).
-        smooth_tilt(
-            &self.states[ch].formant_env,
-            &self.tilt_grid_bin,
-            &self.tilt_bin_pos,
-            &self.tilt_kernel,
-            &mut self.tilt_grid,
-            &mut self.tilt_smooth,
-            &mut self.formant_detail,
-        );
-        smooth_three_boxes(&self.states[ch].formant_env, &mut self.formant_work, &mut self.formant_smooth, self.formant_width);
-        let env = &self.formant_smooth;
-        let tilt = &self.formant_detail;
-        let read = |curve: &[f32], src: f32| {
-            let i = src.floor() as usize;
-            if i >= half {
-                curve[half]
-            } else {
-                let f = src - i as f32;
-                curve[i] * (1.0 - f) + curve[i + 1] * f
-            }
-        };
+        let env = &self.states[ch].formant_env;
         for k in 0..=half {
             let src = k as f32 / formant;
-            // Sopra ~3 kHz la pendenza resta dov'e' (`FORMANT_TILT_OCTAVES`);
-            // sotto, dove le prime formanti sono larghe quanto la lisciatura,
-            // si sposta tutto l'inviluppo come prima.
-            let moved = read(env, src) - self.tilt_weight[k] * (read(tilt, src) - tilt[k]);
+            let i = src.floor() as usize;
+            let moved = if i >= half {
+                env[half]
+            } else {
+                let f = src - i as f32;
+                env[i] * (1.0 - f) + env[i + 1] * f
+            };
             let mut gain = (moved - env[k]) * self.formant_weight[k];
             if gain > 0.0 {
                 gain = Self::FORMANT_MAX_BOOST * (gain / Self::FORMANT_MAX_BOOST).tanh();
@@ -875,7 +722,6 @@ impl PhaseVocoder {
         let state = &mut self.states[0];
         state.formant_age = state.formant_age.saturating_add(1);
         if (formant - 1.0).abs() > 1e-5 {
-            self.set_formant_width(period);
             self.formant_shift(0, formant.clamp(0.5, 2.0));
             for k in 0..=half {
                 self.timbre[k] += self.formant_gain[k];
@@ -994,7 +840,6 @@ impl PhaseVocoder {
             if need_env {
                 self.spectral_envelope(pitch.period);
                 if shift_formants {
-                    self.set_formant_width(pitch.period);
                     self.formant_shift(ch, formant);
                 }
             }
@@ -1249,11 +1094,7 @@ mod tests {
             if semitones > 0.0 {
                 assert!(change[1] > 6.0, "{semitones:+}: formanti non spostate in alto {change:?}");
             } else {
-                // (In media sulla zona delle formanti, 0,8-3,2 kHz: con
-                // l'inviluppo lisciato in frequenza il calo si distribuisce
-                // diversamente tra le due bande, -3,5 e -0,9 dB invece di
-                // -2,4 e -1,8, ma la media resta quella.)
-                assert!(0.5 * (change[1] + change[2]) < -1.5, "{semitones:+}: formanti non spostate in basso {change:?}");
+                assert!(change[1] < -1.5 && change[2] < -1.5, "{semitones:+}: formanti non spostate in basso {change:?}");
             }
             // ...l'aria sopra i 14 kHz resta com'era...
             assert!(change[3].abs() < 0.5, "{semitones:+}: aria cambiata di {:.1} dB", change[3]);
