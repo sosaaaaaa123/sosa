@@ -43,6 +43,8 @@ impl ChromaAnalyzer {
     const HIGHEST_HZ: f32 = 5000.0;
 
     pub fn new(sample_rate: f32) -> Self {
+        // Almeno 8 kHz, come il correttore (vedi `PitchCorrector::engine_rate`).
+        let sample_rate = crate::corrector::PitchCorrector::engine_rate(sample_rate);
         // ~170 ms di finestra: abbastanza per separare due semitoni vicini
         // anche sulle note basse (a 100 Hz distano 6 Hz).
         let n = ((sample_rate * 0.17) as usize).next_power_of_two().max(1024);

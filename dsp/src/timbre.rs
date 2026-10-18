@@ -85,7 +85,7 @@ impl TimbreFilter {
         let channels = channels.clamp(1, MAX_CHANNELS);
         let analyzer = PhaseVocoder::new(1, sample_rate);
         let n = analyzer.fft_len();
-        let taps = ((sample_rate * Self::TAPS_S) as usize).clamp(64, n / 4);
+        let taps = ((sample_rate * Self::TAPS_S) as usize).max(64).min((n / 4).max(8));
         let input_len = n.next_power_of_two();
         let history_len = taps.next_power_of_two();
         let hop = hop_of(sample_rate);

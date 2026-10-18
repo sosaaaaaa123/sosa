@@ -265,6 +265,11 @@ impl PitchCorrector {
     /// Crea il correttore. Tutta la memoria viene allocata qui, mai durante
     /// l'elaborazione audio.
     pub fn new(sample_rate: f32, channels: usize) -> Self {
+        // Il motore lavora almeno a 8 kHz: i validatori dei plugin provano
+        // anche frequenze di campionamento assurde (2 kHz o meno), dove le
+        // finestre e i filtri diventerebbero di pochi campioni (prima: crash
+        // all'avvio). Li' l'effetto non ha senso, ma il plugin non si ferma.
+        let sample_rate = Self::engine_rate(sample_rate);
         let channels = channels.clamp(1, MAX_CHANNELS);
         let detector = YinDetector::new(sample_rate, VoiceType::LOWEST_SUPPORTED_HZ);
         let vocoder = PhaseVocoder::new(channels, sample_rate);
@@ -319,6 +324,16 @@ impl PitchCorrector {
         corrector.set_quality(false);
         corrector.set_voice(VoiceType::AltoTenor);
         corrector
+    }
+
+    /// La frequenza di campionamento con cui lavora il motore: quella vera,
+    /// ma non meno di 8 kHz (vedi [`PitchCorrector::new`]).
+    pub fn engine_rate(sample_rate: f32) -> f32 {
+        if sample_rate.is_finite() {
+            sample_rate.max(8000.0)
+        } else {
+            48000.0
+        }
     }
 
     /// Modalita' di qualita':
@@ -1218,6 +1233,25 @@ mod tests {
         let (m, c, p) = (score(best - 1), score(best), score(best + 1));
         let den = m - 2.0 * c + p;
         best as f32 + if den < 0.0 { 0.5 * (m - p) / den } else { 0.0 }
+    }
+
+    #[test]
+    fn any_sample_rate_works() {
+        // I validatori dei plugin provano anche frequenze assurde: il motore
+        // non deve mai fermarsi (prima: crash all'avvio a 2 kHz o meno).
+        let settings = CorrectionSettings::default();
+        for sr in [0.5f32, 1.0, 1000.0, 2000.0, 4000.0, 768000.0] {
+            let mut corrector = PitchCorrector::new(sr, 2);
+            for hq in [false, true] {
+                corrector.set_quality(hq);
+                for i in 0..3000 {
+                    let x = (i as f32 * 0.05).sin() * 0.3;
+                    let mut frame = [x, x];
+                    corrector.process_frame(&mut frame, &settings);
+                    assert!(frame.iter().all(|v| v.is_finite()), "{sr} Hz: uscita non valida");
+                }
+            }
+        }
     }
 
     #[test]

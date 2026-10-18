@@ -178,10 +178,12 @@ impl Plugin for SosaTune {
         self.bypass_mix = if self.params.bypass.value() { 1.0 } else { 0.0 };
         // Linea di ritardo per la voce originale: basta per la latenza piu'
         // lunga del motore (HQ con voce grave, sotto i 100 ms).
-        self.dry_capacity = (self.sample_rate * 0.25).ceil() as usize + 1;
+        // (Almeno la latenza dichiarata: a frequenze di campionamento
+        // assurde il motore lavora a 8 kHz, vedi `PitchCorrector::engine_rate`.)
+        self.reported_latency = Self::total_latency(&corrector);
+        self.dry_capacity = ((self.sample_rate * 0.25).ceil() as usize + 1).max(self.reported_latency as usize + 1);
         self.dry_delay = vec![0.0; self.dry_capacity * MAX_CHANNELS];
         self.dry_pos = 0;
-        self.reported_latency = Self::total_latency(&corrector);
         context.set_latency_samples(self.reported_latency);
         self.corrector = Some(corrector);
         self.publish_timing();
