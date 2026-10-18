@@ -379,6 +379,39 @@ fn voice_between_two_scale_notes_does_not_warble() {
     assert!(arrived < 0.5 + 0.07, "il Re arriva dopo {:.0} ms", (arrived - 0.5) * 1000.0);
 }
 
+#[test]
+fn quick_ornaments_are_caught_with_low_retune() {
+    // Retune 10 (effetto autotune): abbellimenti brevi (70 ms) di un
+    // semitono, Mi-Fa-Mi-Fa in Do maggiore, cantati senza arrivare fino in
+    // fondo (il Fa a 64,75). Prima, per cambiare nota la voce doveva restare
+    // 25-90 ms dalla parte nuova: le note brevi restavano quasi tutte sul Mi.
+    use sosatune_dsp::scale::{scale_notes, ScaleKind};
+    let settings = CorrectionSettings { notes: scale_notes(0, ScaleKind::Major), retune_ms: 10.0, ..CorrectionSettings::default() };
+    let short = 0.07;
+    let starts = [0.40, 0.54, 0.68];
+    let input = voice(1.0, |t| {
+        if starts.iter().any(|&s| t >= s && t < s + short) {
+            64.75
+        } else {
+            64.0
+        }
+    });
+    let (_, reports) = run(&input, &settings);
+    let share = |from: f32, to: f32, note: f32| {
+        let picked: Vec<f32> =
+            reports.iter().filter(|(t, r)| *t >= from && *t < to && r.voiced).map(|(_, r)| r.target_note).collect();
+        picked.iter().filter(|&&n| (n - note).abs() < 0.01).count() as f32 / picked.len().max(1) as f32
+    };
+    for &s in &starts {
+        // Durante la nota (dopo il primo ciclo) la scelta e' il Fa...
+        let on_f = share(s + 0.01, s + short, 65.0);
+        assert!(on_f >= 0.7, "abbellimento a {s:.2} s: sul Fa solo il {:.0}% del tempo", on_f * 100.0);
+        // ...e subito dopo si torna sul Mi (prima ci restava 20 ms di troppo).
+        let back = share(s + short + 0.015, s + short + 0.05, 64.0);
+        assert!(back >= 0.7, "dopo l'abbellimento a {s:.2} s: sul Mi solo il {:.0}% del tempo", back * 100.0);
+    }
+}
+
 /// Intonazione (nota MIDI, riferita a 440 Hz) del pezzo `[from, to)` di un segnale.
 fn measured_note(signal: &[f32], from: f32, to: f32) -> f32 {
     let mut yin = YinDetector::new(SR, 70.0);

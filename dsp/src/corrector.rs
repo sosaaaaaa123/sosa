@@ -664,14 +664,31 @@ impl PitchCorrector {
             // ogni volta la correzione salterebbe avanti e indietro di un tono
             // (voce che gracchia). Piu' la scelta e' incerta, piu' a lungo la
             // voce deve restare dalla parte nuova prima di cambiare.
+            // Con Retune basso (effetto autotune), quando la voce va
+            // chiaramente sulla nota nuova, l'attesa sparisce come a Retune 0:
+            // su una nota breve (abbellimenti, passaggi veloci) 25-90
+            // ms di attesa erano quasi tutta la nota, che restava mancata
+            // (note sotto i 90 ms mancate: 11-20% con Retune 10, 4-8% con
+            // Retune 0). Cresce fino a quella piena a 40 ms.
+            let wait = smoothstep(AWAY_FROM_MS.0, AWAY_FROM_MS.1, settings.retune_ms);
             let away_needed = match (current, proposal) {
                 _ if robotic || classic => 0.0,
                 (Some(c), Some(p)) if p != c => {
                     let margin = (note - c as f32).abs() - (note - p as f32).abs();
                     let decisive = ((margin - NoteSnapper::hysteresis(c, p)) / 0.6).clamp(0.0, 1.0);
-                    0.09 + (0.025 - 0.09) * decisive
+                    if (c - p).abs() >= 2 {
+                        // Due note a un tono (con una nota fuori scala in mezzo):
+                        // con la voce in bilico tra le due l'attesa lunga resta,
+                        // altrimenti la correzione salta avanti e indietro di un
+                        // tono (gracchia); sparisce solo se la voce va
+                        // chiaramente sulla nota nuova.
+                        0.09 + (0.025 * wait - 0.09) * decisive
+                    } else {
+                        // A un semitono non c'e' un "in mezzo" ambiguo.
+                        (0.09 + (0.025 - 0.09) * decisive) * wait
+                    }
                 }
-                _ => 0.025,
+                _ => 0.025 * wait,
             };
             let target = match (current, proposal) {
                 (Some(c), Some(p)) if p != c && !fresh && !young => {
@@ -1042,6 +1059,10 @@ fn periodicity(buf: &[f32], mask: usize, newest: u64, t: f64, p0: f32) -> Option
     let offset = if den < 0.0 { (0.5 * (minus - plus) / den).clamp(-0.5, 0.5) } else { 0.0 };
     Some((fine as f32 + offset, fine_score))
 }
+
+/// Attesa prima di cambiare nota dentro una frase: nulla fino a questo Retune
+/// Speed (ms), piena da questo in su.
+const AWAY_FROM_MS: (f32, f32) = (10.0, 40.0);
 
 /// Somiglianza minima tra gli ultimi due cicli perche' un attacco valga come nota.
 const ONSET_SCORE: f32 = 0.9;
