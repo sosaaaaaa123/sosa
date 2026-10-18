@@ -456,6 +456,64 @@ mod tests {
         assert_eq!(last_value(&changes, params.custom.note(0).as_ptr()), Some(1.0), "Do aggiunto");
         assert_eq!(last_value(&changes, params.custom.note(9).as_ptr()), Some(1.0), "La resta");
         assert_eq!(last_value(&changes, params.custom.note(10).as_ptr()), Some(0.0), "La# fuori");
+        // Scelta a mano: AutoKey (acceso nell'anteprima) si spegne, altrimenti
+        // un secondo dopo rimetterebbe la sua tonalita'.
+        assert!(!params.autokey.load(Ordering::Relaxed), "AutoKey doveva spegnersi");
+    }
+
+    #[test]
+    fn excluding_a_note_keeps_key_and_scale() {
+        let params = SosaTuneParams::preview();
+        // La maggiore: il Si (11) e' nella scala. Cliccandolo si esclude, ma
+        // tonalita' e scala restano La maggiore (niente "Custom").
+        let changes = run(&params, click(layout::note(11)));
+        assert_eq!(last_value(&changes, params.excluded.note(11).as_ptr()), Some(1.0), "Si escluso: {changes:?}");
+        assert_eq!(last_value(&changes, params.scale.as_ptr()), None, "la scala non deve cambiare: {changes:?}");
+        assert_eq!(last_value(&changes, params.key.as_ptr()), None, "la tonalita' non deve cambiare: {changes:?}");
+        assert!(!params.autokey.load(Ordering::Relaxed), "AutoKey doveva spegnersi");
+    }
+
+    #[test]
+    fn excluded_notes_are_left_out_of_the_scale() {
+        let mut params = SosaTuneParams::preview();
+        params.excluded.b = BoolParam::new("Escludi Si", true);
+        let notes = params.active_notes();
+        assert!(!notes[11], "il Si escluso non va corretto");
+        assert!(notes[9] && notes[1], "le altre note di La maggiore restano");
+        assert!(params.scale_notes()[11], "la scala resta La maggiore");
+        // Tutte escluse: si torna alla scala (una scala vuota non correggerebbe niente).
+        for pc in 0..12 {
+            *excluded_mut(&mut params.excluded, pc) = BoolParam::new("x", true);
+        }
+        assert_eq!(params.active_notes(), params.scale_notes());
+    }
+
+    fn excluded_mut(e: &mut crate::params::ExcludedNotes, pc: usize) -> &mut BoolParam {
+        match pc {
+            0 => &mut e.c,
+            1 => &mut e.c_sharp,
+            2 => &mut e.d,
+            3 => &mut e.d_sharp,
+            4 => &mut e.e,
+            5 => &mut e.f,
+            6 => &mut e.f_sharp,
+            7 => &mut e.g,
+            8 => &mut e.g_sharp,
+            9 => &mut e.a,
+            10 => &mut e.a_sharp,
+            _ => &mut e.b,
+        }
+    }
+
+    #[test]
+    fn choosing_a_scale_turns_autokey_off() {
+        let params = SosaTuneParams::preview();
+        let mut frames = click(layout::key_field());
+        frames.extend(click(layout::scale_item(2)));
+        let changes = run(&params, frames);
+        let harmonic = params.scale.preview_normalized(ScaleChoice::HarmonicMinor);
+        assert_eq!(last_value(&changes, params.scale.as_ptr()), Some(harmonic), "{changes:?}");
+        assert!(!params.autokey.load(Ordering::Relaxed), "AutoKey doveva spegnersi");
     }
 
     #[test]

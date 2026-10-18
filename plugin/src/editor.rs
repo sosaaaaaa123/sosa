@@ -413,14 +413,54 @@ fn drag_param<P: Param>(ui: &Ui, setter: &ParamSetter, param: &P, hit: Rect, id:
     response
 }
 
-fn toggle_note(params: &SosaTuneParams, setter: &ParamSetter, pc: usize, notes: &[bool; 12]) {
-    if params.scale.value() != ScaleChoice::Custom {
-        for (i, &on) in notes.iter().enumerate() {
-            set_param(setter, params.custom.note(i), on);
+/// Edit Notes: clic su una nota.
+/// - Nota della scala: la si esclude (o la si riammette). Tonalita' e scala
+///   restano quelle: G Minor senza il Fa resta "G Minor" (con le esclusioni
+///   indicate a parte), non diventa "Custom".
+/// - Nota fuori dalla scala: la si aggiunge, e allora la scala diventa
+///   personalizzata (con le note che si sentivano fino a quel momento).
+/// Toccare le note e' una scelta manuale: AutoKey si spegne, altrimenti dopo
+/// un secondo rimetterebbe la sua tonalita' e la nota esclusa tornerebbe.
+fn toggle_note(params: &SosaTuneParams, setter: &ParamSetter, pc: usize, state: &mut GuiState, now: f64) {
+    let base = params.scale_notes();
+    let excluded = params.excluded.mask();
+    if base[pc] {
+        let active = (0..12).filter(|&i| base[i] && !excluded[i]).count();
+        if !excluded[pc] && active <= 1 {
+            // L'ultima nota rimasta: una scala vuota non correggerebbe niente.
+            state.toast = Some(("Serve almeno una nota nella scala".to_owned(), now));
+            return;
         }
-        set_param(setter, &params.scale, ScaleChoice::Custom);
+        set_param(setter, params.excluded.note(pc), !excluded[pc]);
+    } else {
+        let notes = params.active_notes();
+        if params.scale.value() != ScaleChoice::Custom {
+            for (i, &on) in notes.iter().enumerate() {
+                set_param(setter, params.custom.note(i), on);
+            }
+            set_param(setter, &params.scale, ScaleChoice::Custom);
+        }
+        clear_excluded(params, setter);
+        set_param(setter, params.custom.note(pc), true);
     }
-    set_param(setter, params.custom.note(pc), !notes[pc]);
+    manual_key_choice(params, state, now);
+}
+
+/// Toglie tutte le esclusioni di Edit Notes (nuova tonalita' o nuova scala).
+fn clear_excluded(params: &SosaTuneParams, setter: &ParamSetter) {
+    for pc in 0..12 {
+        if params.excluded.note(pc).value() {
+            set_param(setter, params.excluded.note(pc), false);
+        }
+    }
+}
+
+/// Una scelta a mano di tonalita', scala o note: AutoKey si spegne, cosi' non
+/// la sovrascrive un secondo dopo con la tonalita' che ha riconosciuto.
+fn manual_key_choice(params: &SosaTuneParams, state: &mut GuiState, now: f64) {
+    if params.autokey.swap(false, Ordering::Relaxed) {
+        state.toast = Some(("AutoKey spento: tonalità scelta a mano".to_owned(), now));
+    }
 }
 
 fn apply_preset(params: &SosaTuneParams, setter: &ParamSetter, index: usize) {
@@ -463,10 +503,19 @@ fn voice_label(voice: VoiceChoice) -> &'static str {
 }
 
 fn key_scale_label(params: &SosaTuneParams) -> String {
-    match params.scale.value() {
+    let name = match params.scale.value() {
         ScaleChoice::Chromatic => "Chromatic".to_owned(),
         ScaleChoice::Custom => "Custom".to_owned(),
         scale => format!("{} {}", KEY_NAMES[params.key.value().semitone() as usize], scale_label(scale)),
+    };
+    // Note della scala escluse con Edit Notes: "G Minor −1".
+    let base = params.scale_notes();
+    let active = params.active_notes();
+    let removed = (0..12).filter(|&pc| base[pc] && !active[pc]).count();
+    if removed > 0 {
+        format!("{name} -{removed}")
+    } else {
+        name
     }
 }
 
@@ -732,7 +781,7 @@ fn draw(ctx: &egui::Context, params: &SosaTuneParams, display: &PitchDisplay, se
         stage(ui, &painter, g, params, display, setter, state, now);
         ab_buttons(ui, &painter, g, params, setter, state, now);
         side_buttons(ui, &painter, g, params, setter, state, now);
-        edit_notes(ui, &painter, g, params, display, setter, state);
+        edit_notes(ui, &painter, g, params, display, setter, state, now);
         bottom_bar(ui, &painter, g, params, setter, state);
         toast(&painter, g, state, now);
         resize_grip(ui, &painter, screen, params);
@@ -1866,9 +1915,10 @@ fn note_center(g: Geo, pc: usize) -> Pos2 {
     g.p(175.0 + pc as f32 * 99.36, 776.0)
 }
 
-fn edit_notes(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &GuiState) {
+fn edit_notes(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter, state: &mut GuiState, now: f64) {
     txt(painter, g.p(723.0, 713.0), Align2::CENTER_CENTER, "Edit Notes", font(25.0, Weight::Regular), TEXT);
     let notes = params.active_notes();
+    let base = params.scale_notes();
     let current = state.shown_note.filter(|_| display.latest().is_some_and(|p| p.input.is_finite()) && state.note_light > 0.9);
     let r = g.d(38.0);
     for pc in 0..12 {
@@ -1877,9 +1927,11 @@ fn edit_notes(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, displ
         let response = ui
             .interact(hit, Id::new(("nota", pc)), Sense::click())
             .on_hover_text(if notes[pc] {
-                "Nota della scala: clic per escluderla (la scala diventa personalizzata)"
+                "Nota della scala: clic per escluderla (tonalità e scala restano quelle)"
+            } else if base[pc] {
+                "Nota della scala esclusa: clic per riammetterla"
             } else {
-                "Nota esclusa: clic per includerla (la scala diventa personalizzata)"
+                "Nota fuori dalla scala: clic per aggiungerla (la scala diventa personalizzata)"
             });
         let is_current = current == Some(pc);
         if is_current {
@@ -1894,11 +1946,17 @@ fn edit_notes(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, displ
             painter.circle_filled(center, r, Color32::from_rgb(0x04, 0x0b, 0x13));
             let edge = if response.hovered() { Color32::from_rgb(0x3c, 0x4c, 0x60) } else { Color32::from_rgb(0x1e, 0x29, 0x37) };
             painter.circle_stroke(center, r, Stroke::new(g.d(1.6), edge));
+            if base[pc] {
+                // Nota della scala esclusa a mano: anello blu spento e una barra.
+                painter.circle_stroke(center, r, Stroke::new(g.d(1.6), Color32::from_rgb(0x24, 0x4a, 0x6c)));
+                let d = Vec2::new(r * 0.62, -r * 0.62);
+                painter.line_segment([center - d, center + d], Stroke::new(g.d(1.6), Color32::from_rgb(0x2e, 0x5a, 0x80)));
+            }
         }
         let color = if notes[pc] || is_current { TEXT } else { Color32::from_rgb(0xc8, 0xd0, 0xdc) };
         note_name(painter, center, pc, 26.0, Weight::Medium, color);
         if response.clicked() {
-            toggle_note(params, setter, pc, &notes);
+            toggle_note(params, setter, pc, state, now);
         }
     }
 }
@@ -2211,6 +2269,8 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
                             if matches!(params.scale.value(), ScaleChoice::Chromatic | ScaleChoice::Custom) {
                                 set_param(setter, &params.scale, ScaleChoice::Major);
                             }
+                            clear_excluded(params, setter);
+                            manual_key_choice(params, state, now);
                         }
                     }
                     painter.text(pos + Vec2::new(g.d(20.0), g.d(176.0)), Align2::LEFT_CENTER, "Scale", font(19.0, Weight::Regular), TEXT_DIM);
@@ -2232,6 +2292,8 @@ fn menus(ctx: &egui::Context, g: Geo, params: &SosaTuneParams, setter: &ParamSet
                         );
                         if menu_item(ui, &painter, rect, Id::new(("scala", i)), scale_label(scale), params.scale.value() == scale, 21.0) {
                             set_param(setter, &params.scale, scale);
+                            clear_excluded(params, setter);
+                            manual_key_choice(params, state, now);
                             close = true;
                         }
                     }
@@ -2489,6 +2551,7 @@ fn autokey(params: &SosaTuneParams, display: &PitchDisplay, setter: &ParamSetter
     if params.key.value() != key || params.scale.value() != scale {
         set_param(setter, &params.key, key);
         set_param(setter, &params.scale, scale);
+        clear_excluded(params, setter);
         state.autokey_found = Some((format!("{} {} ({from})", KEY_NAMES[tonic], scale_label(scale)), now));
         let from_where = match source {
             KeySource::Voice => "dalla voce",

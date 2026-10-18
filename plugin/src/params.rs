@@ -242,6 +242,88 @@ impl CustomNotes {
     }
 }
 
+/// Le note escluse a mano con Edit Notes, sopra la scala scelta: la voce non
+/// ci va, ma tonalita' e scala restano quelle (G Minor resta G Minor, senza
+/// diventare "Custom"). Si azzerano quando si sceglie un'altra tonalita' o
+/// un'altra scala.
+#[derive(Params)]
+pub struct ExcludedNotes {
+    #[id = "skip-c"]
+    pub c: BoolParam,
+    #[id = "skip-cs"]
+    pub c_sharp: BoolParam,
+    #[id = "skip-d"]
+    pub d: BoolParam,
+    #[id = "skip-ds"]
+    pub d_sharp: BoolParam,
+    #[id = "skip-e"]
+    pub e: BoolParam,
+    #[id = "skip-f"]
+    pub f: BoolParam,
+    #[id = "skip-fs"]
+    pub f_sharp: BoolParam,
+    #[id = "skip-g"]
+    pub g: BoolParam,
+    #[id = "skip-gs"]
+    pub g_sharp: BoolParam,
+    #[id = "skip-a"]
+    pub a: BoolParam,
+    #[id = "skip-as"]
+    pub a_sharp: BoolParam,
+    #[id = "skip-b"]
+    pub b: BoolParam,
+}
+
+impl Default for ExcludedNotes {
+    fn default() -> Self {
+        Self::with_defaults(&HashMap::new())
+    }
+}
+
+impl ExcludedNotes {
+    fn with_defaults(saved: &HashMap<String, f32>) -> Self {
+        let note = |name: &str, id: &str| {
+            BoolParam::new(format!("Escludi {name}"), saved.get(&format!("skip-{id}")).is_some_and(|&v| v >= 0.5))
+        };
+        Self {
+            c: note("Do", "c"),
+            c_sharp: note("Do#", "cs"),
+            d: note("Re", "d"),
+            d_sharp: note("Re#", "ds"),
+            e: note("Mi", "e"),
+            f: note("Fa", "f"),
+            f_sharp: note("Fa#", "fs"),
+            g: note("Sol", "g"),
+            g_sharp: note("Sol#", "gs"),
+            a: note("La", "a"),
+            a_sharp: note("La#", "as"),
+            b: note("Si", "b"),
+        }
+    }
+
+    /// Il parametro della nota `pitch_class` (0 = Do ... 11 = Si).
+    pub fn note(&self, pitch_class: usize) -> &BoolParam {
+        match pitch_class % 12 {
+            0 => &self.c,
+            1 => &self.c_sharp,
+            2 => &self.d,
+            3 => &self.d_sharp,
+            4 => &self.e,
+            5 => &self.f,
+            6 => &self.f_sharp,
+            7 => &self.g,
+            8 => &self.g_sharp,
+            9 => &self.a,
+            10 => &self.a_sharp,
+            _ => &self.b,
+        }
+    }
+
+    pub fn mask(&self) -> [bool; 12] {
+        std::array::from_fn(|pc| self.note(pc).value())
+    }
+}
+
 #[derive(Params)]
 pub struct SosaTuneParams {
     /// Dimensione della finestra, salvata insieme al progetto. (La chiave
@@ -327,6 +409,9 @@ pub struct SosaTuneParams {
 
     #[nested(group = "Scala personalizzata")]
     pub custom: CustomNotes,
+
+    #[nested(group = "Note escluse")]
+    pub excluded: ExcludedNotes,
 }
 
 impl Default for SosaTuneParams {
@@ -379,6 +464,7 @@ impl SosaTuneParams {
             quality: EnumParam::new("Mode", pick(saved, "quality", QualityChoice::Hq)),
             style: EnumParam::new("Style", pick(saved, "style", StyleChoice::Modern)),
             custom: CustomNotes::with_defaults(saved),
+            excluded: ExcludedNotes::with_defaults(saved),
             preset: Arc::new(AtomicUsize::new(0)),
             autokey: Arc::new(AtomicBool::new(false)),
             ab_slot: Arc::new(AtomicUsize::new(0)),
@@ -446,11 +532,25 @@ impl SosaTuneParams {
         }
     }
 
-    /// Le note ammesse in questo momento (dipendono da tonalita' e scala).
-    pub fn active_notes(&self) -> [bool; 12] {
+    /// Le note della tonalita' e della scala scelte (prima delle esclusioni).
+    pub fn scale_notes(&self) -> [bool; 12] {
         match self.scale.value().kind() {
             Some(kind) => scale_notes(self.key.value().semitone(), kind),
             None => self.custom.mask(),
+        }
+    }
+
+    /// Le note ammesse in questo momento: quelle della scala, tolte quelle
+    /// escluse con Edit Notes. Se fossero escluse tutte, valgono quelle
+    /// della scala (una scala vuota non correggerebbe niente).
+    pub fn active_notes(&self) -> [bool; 12] {
+        let base = self.scale_notes();
+        let excluded = self.excluded.mask();
+        let notes: [bool; 12] = std::array::from_fn(|pc| base[pc] && !excluded[pc]);
+        if notes.iter().any(|&on| on) {
+            notes
+        } else {
+            base
         }
     }
 }

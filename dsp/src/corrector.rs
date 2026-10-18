@@ -488,10 +488,18 @@ impl PitchCorrector {
             let here = newest as f64 - 1.4 * latest_period as f64 - 3.0;
             self.zero.process(&input[..channels], &mut output[..channels], |_| {
                 let mut g = pitch_between(latest_center, here);
-                if g.voiced {
+                // Quanto la correzione "inchioda" la voce alla nota (1 con
+                // Retune 0, 0 con correzione morbida, Quantita' 0 o nota libera).
+                let lock = lookup(history, latest_center, edge).map_or(0.0, |(_, lock)| lock);
+                if g.voiced && lock > 0.0 {
                     // Tendenza: di quanto si e' mossa la voce nell'ultimo ciclo,
                     // proiettata fino a ora (sulla voce di prova: intonazione in
-                    // uscita mediana 3,0 centesimi invece di 4,8).
+                    // uscita mediana 3,0 centesimi invece di 4,8). Serve solo
+                    // quando la voce e' inchiodata alla nota, e quanto lo e':
+                    // applicata sempre, con la correzione morbida o spenta
+                    // inseguiva i movimenti naturali della voce e le note
+                    // "vibravano" leggermente (uscita diversa dall'ingresso
+                    // anche con Quantita' 0 e Formant 0).
                     let p = g.period;
                     if let (Some((a, sa)), Some((b, sb))) = (
                         periodicity(mono, mono_mask, newest, here - p as f64, p),
@@ -500,7 +508,7 @@ impl PitchCorrector {
                         if sa >= 0.85 && sb >= 0.85 {
                             let slope = 12.0 * (a / b).log2() / p; // semitoni per campione
                             let ahead = (newest as f64 - here) as f32;
-                            let drift = (slope * ahead).clamp(-0.5, 0.5);
+                            let drift = (slope * ahead).clamp(-0.5, 0.5) * lock;
                             g.ratio *= 2f32.powf(-drift / 12.0);
                         }
                     }
@@ -1210,6 +1218,27 @@ mod tests {
         let (m, c, p) = (score(best - 1), score(best), score(best + 1));
         let den = m - 2.0 * c + p;
         best as f32 + if den < 0.0 { 0.5 * (m - p) / den } else { 0.0 }
+    }
+
+    #[test]
+    fn low_latency_without_correction_is_transparent() {
+        // Quantita' 0 e Formant 0: Low Latency non deve toccare la voce, ne'
+        // la nota ne' il timbro, anche con il vibrato. (La "tendenza" della
+        // misura ciclo per ciclo, applicata sempre, inseguiva i movimenti
+        // naturali della voce: note che vibravano leggermente.)
+        let sr = 48000.0;
+        let n = 48000;
+        let freq: Vec<f32> = (0..n)
+            .map(|i| note_to_hz(57.3) * 2f32.powf(0.4 / 12.0 * (std::f32::consts::TAU * 5.5 * i as f32 / sr).sin()))
+            .collect();
+        let input = synth::sing_curve(&freq, &vec![1.0; n], sr);
+        let settings = CorrectionSettings { amount: 0.0, ..Default::default() };
+        let mut corrector = PitchCorrector::new(sr, 1);
+        corrector.set_quality(false);
+        let out = process_mono(&mut corrector, &input, &settings);
+        // La testina resta 3 campioni indietro (serve all'interpolazione).
+        let worst = (4800..n).map(|i| (out[i] - input[i - 3]).abs()).fold(0.0f32, f32::max);
+        assert!(worst < 1e-4, "uscita diversa dall'ingresso di {worst}");
     }
 
     #[test]
