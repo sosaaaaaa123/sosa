@@ -581,6 +581,23 @@ impl PitchCorrector {
         // lavorano poi come in HQ, ma sulla voce di ~1 periodo fa invece che
         // di 20 ms fa. Nessun effetto su HQ.
         let mut recent_center = None;
+        // Low Latency, nota appena partita: YIN guarda ~25 ms e subito dopo
+        // l'attacco (la sua finestra contiene ancora il silenzio) puo' dire
+        // "niente nota" per un'analisi; la nota e' troppo giovane per essere
+        // "tenuta" e la correzione si interrompeva per 5 ms. Se gli ultimi
+        // cicli appena arrivati sono chiaramente la stessa nota, la nota
+        // continua. (Solo nei primi 30 ms: piu' avanti, sui punti ruvidi, la
+        // nota che ballava faceva saltare la correzione tra due note.)
+        let young_runs = ((0.03 * self.sample_rate / self.hop as f32).ceil() as u32).max(1);
+        if !self.hq && !estimate.voiced && self.was_voiced && self.voiced_run < young_runs && self.last_period > 1.0 {
+            if let Some((period, score, _)) =
+                recent_period(&self.mono, self.mono_mask, self.position, self.last_period, RECENT_PERIODS_ATTACK)
+            {
+                if score >= ONSET_SCORE {
+                    estimate = crate::yin::PitchEstimate { period, clarity: score, voiced: true };
+                }
+            }
+        }
         if !self.hq && !estimate.voiced && !self.was_voiced {
             // Attacco di una nota: YIN confronta l'inizio della finestra con
             // il resto, quindi dice "nota" solo quando tutta la finestra
@@ -596,11 +613,11 @@ impl PitchCorrector {
             }
         }
         if !self.hq && estimate.voiced {
-            if let Some((period, score, center)) =
-                recent_period(&self.mono, self.mono_mask, self.position, estimate.period)
-            {
+            let p0 = estimate.period;
+            if let Some((period, score, center)) = recent_period(&self.mono, self.mono_mask, self.position, p0, RECENT_PERIODS) {
                 if score >= RECENT_SCORE {
-                    estimate.period = period;
+                    // Misura recente e stima di YIN insieme (`RECENT_WEIGHT`).
+                    estimate.period = (p0.ln() * (1.0 - RECENT_WEIGHT) + period.ln() * RECENT_WEIGHT).exp();
                     recent_center = Some(center);
                 }
             }
@@ -1143,21 +1160,34 @@ fn onset_period(buf: &[f32], mask: usize, newest: u64, tau_min: i64, tau_max: i6
     None
 }
 
+/// Low Latency: su quanti periodi si misura la voce appena arrivata, e quanto
+/// pesa questa misura rispetto a quella di YIN. Su una voce ruvida ogni ciclo
+/// e' un po' diverso: misurata su 1,5 periodi da sola, la nota ballava di
+/// qualche decina di centesimi e con Retune basso la correzione saltava
+/// avanti e indietro tra due note vicine (sulla voce di prova 40-83 salti
+/// rapidi al minuto, contro 13-22 di HQ: un tremolio sporco invece degli
+/// scalini netti). Su 3 periodi e con un quarto di YIN: 9-20 al minuto, e la
+/// correzione resta pronta (Low Latency segue HQ con 10-15 ms di ritardo).
+const RECENT_PERIODS: f32 = 3.0;
+const RECENT_WEIGHT: f32 = 0.75;
+/// Periodi su cui si controlla che una nota appena partita continui.
+const RECENT_PERIODS_ATTACK: f32 = 1.5;
+
 /// Somiglianza minima tra gli ultimi due cicli per fidarsi della misura
 /// "recente" di Low Latency (sotto resta la stima di YIN).
 const RECENT_SCORE: f32 = 0.8;
 
 /// Low Latency: il periodo della voce negli ultimissimi cicli. Confronta il
-/// tratto che finisce sull'ultimo campione arrivato (1,5 periodi) con lo
+/// tratto che finisce sull'ultimo campione arrivato (`periods` periodi) con lo
 /// stesso tratto un periodo prima, cercando entro ±8 semitoni dalla stima
 /// `p0` (abbastanza per i cambi di nota, troppo poco per sbagliare d'ottava).
 /// Restituisce (periodo, somiglianza, istante a cui si riferisce la misura).
 /// Non alloca memoria.
-fn recent_period(buf: &[f32], mask: usize, newest: u64, p0: f32) -> Option<(f32, f32, f64)> {
+fn recent_period(buf: &[f32], mask: usize, newest: u64, p0: f32, periods: f32) -> Option<(f32, f32, f64)> {
     if !(16.0..=4096.0).contains(&p0) {
         return None;
     }
-    let len = ((1.5 * p0) as i64).max(32);
+    let len = ((periods * p0) as i64).max(32);
     let lo = ((p0 * 0.63).floor() as i64).max(8);
     let hi = (p0 * 1.59).ceil() as i64;
     let end = newest as i64; // ultimo campione (incluso)
