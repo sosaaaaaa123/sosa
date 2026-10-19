@@ -103,7 +103,7 @@ const SIDECHAIN_NAMES: PortNames = PortNames {
 };
 
 impl Plugin for SosaTune {
-    const NAME: &'static str = "Sosa Tune";
+    const NAME: &'static str = "SosaTune";
     const VENDOR: &'static str = "Vladislav";
     const URL: &'static str = "";
     const EMAIL: &'static str = "";
