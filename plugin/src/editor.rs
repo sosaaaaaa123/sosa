@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! ┌──────────────────────────────────────────────────────────────────────────────┐
-//! │ Sosa Tune │ Vocal Range ⌄ │ Key & Scale ⌄ │ Default* [Low Latency][ HQ  ] ← → ☰ │
+//! │ SOSA TUNE │ Vocal Range ⌄ │ Key & Scale ⌄ │ Default* [Low Latency][ HQ  ] ← → ☰ │
 //! │ AUTOTUNE  │ Alto/Tenor    │ A Major       │ Factory  [  Modern   ][Classic]     │
 //! ├──────────────────────────────────────────────────────────────────────────────┤
 //! │ [A][B][Copy A→B]                                                    (↶)      │
@@ -1125,10 +1125,8 @@ const PRESET_LIST_X: f32 = 1364.0;
 const PRESET_ICONS_Y: f32 = 135.0;
 
 fn header(ui: &Ui, painter: &Painter, g: Geo, params: &SosaTuneParams, setter: &ParamSetter, state: &mut GuiState) {
-    // Marchio: "Sosa Tune" scritto normale (prima "SOSA TUNE" con le lettere
-    // allargate a riempire 300 punti: "S O S A   T U N E").
-    let logo_size = fitted_size(painter, "Sosa Tune", 48.0, Weight::Light, -0.01, 300.0);
-    text_tracked(painter, g.p(80.0, 120.0), Align2::LEFT_CENTER, "Sosa Tune", font(logo_size, Weight::Light), TEXT, -0.01);
+    // Marchio.
+    spaced_text(painter, g.p(80.0, 120.0), g.d(300.0), "SOSA TUNE", font(48.0, Weight::Light), TEXT);
     spaced_text(painter, g.p(85.0, 163.0), g.d(214.0), "AUTOTUNE", font(18.0, Weight::Medium), Color32::from_rgb(0xdc, 0xe3, 0xee));
 
     // Separatori.
