@@ -18,7 +18,7 @@ jobs:
           cargo install cargo-vendor-filterer --locked
           cargo vendor-filterer --platform=x86_64-unknown-linux-gnu --exclude-crate-path='*#tests' --exclude-crate-path='*#benches' --exclude-crate-path='*#examples' vendor-linux > vendor-config.toml
           du -sh vendor-linux
-          tar -cf - vendor-linux vendor-config.toml | zstd -19 -T0 -o vendor-linux.tar.zst
+          tar -czf vendor-linux.tar.zst vendor-linux vendor-config.toml
           ls -la vendor-linux.tar.zst
           split -b 45m vendor-linux.tar.zst vendor-linux.tar.zst.part-
           OUT="$RUNNER_TEMP/out"; mkdir -p "$OUT"; cp vendor-linux.tar.zst.part-* vendor-config.toml "$OUT/"
