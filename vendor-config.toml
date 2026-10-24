@@ -1,0 +1,40 @@
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/BillyDM/egui-baseview.git?rev=ec70c3fe6b2f070dcacbc22924431edbe24bd1c0"]
+git = "https://github.com/BillyDM/egui-baseview.git"
+rev = "ec70c3fe6b2f070dcacbc22924431edbe24bd1c0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/RustAudio/baseview.git?rev=9a0b42c09d712777b2edb4c5e0cb6baf21e988f0"]
+git = "https://github.com/RustAudio/baseview.git"
+rev = "9a0b42c09d712777b2edb4c5e0cb6baf21e988f0"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/micahrj/clap-sys.git?rev=25d7f53fdb6363ad63fbd80049cb7a42a97ac156"]
+git = "https://github.com/micahrj/clap-sys.git"
+rev = "25d7f53fdb6363ad63fbd80049cb7a42a97ac156"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/nicokoch/reflink.git?rev=e8d93b465f5d9ad340cd052b64bbc77b8ee107e2"]
+git = "https://github.com/nicokoch/reflink.git"
+rev = "e8d93b465f5d9ad340cd052b64bbc77b8ee107e2"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/robbert-vdh/nih-plug.git?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683"]
+git = "https://github.com/robbert-vdh/nih-plug.git"
+rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/robbert-vdh/rust-assert-no-alloc.git?branch=feature/nested-permit-forbid"]
+git = "https://github.com/robbert-vdh/rust-assert-no-alloc.git"
+branch = "feature/nested-permit-forbid"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/robbert-vdh/vst3-sys.git?branch=fix/drop-box-from-raw"]
+git = "https://github.com/robbert-vdh/vst3-sys.git"
+branch = "fix/drop-box-from-raw"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor-linux"
