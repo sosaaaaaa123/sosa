@@ -29,6 +29,7 @@
 pub mod chroma;
 pub mod corrector;
 pub mod fft;
+pub mod fx;
 pub mod scale;
 pub mod synth;
 pub mod timbre;

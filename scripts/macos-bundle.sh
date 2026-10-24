@@ -12,8 +12,8 @@
 #   scripts/macos-bundle.sh
 set -euo pipefail
 
-NAME=SosaTune
-CRATE=sosatune
+NAME="${NAME:-SosaTune}"
+CRATE="${CRATE:-sosatune}"
 OUT=target/bundled-mhbundle
 WORK=target/mhbundle-work
 rm -rf "$OUT" "$WORK"

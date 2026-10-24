@@ -1,0 +1,232 @@
+# SR Vocal Suite: compila, prova e crea gli installer per Mac e Windows.
+# A ogni modifica del ramo "sr-vocal-suite" i risultati finiscono nei rami
+# "sr-vocal-suite-build" (Mac: .pkg, zip, anteprima, rapporto) e
+# "sr-vocal-suite-build-win" (Windows: .exe e rapporto).
+
+name: SR Vocal Suite
+
+on:
+  push:
+    branches: [sr-vocal-suite]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NAME: SRVocalSuite
+  CRATE: srvocalsuite
+  VERSION: "1.0.0"
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installa Rust (Intel + Apple Silicon)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Test del motore audio (correzione + effetti)
+        run: |
+          set +e
+          cargo test -p sosatune_dsp --release > dsp-test-log.txt 2>&1
+          echo "exit code: $?" >> dsp-test-log.txt
+          grep -E "^test |test result|panicked|exit code" dsp-test-log.txt
+
+      - name: Test del plugin (interfaccia e parametri)
+        if: always()
+        run: |
+          set +e
+          cargo test -p srvocalsuite --release > plugin-test-log.txt 2>&1
+          echo "exit code: $?" >> plugin-test-log.txt
+          grep -E "^test |test result|panicked|exit code" plugin-test-log.txt
+
+      - name: Compila il plugin (universale)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: cargo xtask bundle-universal srvocalsuite --release 2>&1 | tee build-log.txt
+
+      - name: Pacchetti in formato bundle (FL Studio)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: scripts/macos-bundle.sh 2>&1 | tee bundle-log.txt
+
+      - name: Versione Audio Unit (Logic Pro)
+        run: |
+          set -o pipefail
+          git clone -q --depth 1 --branch v0.16.0 https://github.com/free-audio/clap-wrapper "$RUNNER_TEMP/clap-wrapper"
+          cmake -S installer/srvs/auv2 -B build-auv2 -DCMAKE_BUILD_TYPE=Release \
+            -DCLAP_WRAPPER_DIR="$RUNNER_TEMP/clap-wrapper" \
+            -DSRVS_CLAP="$PWD/target/bundled-mhbundle/SRVocalSuite.clap" 2>&1 | tee auv2-log.txt
+          cmake --build build-auv2 --config Release -j 4 2>&1 | tail -40 | tee -a auv2-log.txt
+          comp=$(find build-auv2 -maxdepth 3 -name "SRVocalSuite.component" -type d | head -1)
+          echo "component: $comp" | tee -a auv2-log.txt
+          rm -rf target/bundled-mhbundle/SRVocalSuite.component
+          cp -R "$comp" target/bundled-mhbundle/SRVocalSuite.component
+          codesign --force --deep -s - target/bundled-mhbundle/SRVocalSuite.component
+          lipo -info target/bundled-mhbundle/SRVocalSuite.component/Contents/MacOS/SRVocalSuite | tee -a auv2-log.txt
+
+      - name: auval (Audio Unit)
+        if: always()
+        run: |
+          set +e
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          rm -rf ~/Library/Audio/Plug-Ins/Components/SRVocalSuite.component
+          cp -R target/bundled-mhbundle/SRVocalSuite.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null
+          sleep 3
+          {
+            echo "## elenco Audio Unit"
+            auval -a 2>&1 | grep -i -E "SRvs|Vlad"
+            echo "## auval -strict"
+            perl -e 'alarm 600; exec @ARGV' auval -strict -v aufx SRvs Vlad 2>&1
+            echo "exit code: $?"
+          } > auval.txt 2>&1
+          tail -60 auval.txt
+
+      - name: Anteprima dell'interfaccia
+        if: always()
+        run: |
+          set +e
+          cargo run --release -p srvocalsuite --example anteprima -- anteprima.png > anteprima-log.txt 2>&1
+          echo "exit code: $?" >> anteprima-log.txt
+          tail -20 anteprima-log.txt
+
+      - name: Validatore ufficiale Steinberg VST3
+        if: always()
+        run: |
+          set +e
+          {
+            git clone -q --depth 1 --recursive --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git
+            cmake -S vst3sdk -B vst3build -DCMAKE_BUILD_TYPE=Release \
+              -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF \
+              -DSMTG_RUN_VST_VALIDATOR=OFF > vst3sdk-cmake.txt 2>&1
+            cmake --build vst3build --target validator --config Release -j 4 > vst3sdk-build.txt 2>&1
+          } || true
+          VAL=$(find vst3build -type f -name validator -perm -u+x | head -1)
+          if [ -n "$VAL" ]; then
+            "$VAL" -e target/bundled-mhbundle/SRVocalSuite.vst3 > steinberg.txt 2>&1
+            echo "exit code: $?" >> steinberg.txt
+          else
+            { echo "validatore non disponibile"; tail -40 vst3sdk-build.txt; } > steinberg.txt 2>&1
+          fi
+          tail -40 steinberg.txt
+
+      - name: pluginval (livello 10)
+        if: always()
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          perl -e 'alarm shift; exec @ARGV' 1500 pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process --verbose --timeout-ms 120000 target/bundled-mhbundle/SRVocalSuite.vst3 > pv-vst3.txt 2>&1
+          echo "exit code: $?" >> pv-vst3.txt
+          tail -60 pv-vst3.txt
+
+      - name: Installer per Mac
+        if: always()
+        run: |
+          set +e
+          installer/srvs/macos/build-pkg.sh "$VERSION" > pkg-log.txt 2>&1
+          echo "exit code: $?" >> pkg-log.txt
+          cat pkg-log.txt
+
+      - name: Prova l'installer
+        if: always()
+        run: |
+          set +e
+          {
+            sudo installer -pkg SRVocalSuite-Installer-macOS.pkg -target / -applyChoiceChangesXML installer/srvs/macos/choices-all.xml 2>&1
+            echo "exit code: $?"
+            ls -la /Library/Audio/Plug-Ins/VST3/SRVocalSuite.vst3/Contents/MacOS /Library/Audio/Plug-Ins/CLAP/SRVocalSuite.clap/Contents/MacOS /Library/Audio/Plug-Ins/Components/SRVocalSuite.component/Contents/MacOS
+          } > pkg-install.txt 2>&1
+          cat pkg-install.txt
+
+      - name: Zip e rapporto
+        if: always()
+        run: |
+          (cd target/bundled-mhbundle && zip -qry ../../SRVocalSuite-macOS.zip SRVocalSuite.vst3 SRVocalSuite.clap SRVocalSuite.component) || true
+          {
+            echo "SR Vocal Suite ${GITHUB_SHA::7} - $(date -u)"
+            echo; echo "## Test del motore audio"; grep -E "test result|panicked|FAILED|exit code" dsp-test-log.txt || true
+            echo; echo "## Test del plugin"; grep -E "^test |test result|panicked|exit code" plugin-test-log.txt || true
+            echo; echo "## Formato"; file target/bundled-mhbundle/SRVocalSuite.vst3/Contents/MacOS/SRVocalSuite || true
+            echo; echo "## Compilazione (ultime righe)"; tail -40 build-log.txt || true
+            echo; echo "## Bundle"; tail -20 bundle-log.txt || true
+            echo; echo "## Anteprima"; tail -10 anteprima-log.txt || true
+            echo; echo "## pluginval livello 10"; tail -80 pv-vst3.txt || true
+            echo; echo "## Steinberg VST3 validator"; tail -60 steinberg.txt || true
+            echo; echo "## Audio Unit"; cat auv2-log.txt || true; tail -60 auval.txt || true
+            echo; echo "## Installer"; cat pkg-log.txt || true; cat pkg-install.txt || true
+          } > rapporto.txt 2>&1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SRVocalSuite-macOS
+          path: |
+            SRVocalSuite-macOS.zip
+            SRVocalSuite-Installer-macOS.pkg
+            rapporto.txt
+            anteprima*.png
+
+      - name: Pubblica nel ramo sr-vocal-suite-build
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OUT="$RUNNER_TEMP/build-branch"
+          mkdir -p "$OUT"
+          for f in rapporto.txt SRVocalSuite-macOS.zip SRVocalSuite-Installer-macOS.pkg anteprima*.png dsp-test-log.txt plugin-test-log.txt; do [ -f "$f" ] && cp "$f" "$OUT/"; done
+          cd "$OUT"
+          git init -q -b sr-vocal-suite-build
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "SR Vocal Suite per Mac (${GITHUB_SHA::7})"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sr-vocal-suite-build:sr-vocal-suite-build
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Compila il plugin
+        shell: bash
+        run: cargo xtask bundle srvocalsuite --release 2>&1 | tee build-log.txt
+
+      - name: pluginval
+        shell: bash
+        run: |
+          set +e
+          curl -sL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          unzip -q -o pluginval.zip -d pluginval
+          ./pluginval/pluginval.exe --strictness-level 10 --validate-in-process --skip-gui-tests --timeout-ms 600000 --validate target/bundled/SRVocalSuite.vst3 > pv-vst3.txt 2>&1
+          echo "exit code: $?" >> pv-vst3.txt
+          tail -40 pv-vst3.txt
+
+      - name: Installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Qp installer\srvs\windows\SRVocalSuite.iss
+          Get-ChildItem SRVocalSuite-Installer-Windows.exe
+
+      - name: Pubblica nel ramo sr-vocal-suite-build-win
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          { echo "SR Vocal Suite Windows ${GITHUB_SHA::7}"; tail -30 build-log.txt; echo; echo "## pluginval"; tail -60 pv-vst3.txt; } > rapporto-windows.txt 2>&1
+          OUT="$RUNNER_TEMP/build-branch"
+          mkdir -p "$OUT"
+          cp rapporto-windows.txt "$OUT/"
+          [ -f SRVocalSuite-Installer-Windows.exe ] && cp SRVocalSuite-Installer-Windows.exe "$OUT/"
+          cd "$OUT"
+          git init -q -b sr-vocal-suite-build-win
+          git add .
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "SR Vocal Suite per Windows (${GITHUB_SHA::7})"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" sr-vocal-suite-build-win:sr-vocal-suite-build-win

@@ -8,7 +8,7 @@
 #   xtask/   un aiutante che impacchetta il plugin: `cargo xtask bundle sosatune --release`
 
 [workspace]
-members = ["dsp", "plugin", "xtask"]
+members = ["dsp", "plugin", "vocalsuite", "xtask"]
 exclude = ["vendor"]
 resolver = "2"
 

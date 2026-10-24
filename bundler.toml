@@ -1,2 +1,5 @@
 [sosatune]
 name = "SosaTune"
+
+[srvocalsuite]
+name = "SRVocalSuite"
