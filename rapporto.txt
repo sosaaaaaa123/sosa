@@ -1,0 +1,531 @@
+SR Vocal Suite ab46f1e - Sat Oct 24 20:42:07 UTC 2026
+
+## Test del motore audio
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.94s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.66s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit code: 0
+
+## Test del plugin
+test params::tests::saved_defaults_are_used ... ok
+test params::tests::every_control_reaches_the_engine ... ok
+test presets::tests::names_are_unique_and_values_in_range ... ok
+test defaults::tests::saves_loads_and_clears ... ok
+test preview::tests::echo_mode_buttons_in_settings ... ok
+test preview::tests::bypass_monitor_and_stabilizer ... ok
+test preview::tests::any_window_size_draws_without_panicking ... ok
+test preview::tests::key_menu_and_presets ... ok
+test shared::tests::detects_the_key_of_a_real_vocal ... ok
+test shared::tests::note_profile_counts_sung_time ... ok
+test shared::tests::picks_the_best_key_source ... ok
+test shared::tests::recognises_the_voice_range ... ok
+test preview::tests::every_knob_and_orb_follows_the_mouse ... ok
+test preview::tests::preview_renders ... ok
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit code: 0
+
+## Formato
+target/bundled-mhbundle/SRVocalSuite.vst3/Contents/MacOS/SRVocalSuite: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit bundle x86_64] [arm64]
+target/bundled-mhbundle/SRVocalSuite.vst3/Contents/MacOS/SRVocalSuite (for architecture x86_64):	Mach-O 64-bit bundle x86_64
+target/bundled-mhbundle/SRVocalSuite.vst3/Contents/MacOS/SRVocalSuite (for architecture arm64):	Mach-O 64-bit bundle arm64
+
+## Compilazione (ultime righe)
+   [1m[94m|[0m [1m[33m|___^[0m
+   [1m[94m|[0m
+   [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+   [1m[94m= [0m[1mnote[0m: for more information, see issue #79813 <https://github.com/rust-lang/rust/issues/79813>
+   [1m[94m= [0m[1mnote[0m: this warning originates in the macro `vst3_com::vtable` which comes from the expansion of the attribute macro `VST3` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[92m   Compiling[0m egui-baseview v0.5.0 (https://github.com/BillyDM/egui-baseview.git?rev=ec70c3fe6b2f070dcacbc22924431edbe24bd1c0#ec70c3fe)
+[1m[92m   Compiling[0m sosatune_dsp v0.1.0 (/Users/runner/work/sosa/sosa/dsp)
+[1m[33mwarning[0m: `nih_plug` (lib) generated 12 warnings (6 duplicates) (run `cargo fix --lib -p nih_plug` to apply 1 suggestion)
+[1m[92m   Compiling[0m srvocalsuite v1.0.0 (/Users/runner/work/sosa/sosa/vocalsuite)
+[1m[33mwarning[0m[1m: trailing semicolon in macro used in expression position[0m
+   [1m[94m--> [0mvocalsuite/src/lib.rs:381:1
+    [1m[94m|[0m
+[1m[94m381[0m [1m[94m|[0m nih_export_vst3!(VocalSuite);
+    [1m[94m|[0m [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+    [1m[94m= [0m[1mnote[0m: for more information, see issue #79813 <https://github.com/rust-lang/rust/issues/79813>
+    [1m[94m= [0m[1mnote[0m: `#[warn(semicolon_in_expressions_from_non_local_macros)]` (part of `#[warn(future_incompatible)]`) on by default
+    [1m[94m= [0m[1mnote[0m: this warning originates in the macro `vst3_com::vtable` which comes from the expansion of the macro `nih_export_vst3` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[33mwarning[0m[1m: trailing semicolon in macro used in expression position[0m
+   [1m[94m--> [0mvocalsuite/src/lib.rs:381:1
+    [1m[94m|[0m
+[1m[94m381[0m [1m[94m|[0m nih_export_vst3!(VocalSuite);
+    [1m[94m|[0m [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mwarning[0m: this was previously accepted by the compiler but is being phased out; it will become a hard error in a future release!
+    [1m[94m= [0m[1mnote[0m: for more information, see issue #79813 <https://github.com/rust-lang/rust/issues/79813>
+    [1m[94m= [0m[1mnote[0m: this warning originates in the macro `vst3_com::vtable` which comes from the expansion of the macro `nih_export_vst3` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+[1m[33mwarning[0m: `srvocalsuite` (lib) generated 3 warnings (1 duplicate)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 44.15s
+[1m[33mwarning[0m: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+[1m[92mnote[0m: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+
+/Users/runner/work/sosa/sosa/target/bundled/SRVocalSuite.clap: replacing existing signature
+Created a CLAP bundle at '/Users/runner/work/sosa/sosa/target/bundled/SRVocalSuite.clap'
+/Users/runner/work/sosa/sosa/target/bundled/SRVocalSuite.vst3: replacing existing signature
+Created a VST3 bundle at '/Users/runner/work/sosa/sosa/target/bundled/SRVocalSuite.vst3'
+
+## Bundle
+== aarch64-apple-darwin
+librerie: -framework AppKit -framework Foundation -framework AppKit -framework QuartzCore -framework Foundation -framework CoreGraphics -lSystem -lobjc -framework CoreFoundation -liconv -lSystem -lc -lm
+ld: warning: ignoring duplicate libraries: '-lSystem'
+== x86_64-apple-darwin
+librerie: -framework AppKit -framework Foundation -framework AppKit -framework QuartzCore -framework Foundation -framework CoreGraphics -lSystem -lobjc -framework CoreFoundation -liconv -lSystem -lc -lm
+ld: warning: ignoring duplicate libraries: '-lSystem'
+target/mhbundle-work/SRVocalSuite: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit bundle x86_64] [arm64]
+target/mhbundle-work/SRVocalSuite (for architecture x86_64):	Mach-O 64-bit bundle x86_64
+target/mhbundle-work/SRVocalSuite (for architecture arm64):	Mach-O 64-bit bundle arm64
+target/bundled-mhbundle/SRVocalSuite.vst3: replacing existing signature
+target/bundled-mhbundle/SRVocalSuite.vst3: valid on disk
+target/bundled-mhbundle/SRVocalSuite.vst3: satisfies its Designated Requirement
+target/bundled-mhbundle/SRVocalSuite.clap: replacing existing signature
+target/bundled-mhbundle/SRVocalSuite.clap: valid on disk
+target/bundled-mhbundle/SRVocalSuite.clap: satisfies its Designated Requirement
+Pacchetti pronti in target/bundled-mhbundle
+
+## Anteprima
+Anteprima salvata in anteprima.png (2048 x 1536 pixel)
+Interfaccia: 1.29 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-impostazioni.png (2048 x 1536 pixel)
+Interfaccia: 1.28 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-preset.png (2048 x 1536 pixel)
+Interfaccia: 1.33 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-guida.png (2048 x 1536 pixel)
+Interfaccia: 1.56 ms per fotogramma (disegno + tassellazione)
+Anteprima salvata in anteprima-tonalita.png (2048 x 1536 pixel)
+exit code: 0
+
+## pluginval livello 10
+Completed tests in pluginval / Basic bus
+-----------------------------------------------------------------
+Starting tests in: pluginval / Listing available buses...
+Inputs:
+	Named layouts: Stereo, Stereo
+	Discrete layouts: None
+Outputs:
+	Named layouts: Stereo
+	Discrete layouts: None
+Main bus num input channels: 2
+Main bus num output channels: 2
+Completed tests in pluginval / Listing available buses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Enabling all buses...
+Completed tests in pluginval / Enabling all buses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Disabling non-main busses...
+Completed tests in pluginval / Disabling non-main busses
+-----------------------------------------------------------------
+Starting tests in: pluginval / Restoring default layout...
+Main bus num input channels: 2
+Main bus num output channels: 2
+
+Time taken to run test: 3 ms
+Completed tests in pluginval / Restoring default layout
+-----------------------------------------------------------------
+Starting tests in: pluginval / Fuzz parameters...
+Fuzz testing parameter: 0 - Tonalità
+Fuzz testing parameter: 1 - Scala
+Fuzz testing parameter: 2 - Vocal Range
+Fuzz testing parameter: 3 - Retune Speed
+Fuzz testing parameter: 4 - Humanize
+Fuzz testing parameter: 5 - Quantità
+Fuzz testing parameter: 6 - Trasposizione
+Fuzz testing parameter: 7 - Flex-Tune
+Fuzz testing parameter: 8 - Vibrato
+Fuzz testing parameter: 9 - Sensibilità
+Fuzz testing parameter: 10 - Accordatura (La4)
+Fuzz testing parameter: 11 - Style
+Fuzz testing parameter: 12 - Monitor
+Fuzz testing parameter: 13 - Note Stabilizer
+Fuzz testing parameter: 15 - Chorus Width
+Fuzz testing parameter: 16 - Formant Character
+Fuzz testing parameter: 17 - Reverb Space
+Fuzz testing parameter: 18 - Delay Time
+Fuzz testing parameter: 19 - Chorus Mode
+Fuzz testing parameter: 20 - Chorus Juno/FL
+Fuzz testing parameter: 21 - Chorus Rate
+Fuzz testing parameter: 22 - Echo Mode
+Fuzz testing parameter: 23 - Echo Sync
+Fuzz testing parameter: 24 - Repeat Rate
+Fuzz testing parameter: 25 - Intensity
+Fuzz testing parameter: 26 - Echo Bass
+Fuzz testing parameter: 27 - Echo Treble
+Fuzz testing parameter: 28 - Wow & Flutter
+Fuzz testing parameter: 29 - Spring Reverb
+Fuzz testing parameter: 30 - Reverb Decay
+Fuzz testing parameter: 31 - Pre-delay
+Fuzz testing parameter: 32 - Damping
+Fuzz testing parameter: 33 - Reverb Low Cut
+Fuzz testing parameter: 34 - Output
+Fuzz testing parameter: 35 - Nota Do
+Fuzz testing parameter: 36 - Nota Do#
+Fuzz testing parameter: 37 - Nota Re
+Fuzz testing parameter: 38 - Nota Re#
+Fuzz testing parameter: 39 - Nota Mi
+Fuzz testing parameter: 40 - Nota Fa
+Fuzz testing parameter: 41 - Nota Fa#
+Fuzz testing parameter: 42 - Nota Sol
+Fuzz testing parameter: 43 - Nota Sol#
+Fuzz testing parameter: 44 - Nota La
+Fuzz testing parameter: 45 - Nota La#
+Fuzz testing parameter: 46 - Nota Si
+
+Time taken to run test: 6 ms
+
+Time taken to run all tests: 50 secs
+Completed tests in pluginval / Fuzz parameters
+SUCCESS
+exit code: 0
+
+## Steinberg VST3 validator
+
+[Accuracy: Sample, 10 Parameters, Change every100 Samples]
+Info:  ===Accuracy: Sample, 10 Parameters, Change every100 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Block, 10 Parameters, Change every50 Samples]
+Info:  ===Accuracy: Block, 10 Parameters, Change every50 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Sample, 10 Parameters, Change every50 Samples]
+Info:  ===Accuracy: Sample, 10 Parameters, Change every50 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Block, 10 Parameters, Change every1 Samples]
+Info:  ===Accuracy: Block, 10 Parameters, Change every1 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Sample, 10 Parameters, Change every1 Samples]
+Info:  ===Accuracy: Sample, 10 Parameters, Change every1 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Block, All Parameters, Change every100 Samples]
+Info:  ===Accuracy: Block, 47 Parameters, Change every100 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Sample, All Parameters, Change every100 Samples]
+Info:  ===Accuracy: Sample, 47 Parameters, Change every100 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Block, All Parameters, Change every50 Samples]
+Info:  ===Accuracy: Block, 47 Parameters, Change every50 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Sample, All Parameters, Change every50 Samples]
+Info:  ===Accuracy: Sample, 47 Parameters, Change every50 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Block, All Parameters, Change every1 Samples]
+Info:  ===Accuracy: Block, 47 Parameters, Change every1 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+[Accuracy: Sample, All Parameters, Change every1 Samples]
+Info:  ===Accuracy: Sample, 47 Parameters, Change every1 Samples ====================================
+Info:  64bit Audio Processing not supported.
+[Succeeded]
+
+-------------------------------------------------------------
+Result: 537 tests passed, 0 tests failed
+-------------------------------------------------------------
+exit code: 0
+
+## Audio Unit
+-- The C compiler identification is AppleClang 15.0.0.15000309
+-- The CXX compiler identification is AppleClang 15.0.0.15000309
+-- The OBJC compiler identification is AppleClang 15.0.0.15000309
+-- The OBJCXX compiler identification is AppleClang 15.0.0.15000309
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting OBJC compiler ABI info
+-- Detecting OBJC compiler ABI info - done
+-- Check for working OBJC compiler: /usr/bin/cc - skipped
+-- Detecting OBJCXX compiler ABI info
+-- Detecting OBJCXX compiler ABI info - done
+-- Check for working OBJCXX compiler: /usr/bin/c++ - skipped
+-- clap-wrapper: CLAP_WRAPPER_VERSION is 0.16.0
+-- clap-wrapper: Building with C++ standard 17
+-- clap-wrapper: including CPM
+-- cmake-wrapper: Downloading Gulrak Filesystem as a macOS deployment 10.13 < 10.15 stub
+-- CPM: Adding package filesystem@1.5.14 (v1.5.14)
+CMake Warning (deprecated) at /Users/runner/work/sosa/sosa/build-auv2/_deps/filesystem-src/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- System name: Darwin
+-- Compiler ID: AppleClang
+-- CMAKE_CXX_COMPILE_FEATURES: cxx_std_98;cxx_template_template_parameters;cxx_std_11;cxx_alias_templates;cxx_alignas;cxx_alignof;cxx_attributes;cxx_auto_type;cxx_constexpr;cxx_decltype;cxx_decltype_incomplete_return_types;cxx_default_function_template_args;cxx_defaulted_functions;cxx_defaulted_move_initializers;cxx_delegating_constructors;cxx_deleted_functions;cxx_enum_forward_declarations;cxx_explicit_conversions;cxx_extended_friend_declarations;cxx_extern_templates;cxx_final;cxx_func_identifier;cxx_generalized_initializers;cxx_inheriting_constructors;cxx_inline_namespaces;cxx_lambdas;cxx_local_type_template_args;cxx_long_long_type;cxx_noexcept;cxx_nonstatic_member_init;cxx_nullptr;cxx_override;cxx_range_for;cxx_raw_string_literals;cxx_reference_qualified_functions;cxx_right_angle_brackets;cxx_rvalue_references;cxx_sizeof_member;cxx_static_assert;cxx_strong_enums;cxx_thread_local;cxx_trailing_return_types;cxx_unicode_literals;cxx_uniform_initialization;cxx_unrestricted_unions;cxx_user_literals;cxx_variadic_macros;cxx_variadic_templates;cxx_std_14;cxx_aggregate_default_initializers;cxx_attribute_deprecated;cxx_binary_literals;cxx_contextual_conversions;cxx_decltype_auto;cxx_digit_separators;cxx_generic_lambdas;cxx_lambda_init_captures;cxx_relaxed_constexpr;cxx_return_type_deduction;cxx_variable_templates;cxx_std_17;cxx_std_20;cxx_std_23
+-- clap-wrapper: using gcc/llvm-clang compile options
+-- clap-wrapper: Warnings are Errors
+-- clap-wrapper: source dir is /Users/runner/work/_temp/clap-wrapper, platform is MAC
+-- clap-wrapper: including CPM
+-- CPM: Adding package clap@1.2.6 (1.2.6)
+-- Populating clap
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/sosa/sosa/build-auv2/_deps/clap-subbuild
+[ 11%] Creating directories for 'clap-populate'
+[ 22%] Performing download step (git clone) for 'clap-populate'
+Cloning into 'clap'...
+HEAD is now at 69a6925 Merge pull request #459 from free-audio/next
+[ 33%] Performing update step for 'clap-populate'
+-- Already at requested tag: 1.2.6
+[ 44%] No patch step for 'clap-populate'
+[ 55%] No configure step for 'clap-populate'
+[ 66%] No build step for 'clap-populate'
+[ 77%] No install step for 'clap-populate'
+[ 88%] No test step for 'clap-populate'
+[100%] Completed 'clap-populate'
+[100%] Built target clap-populate
+-- clap-wrapper: Configuring clap sdk
+-- CLAP version: 1.2.6
+-- clap-wrapper: using included fmt library since no fmt-header-only available
+-- clap-wrapper: including CPM
+-- CPM: Adding package AudioUnitSDK@ (AudioUnitSDK-1.1.0)
+-- Populating audiounitsdk
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/sosa/sosa/build-auv2/_deps/audiounitsdk-subbuild
+[ 11%] Creating directories for 'audiounitsdk-populate'
+[ 22%] Performing download step (git clone) for 'audiounitsdk-populate'
+Cloning into 'AudioUnitSDK'...
+HEAD is now at 53a9a20 AudioUnitSDK - version 1.1.0
+[ 33%] Performing update step for 'audiounitsdk-populate'
+-- Already at requested tag: AudioUnitSDK-1.1.0
+[ 44%] No patch step for 'audiounitsdk-populate'
+[ 55%] No configure step for 'audiounitsdk-populate'
+[ 66%] No build step for 'audiounitsdk-populate'
+[ 77%] No install step for 'audiounitsdk-populate'
+[ 88%] No test step for 'audiounitsdk-populate'
+[100%] Completed 'audiounitsdk-populate'
+[100%] Built target audiounitsdk-populate
+-- clap-wrapper: configuring auv2 sdk from /Users/runner/work/sosa/sosa/build-auv2/cpm/AudioUnitSDK
+-- clap-wrapper: building auv2 based on clap /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SRVocalSuite.clap
+-- clap-wrapper: Adding AUV2 Wrapper to target SRVocalSuite_auv2 generating 'SRVocalSuite.component'
+-- clap-wrapper: including embedded clap in target SRVocalSuite_auv2
+-- Configuring done (7.7s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/sosa/sosa/build-auv2
+[ 42%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUMIDIEffectBase.cpp.o
+[ 46%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUOutputElement.cpp.o
+[ 50%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUPlugInDispatch.cpp.o
+[ 53%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/AUScopeElement.cpp.o
+[ 57%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/ComponentBase.cpp.o
+[ 60%] Linking CXX static library libclap-wrapper-shared-detail.a
+[ 64%] Building CXX object CMakeFiles/base-sdk-auv2.dir/cpm/AudioUnitSDK/src/AudioUnitSDK/MusicDeviceBase.cpp.o
+[ 64%] Built target clap-wrapper-shared-detail
+[ 67%] Building CXX object CMakeFiles/SRVocalSuite_auv2-build-helper.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/build-helper/build-helper.cpp.o
+[ 71%] Linking CXX static library libbase-sdk-auv2.a
+[ 71%] Built target base-sdk-auv2
+[ 75%] Linking CXX executable SRVocalSuite_auv2-build-helper
+clap-wrapper: auv2 configuration output dir is /Users/runner/work/sosa/sosa/build-auv2/SRVocalSuite_auv2-build-helper-output
+/Users/runner/work/sosa/sosa/build-auv2/SRVocalSuite_auv2-build-helper: replacing existing signature
+clap-wrapper: auv2 configuration tool starting
+  - CLAP is a directory. Assuming bundle
+  - building information from CLAP directly
+  - source clap: '/Users/runner/work/sosa/sosa/target/bundled-mhbundle/SRVocalSuite.clap'
+  - clap file produced 1 units
+  - generating auv2_Info.plist from auv2_infoplist_top
+    + SR Vocal Suite (aufx/SRvs) by Vladislav (Vlad)
+    + Using bundle version 1.0.0
+    + Calculating version from bundle version 1 0 0
+  - auv2_Info.plist generated
+  - generating generated_entrypoints.hxx
+    + SR Vocal Suite entry wrapAsAUV2_inst0 from WrapAsAUV2
+  - generated_entrypoints.hxx generated
+  - generating generated_cocoaclasses.hxx
+    + wrapAsAUV2_inst_cocoaUI_com_vladislav_srvocalsuite class com.vladislav.srvocalsuite
+  - generated_cocoaclasses.hxx generated
+[ 75%] Built target SRVocalSuite_auv2-build-helper
+[ 78%] Building CXX object CMakeFiles/SRVocalSuite_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/process.cpp.o
+[ 82%] Building OBJCXX object CMakeFiles/SRVocalSuite_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/auv2_shared.mm.o
+[ 85%] Building OBJCXX object CMakeFiles/SRVocalSuite_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/os/macos.mm.o
+[ 89%] Building CXX object CMakeFiles/SRVocalSuite_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/wrapasauv2.cpp.o
+[ 92%] Building OBJCXX object CMakeFiles/SRVocalSuite_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/wrappedview.mm.o
+[ 96%] Building CXX object CMakeFiles/SRVocalSuite_auv2.dir/Users/runner/work/_temp/clap-wrapper/src/detail/auv2/parameter.cpp.o
+[100%] Linking CXX CFBundle shared module SRVocalSuite.component/Contents/MacOS/SRVocalSuite
+Installing /Users/runner/work/sosa/sosa/target/bundled-mhbundle/SRVocalSuite.clap in SRVocalSuite.component/Contents/PlugIns/SRVocalSuite.clap
+[100%] Built target SRVocalSuite_auv2
+component: build-auv2/SRVocalSuite.component
+Architectures in the fat file: target/bundled-mhbundle/SRVocalSuite.component/Contents/MacOS/SRVocalSuite are: x86_64 arm64 
+Parameter Type: Boolean
+Values: Minimum = Off, Default = On, Maximum = On
+Flags: Values Have Strings, High Resolution, Readable, Writable 
+  -parameter PASS
+
+Testing that parameters retain value across reset and initialization
+  PASS
+
+* * PASS
+--------------------------------------------------
+FORMAT TESTS:
+
+Reported Channel Capabilities (explicit):
+      [2, 2]  
+
+Input/Output Channel Handling:
+1-1   1-2   1-4   1-5   1-6   1-7   1-8   2-2   2-4   2-5   2-6   2-7   2-8   4-4   4-5   5-5   6-6   7-7   8-8
+                                          X                                                                       
+
+* * PASS
+--------------------------------------------------
+RENDER TESTS:
+
+Input Format: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+Output Format: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+Render Test at 512 frames
+Slicing Render Test at 64 frames
+  PASS
+
+
+Render Test at 64 frames, sample rate: 22050 Hz
+Render Test at 137 frames, sample rate: 96000 Hz
+Render Test at 4096 frames, sample rate: 48000 Hz
+Render Test at 4096 frames, sample rate: 192000 Hz
+Render Test at 4096 frames, sample rate: 11025 Hz
+Render Test at 512 frames, sample rate: 44100 Hz
+  PASS
+
+Checking connection semantics:
+Connection format:
+AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+  PASS
+
+Bad Max Frames - Render should fail
+  PASS
+
+Checking parameter setting
+Using AudioUnitSetParameter
+Using AudioUnitScheduleParameter
+  PASS
+
+Test MIDI
+WARNING: AU implements MusicDeviceMIDIEvent but is of type 'aufx' (it should be 'aumf')
+  PASS
+
+* * PASS
+--------------------------------------------------
+AU VALIDATION SUCCEEDED.
+--------------------------------------------------
+exit code: 0
+
+## Installer
+pkgbuild: Inferring bundle components from contents of /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/root-vst3
+pkgbuild: Writing new component property list to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/vst3.plist
+componenti vst3: 1
+Array {
+    Dict {
+        BundleIsVersionChecked = true
+        BundleOverwriteAction = upgrade
+        BundleIsRelocatable = false
+        RootRelativeBundlePath = SRVocalSuite.vst3
+    }
+}
+pkgbuild: Reading components from /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/vst3.plist
+pkgbuild: Adding component at SRVocalSuite.vst3
+pkgbuild: Adding top-level postinstall script
+pkgbuild: Wrote package to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/SRVocalSuite-vst3.pkg
+pkgbuild: Inferring bundle components from contents of /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/root-clap
+pkgbuild: Writing new component property list to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/clap.plist
+componenti clap: 1
+Array {
+    Dict {
+        BundleIsVersionChecked = true
+        BundleOverwriteAction = upgrade
+        BundleIsRelocatable = false
+        RootRelativeBundlePath = SRVocalSuite.clap
+    }
+}
+pkgbuild: Reading components from /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/clap.plist
+pkgbuild: Adding component at SRVocalSuite.clap
+pkgbuild: Adding top-level postinstall script
+pkgbuild: Wrote package to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/SRVocalSuite-clap.pkg
+pkgbuild: Inferring bundle components from contents of /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/root-component
+pkgbuild: Writing new component property list to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/component.plist
+componenti component: 1
+Array {
+    Dict {
+        BundleIsVersionChecked = true
+        BundleOverwriteAction = upgrade
+        BundleIsRelocatable = false
+        ChildBundles = Array {
+            Dict {
+                BundleOverwriteAction = 
+                RootRelativeBundlePath = SRVocalSuite.component/Contents/PlugIns/SRVocalSuite.clap
+            }
+        }
+        RootRelativeBundlePath = SRVocalSuite.component
+    }
+}
+pkgbuild: Reading components from /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/component.plist
+pkgbuild: Adding component at SRVocalSuite.component
+pkgbuild: Adding component at SRVocalSuite.component/Contents/PlugIns/SRVocalSuite.clap
+pkgbuild: Adding top-level postinstall script
+pkgbuild: Wrote package to /var/folders/s6/5hzmn6lx4dz5nxs7k_0slzph0000gn/T/tmp.T8jNvIzmn4/SRVocalSuite-component.pkg
+productbuild: Wrote product to SRVocalSuite-Installer-macOS.pkg
+Package "SRVocalSuite-Installer-macOS.pkg":
+   Status: no signature
+.
+./SRVocalSuite.vst3
+./SRVocalSuite.vst3/Contents
+./SRVocalSuite.vst3/Contents/_CodeSignature
+./SRVocalSuite.vst3/Contents/_CodeSignature/CodeResources
+./SRVocalSuite.vst3/Contents/MacOS
+./SRVocalSuite.vst3/Contents/MacOS/SRVocalSuite
+./SRVocalSuite.vst3/Contents/Info.plist
+./SRVocalSuite.vst3/Contents/PkgInfo
+-rw-r--r--  1 runner  staff  29067182 Oct 24 20:42 SRVocalSuite-Installer-macOS.pkg
+exit code: 0
+installer: Package name is SR Vocal Suite
+installer: choices changes file 'installer/srvs/macos/choices-all.xml' applied
+installer: Installing at base path /
+installer: The install was successful.
+exit code: 0
+/Library/Audio/Plug-Ins/CLAP/SRVocalSuite.clap/Contents/MacOS:
+total 34416
+drwxr-xr-x  3 root  wheel        96 Oct 24 20:41 .
+drwxr-xr-x  6 root  wheel       192 Oct 24 20:41 ..
+-rwxr-xr-x  1 root  wheel  17620000 Oct 24 20:41 SRVocalSuite
+
+/Library/Audio/Plug-Ins/Components/SRVocalSuite.component/Contents/MacOS:
+total 1520
+drwxr-xr-x  3 root  wheel      96 Oct 24 20:42 .
+drwxr-xr-x  7 root  wheel     224 Oct 24 20:42 ..
+-rwxr-xr-x  1 root  wheel  774800 Oct 24 20:42 SRVocalSuite
+
+/Library/Audio/Plug-Ins/VST3/SRVocalSuite.vst3/Contents/MacOS:
+total 34416
+drwxr-xr-x  3 root  wheel        96 Oct 24 20:41 .
+drwxr-xr-x  6 root  wheel       192 Oct 24 20:41 ..
+-rwxr-xr-x  1 root  wheel  17620000 Oct 24 20:41 SRVocalSuite

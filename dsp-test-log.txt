@@ -1,0 +1,100 @@
+[1m[92m    Updating[0m git repository `https://github.com/RustAudio/baseview.git`
+[1m[92m    Updating[0m crates.io index
+[1m[92m    Updating[0m git repository `https://github.com/BillyDM/egui-baseview.git`
+[1m[92m    Updating[0m git repository `https://github.com/robbert-vdh/nih-plug.git`
+[1m[92m    Updating[0m git repository `https://github.com/robbert-vdh/rust-assert-no-alloc.git`
+[1m[92m    Updating[0m git repository `https://github.com/micahrj/clap-sys.git`
+[1m[92m    Updating[0m git repository `https://github.com/robbert-vdh/vst3-sys.git`
+[1m[92m    Updating[0m git repository `https://github.com/nicokoch/reflink.git`
+[1m[92m     Locking[0m 1 package to highest compatible version
+[1m[92m      Adding[0m nih_plug_xtask v0.1.0 (https://github.com/robbert-vdh/nih-plug.git?rev=de421011f41a6d10fc8c7a6084e4f4dee0143683#de421011)
+[1m[92m   Compiling[0m sosatune_dsp v0.1.0 (/Users/runner/work/sosa/sosa/dsp)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 25.03s
+[1m[92m     Running[0m unittests src/lib.rs (target/release/deps/sosatune_dsp-e3b89aba7203775f)
+
+running 45 tests
+test chroma::tests::relative_keys_have_the_same_notes ... ok
+test chroma::tests::silence_counts_nothing ... ok
+test corrector::tests::amount_zero_leaves_pitch_alone ... ok
+test corrector::tests::any_sample_rate_works ... ok
+test chroma::tests::finds_the_key_of_a_beat_with_drums ... ok
+test corrector::tests::corrects_a_whole_melody ... ok
+test corrector::tests::corrects_sharp_note_to_scale ... ok
+test corrector::tests::latency_low_is_zero_and_hq_is_fixed ... ok
+test corrector::tests::low_latency_corrects_the_attack_right_away ... ok
+test corrector::tests::low_latency_without_correction_is_transparent ... ok
+test corrector::tests::fast_glides_become_steps ... ok
+test corrector::tests::silence_stays_silent ... ok
+test corrector::tests::real_octave_leaps_are_followed ... ok
+test corrector::tests::slow_retune_reaches_target_gradually ... ok
+test fft::tests::fft_matches_naive_dft ... ok
+test chroma::tests::finds_major_and_minor_keys_from_chords ... ok
+test fx::chorus::tests::zero_mix_is_transparent ... ok
+test corrector::tests::transpose_moves_by_semitones ... ok
+test fx::reverb::tests::decay_matches_the_setting ... ok
+test fx::space_echo::tests::heads_are_where_the_mode_says ... ok
+test fx::reverb::tests::stable_with_any_settings ... ok
+test fx::chorus::tests::makes_stereo_from_mono_and_stays_bounded ... ok
+test fx::tests::send_curve ... ok
+test fx::util::tests::biquad_lowpass_passes_dc ... ok
+test fx::util::tests::delay_line_reads_back_exactly_at_integer_delays ... ok
+test fx::util::tests::soft_clip_is_bounded_and_transparent_when_small ... ok
+test scale::tests::a_minor_equals_c_major_notes ... ok
+test scale::tests::c_major_snapping ... ok
+test scale::tests::conversions ... ok
+test scale::tests::hysteresis_avoids_flicker ... ok
+test fx::space_echo::tests::reverb_only_mode_has_no_echo ... ok
+test timbre::tests::neutral_when_nothing_moves ... ok
+test fx::space_echo::tests::intensity_makes_repeats_that_decay_and_never_explode ... ok
+test timbre::tests::minimum_phase_filter_matches_the_gain ... ok
+test vocoder::tests::formant_does_not_blink_when_the_note_drops_for_a_moment ... ok
+test vocoder::tests::formant_does_not_make_s_and_z_stand_out ... ok
+test vocoder::tests::shifts_a_harmonic_tone_up_a_semitone ... ok
+test wav::tests::round_trip ... ok
+test vocoder::tests::unvoiced_passes_through_exactly ... ok
+test yin::tests::lowest_hz_is_respected ... ok
+test yin::tests::silence_and_noise_are_unvoiced ... ok
+test yin::tests::detects_sines_and_voice ... ok
+test zerolat::tests::shifts_pitch_with_tiny_delay ... ok
+test zerolat::tests::unvoiced_passes_with_three_samples_of_delay ... ok
+test vocoder::tests::formant_moves_the_timbre_keeps_the_air_and_does_not_tremble ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+[1m[92m     Running[0m tests/funzioni_pro.rs (target/release/deps/funzioni_pro-57f4744012d0a1de)
+
+running 15 tests
+test detune_moves_the_whole_scale ... ok
+test classic_style_glides_into_each_note ... ok
+test hq_mode_uses_the_long_window_and_corrects ... ok
+test formant_shift_changes_timbre_not_pitch ... ok
+test flex_tune_leaves_expressive_notes_alone ... ok
+test hq_note_changes_have_no_clicks ... ok
+test humanize_relaxes_only_long_notes ... ok
+test humanize_grows_gradually ... ok
+test note_after_a_short_gap_starts_on_the_new_note ... ok
+test quick_ornaments_are_caught_with_low_retune ... ok
+test rough_voice_is_not_read_an_octave_below ... ok
+test low_latency_keeps_the_timbre_like_hq ... ok
+test tracking_recognises_breathy_voices ... ok
+test voice_between_two_scale_notes_does_not_warble ... ok
+test natural_vibrato_can_be_added_or_removed ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.94s
+
+[1m[92m     Running[0m tests/robustezza.rs (target/release/deps/robustezza-3806b1f854f9a962)
+
+running 3 tests
+test no_scale_notes_means_no_correction ... ok
+test changing_settings_while_running_is_safe ... ok
+test every_sample_rate_and_voice_type_is_stable ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.66s
+
+[1m[92m   Doc-tests[0m sosatune_dsp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+exit code: 0
