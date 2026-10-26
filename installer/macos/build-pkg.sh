@@ -2,10 +2,10 @@
 # Crea l'installer per Mac "SosaTune-Installer-macOS.pkg" a partire dai
 # plugin gia' compilati in target/bundled-mhbundle (vedi scripts/macos-bundle.sh).
 #
-# L'installer mette:
-#   - Sosa Tune VST3 in /Library/Audio/Plug-Ins/VST3
-#   - Sosa Tune CLAP in /Library/Audio/Plug-Ins/CLAP
-#   - Sosa Tune Audio Unit (Logic Pro, GarageBand) in /Library/Audio/Plug-Ins/Components
+# L'installer fa scegliere i formati (tutti gia' spuntati) e mette:
+#   - SosaTune VST3 in /Library/Audio/Plug-Ins/VST3
+#   - SosaTune CLAP in /Library/Audio/Plug-Ins/CLAP
+#   - SosaTune Audio Unit (Logic Pro, GarageBand) in /Library/Audio/Plug-Ins/Components
 # e alla fine toglie il "blocco di sicurezza" (quarantena) dai plugin, cosi'
 # i DAW li caricano senza l'avviso "file dannoso".
 set -euo pipefail

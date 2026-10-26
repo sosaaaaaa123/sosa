@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>Sosa Tune</title>
+    <title>SosaTune</title>
     <welcome file="welcome.html" mime-type="text/html"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
     <options customize="always" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
     <choices-outline>
         <line choice="vst3"/>
-        <line choice="clap"/>
         <line choice="au"/>
+        <line choice="clap"/>
     </choices-outline>
-    <choice id="vst3" title="Sosa Tune VST3" description="Per Pro Tools (tramite Blue Cat PatchWork), FL Studio, Ableton Live, Cubase, Studio One, Reaper e gli altri DAW VST3." start_selected="true">
+    <choice id="vst3" title="VST3" description="SosaTune VST3: per Ableton Live, FL Studio, Cubase, Studio One, Reaper, Pro Tools (tramite Blue Cat PatchWork) e gli altri DAW VST3. Va in /Library/Audio/Plug-Ins/VST3." start_selected="true">
         <pkg-ref id="com.vladislav.sosatune.vst3"/>
     </choice>
-    <choice id="clap" title="Sosa Tune CLAP" description="Per Bitwig, Reaper e gli altri DAW che usano il formato CLAP." start_selected="false">
-        <pkg-ref id="com.vladislav.sosatune.clap"/>
-    </choice>
-    <choice id="au" title="Sosa Tune Audio Unit" description="Per Logic Pro, GarageBand, MainStage e gli altri programmi Apple (formato Audio Unit)." start_selected="false">
+    <choice id="au" title="AU (Logic Pro)" description="SosaTune Audio Unit: per Logic Pro, GarageBand e MainStage. Va in /Library/Audio/Plug-Ins/Components." start_selected="true">
         <pkg-ref id="com.vladislav.sosatune.component"/>
+    </choice>
+    <choice id="clap" title="CLAP" description="SosaTune CLAP: per Bitwig, Reaper e gli altri DAW che usano il formato CLAP. Va in /Library/Audio/Plug-Ins/CLAP." start_selected="true">
+        <pkg-ref id="com.vladislav.sosatune.clap"/>
     </choice>
     <pkg-ref id="com.vladislav.sosatune.component" version="@VERSION@" onConclusion="none">SosaTune-component.pkg</pkg-ref>
     <pkg-ref id="com.vladislav.sosatune.vst3" version="@VERSION@" onConclusion="none">SosaTune-vst3.pkg</pkg-ref>

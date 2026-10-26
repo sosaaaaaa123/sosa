@@ -56,7 +56,7 @@ jobs:
       - name: Prova l'installer (installazione silenziosa)
         shell: pwsh
         run: |
-          # Scelta predefinita: solo VST3.
+          # Scelta predefinita: VST3 e CLAP.
           Start-Process -Wait -FilePath .\SosaTune-Installer-Windows.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART"
           "Predefinita - VST3: $(Test-Path 'C:\Program Files\Common Files\VST3\SosaTune.vst3')  CLAP: $(Test-Path 'C:\Program Files\Common Files\CLAP\SosaTune.clap')" | Tee-Object install-check.txt
           # Con entrambi i formati scelti.
@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "Sosa Tune Windows ${GITHUB_SHA::7} - $(date -u)"
+            echo "SosaTune Windows ${GITHUB_SHA::7} - $(date -u)"
             echo; echo "## Test del plugin"; grep -E "test result|panicked|exit code" plugin-test-log.txt || true
             echo; echo "## Compilazione (ultime righe)"; tail -30 build-log.txt || true
             echo; echo "## pluginval livello 10 - VST3"; tail -80 pv-vst3.txt || true
@@ -90,5 +90,5 @@ jobs:
           git init -q -b build-windows
           git add .
           git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" \
-            commit -q -m "Sosa Tune per Windows (${GITHUB_SHA::7})"
+            commit -q -m "SosaTune per Windows (${GITHUB_SHA::7})"
           git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" build-windows:build-windows
