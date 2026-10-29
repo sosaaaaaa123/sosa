@@ -15,7 +15,7 @@
 //!    per la frequenza nuova, e le righe della sua zona la seguono rigidamente
 //!    ("identity phase locking", Laroche e Dolson 1999): cosi' ogni armonica
 //!    resta un'onda pulita, senza l'effetto "metallico" o "in una stanza"
-//!    dei phase vocoder semplici. In piu' le armoniche (fino a 5 kHz)
+//!    dei phase vocoder semplici. In piu' le armoniche (fino a 16 kHz)
 //!    restano in fase tra loro: l'armonica h gira di h volte la fondamentale,
 //!    e la forma d'onda di ogni ciclo della voce si conserva;
 //! 5. il **timbro** (l'inviluppo spettrale, cioe' le formanti) viene misurato
@@ -181,10 +181,16 @@ impl PhaseVocoder {
     const SYNTH_WINDOW_S: f32 = 0.016;
     /// Sotto questa frequenza le armoniche restano "in fase" tra loro (vedi
     /// `process_frame`): la forma d'onda della voce si conserva come in un
-    /// pitch shifter nel tempo. Piu' in alto ogni armonica gira per conto
-    /// suo: li' i piccoli errori, moltiplicati per il numero dell'armonica,
-    /// darebbero un ronzio alla velocita' dei frame.
-    const HARMONIC_LOCK_HZ: f32 = 5000.0;
+    /// pitch shifter nel tempo. Prima il limite era 5 kHz e sopra ogni
+    /// armonica girava per conto suo: gli impulsi della voce (la "chiusura"
+    /// delle corde vocali, che da' presenza e aria) si sparpagliavano nella
+    /// parte alta, una risonanza "phasey" sui medio-alti e sugli acuti.
+    /// Misurato come fattore di cresta della banda 5-8 kHz (impulsi netti =
+    /// cresta alta): voce maschile 14,8 dB in ingresso, 10,4 in uscita, ora
+    /// 14,9; voci femminili vere da ~0,4 dB sotto l'ingresso a pari. Nessun
+    /// ronzio alla velocita' dei frame (misurato sull'inviluppo delle bande
+    /// alte attorno a 189 Hz) e intonazione invariata.
+    const HARMONIC_LOCK_HZ: f32 = 16000.0;
     /// Picchi considerati fino a 100 dB sotto il piu' forte. (Con 70 dB le
     /// armoniche deboli in alto restavano fuori e venivano spostate tutte
     /// insieme all'ultima armonica trovata, fuori posto: un fruscio
@@ -1044,6 +1050,81 @@ mod tests {
             start += 256;
         }
         out
+    }
+
+    /// Banda (lo..hi Hz) di un segnale, con una FFT sola su tutto (filtro "a muro").
+    fn band(x: &[f32], sr: f32, lo: f32, hi: f32) -> Vec<f32> {
+        let n = x.len().next_power_of_two();
+        let fft = Fft::new(n);
+        let mut buf: Vec<Complex> = (0..n).map(|i| Complex::new(x.get(i).copied().unwrap_or(0.0), 0.0)).collect();
+        fft.process(&mut buf, false);
+        for k in 0..n {
+            let hz = k.min(n - k) as f32 * sr / n as f32;
+            if hz < lo || hz > hi {
+                buf[k] = Complex::default();
+            }
+        }
+        fft.process(&mut buf, true);
+        buf[..x.len()].iter().map(|c| c.re / n as f32).collect()
+    }
+
+    /// Fattore di cresta mediano (picco / RMS, dB) su blocchi da 20 ms.
+    fn crest_db(x: &[f32], sr: f32) -> f32 {
+        let n = (0.02 * sr) as usize;
+        let mut c: Vec<f32> = x
+            .chunks_exact(n)
+            .map(|b| {
+                let peak = b.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+                let rms = (b.iter().map(|v| v * v).sum::<f32>() / n as f32).sqrt();
+                20.0 * (peak / (rms + 1e-12)).log10()
+            })
+            .collect();
+        c.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        c[c.len() / 2]
+    }
+
+    #[test]
+    fn high_harmonics_keep_the_pulses_of_the_voice() {
+        // Voce maschile (110 Hz) con vibrato (5,5 Hz, +-30 cent) e il piccolo
+        // tremolio d'intonazione di una voce vera, portata dritta su La# come
+        // fa l'autotune. Gli impulsi delle corde vocali arrivano anche negli
+        // acuti: sopra i 5 kHz devono restare netti come nell'originale. Con le
+        // armoniche "in fase" solo fino a 5 kHz il vibrato le sparpagliava
+        // (cresta 5-8 kHz 13,9 dB contro 16,8 dell'ingresso): una risonanza
+        // "phasey" sui medio-alti e sugli acuti.
+        let sr = 48000.0;
+        let len = 120_000;
+        let jitter = crate::synth::noise(len, 1.0, 7);
+        let k = 1.0 - (-2.0 * PI * 40.0 / sr).exp();
+        let mut lp = 0.0f32;
+        let f0: Vec<f32> = jitter
+            .iter()
+            .enumerate()
+            .map(|(i, &j)| {
+                lp += k * (j - lp);
+                let vibrato = 2f32.powf(30.0 / 1200.0 * (2.0 * PI * 5.5 * i as f32 / sr).sin());
+                110.0 * vibrato * (1.0 + 0.01 * lp)
+            })
+            .collect();
+        let input = crate::synth::sing_curve_detailed(&f0, &vec![1.0; len], sr, 0.0, 3);
+        let mut pv = PhaseVocoder::new(1, sr);
+        let latency = pv.latency();
+        let mut out = Vec::with_capacity(len);
+        for i in 0..len + latency {
+            let x = input.get(i).copied().unwrap_or(0.0);
+            let mut o = [0.0];
+            pv.process(&[x], &mut o, |t| {
+                let j = (t.max(0.0) as usize).min(len - 1);
+                GrainPitch { period: sr / f0[j], ratio: 116.54 / f0[j], voiced: true, formant: 1.0 }
+            });
+            if i >= latency {
+                out.push(o[0]);
+            }
+        }
+        let skip = (0.2 * sr) as usize;
+        let c_in = crest_db(&band(&input[skip..], sr, 5000.0, 8000.0), sr);
+        let c_out = crest_db(&band(&out[skip..], sr, 5000.0, 8000.0), sr);
+        assert!(c_out > c_in - 1.0, "impulsi sparpagliati negli acuti: cresta 5-8 kHz {c_out:.1} dB, ingresso {c_in:.1} dB");
     }
 
     #[test]
